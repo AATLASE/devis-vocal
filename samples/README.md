@@ -4,6 +4,15 @@ Il manque une seule chose à ce dépôt, et personne ne peut la produire à ta p
 **un vrai enregistrement**. Prends ton téléphone, enregistre-toi, et dépose le fichier ici
 sous le nom `vocal_sdb.m4a`.
 
+## En attendant : `vocal_synthese.wav`
+
+Ce fichier (56 s, voix de synthèse Windows) est là pour **vérifier que le chemin audio
+fonctionne** — dépôt du fichier, appel Groq, transcription. Rien d'autre.
+
+Ce n'est pas un vocal de démonstration et il ne faut jamais le montrer à un artisan : la
+voix est parfaitement articulée, sans bruit et sans vraie hésitation. Il ne prouve donc
+rien de ce que le produit sait faire. C'est un outil de test, pas une preuve.
+
 ## Pourquoi ça compte
 
 C'est le premier geste de la démo. Un vocal lu proprement, articulé, phrase par phrase,
