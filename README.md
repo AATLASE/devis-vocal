@@ -16,7 +16,7 @@ Aucune dépendance système, aucun droit administrateur, aucun Docker. Fonctionn
 l'identique sur Windows, macOS et Linux.
 
 ```bash
-git clone <url-du-repo> && cd devis-vocal
+git clone https://github.com/Totolescroc/devis-vocal && cd devis-vocal
 
 uv venv --python 3.12                    # https://docs.astral.sh/uv/ si uv manque
 uv pip install -r requirements.txt
