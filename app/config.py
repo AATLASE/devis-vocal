@@ -45,14 +45,16 @@ class Config(BaseSettings):
     # --- Clés API ---
     anthropic_api_key: str = ""
     groq_api_key: str = ""
+    openai_api_key: str = ""
 
     # --- Modèles ---
     # `anthropic` est le fournisseur de référence : c'est lui qui doit tourner en démo.
     # `groq` est une option gratuite pour dégrossir sans consommer de crédit — le
     # chiffrage y est sensiblement moins juste (voir CONTRIBUTING.md).
-    structuration_provider: Literal["anthropic", "groq"] = "anthropic"
+    structuration_provider: Literal["anthropic", "groq", "openai"] = "anthropic"
     model_structuration: str = "claude-opus-5"
     model_structuration_groq: str = "openai/gpt-oss-120b"
+    model_structuration_openai: str = "gpt-5"
     model_transcription: str = "whisper-large-v3-turbo"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 

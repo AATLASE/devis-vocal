@@ -74,23 +74,24 @@ def _schema_strict() -> dict:
     return durcir(DevisExtraction.model_json_schema())
 
 
-def _structure_groq(transcript: str) -> DevisExtraction:
-    """Chiffrage par un modèle ouvert servi gratuitement par Groq.
+def _structure_compatible_openai(
+    transcript: str, *, api_key: str, base_url: str | None, model: str, fournisseur: str
+) -> DevisExtraction:
+    """Chiffrage via une API au format OpenAI — sert à la fois pour Groq et pour OpenAI.
 
-    Option de dépannage : elle évite de consommer du crédit pendant qu'on tâtonne, mais
-    le jugement sur les prix est nettement moins bon qu'avec Claude — prix de vente
-    sous-évalués, unités parfois fausses. Ne jamais démontrer là-dessus.
+    Ces deux-là partagent le même SDK et la même forme de sortie contrainte ; seuls
+    l'URL, la clé et le modèle changent. Un seul chemin de code, donc une comparaison
+    honnête entre fournisseurs : ils reçoivent exactement le même prompt.
     """
     from openai import OpenAI, OpenAIError
 
-    config = get_config()
-    if not config.groq_api_key:
-        raise StructurationError("GROQ_API_KEY absente : impossible de chiffrer via Groq.")
+    if not api_key:
+        raise StructurationError(f"Clé API absente : impossible de chiffrer via {fournisseur}.")
 
-    client = OpenAI(api_key=config.groq_api_key, base_url=config.groq_base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url)
     try:
         reponse = client.chat.completions.create(
-            model=config.model_structuration_groq,
+            model=model,
             messages=[
                 {"role": "system", "content": _prompt_systeme()},
                 {"role": "user", "content": transcript},
@@ -99,14 +100,13 @@ def _structure_groq(transcript: str) -> DevisExtraction:
                 "type": "json_schema",
                 "json_schema": {"name": "devis", "schema": _schema_strict(), "strict": True},
             },
-            temperature=0,
         )
     except OpenAIError as err:
-        raise StructurationError(f"Appel Groq en échec : {err}") from err
+        raise StructurationError(f"Appel {fournisseur} en échec : {err}") from err
 
     contenu = reponse.choices[0].message.content
     if not contenu:
-        raise StructurationError("Groq n'a rien renvoyé.")
+        raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
     return DevisExtraction.model_validate_json(contenu)
 
 
@@ -121,7 +121,22 @@ def structure(transcript: str) -> DevisExtraction:
         return _depuis_fixture(transcript)
 
     if config.structuration_provider == "groq":
-        return _structure_groq(transcript)
+        return _structure_compatible_openai(
+            transcript,
+            api_key=config.groq_api_key,
+            base_url=config.groq_base_url,
+            model=config.model_structuration_groq,
+            fournisseur="Groq",
+        )
+
+    if config.structuration_provider == "openai":
+        return _structure_compatible_openai(
+            transcript,
+            api_key=config.openai_api_key,
+            base_url=None,  # api.openai.com
+            model=config.model_structuration_openai,
+            fournisseur="OpenAI",
+        )
 
     if not config.anthropic_api_key:
         raise StructurationError(
