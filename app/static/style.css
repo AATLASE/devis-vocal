@@ -211,3 +211,23 @@ table.lignes td { padding: 10px; border-bottom: 1px solid var(--filet); vertical
   .totaux { flex: 1; width: 100%; }
   .entete-devis { flex-direction: column; }
 }
+
+/* ---------- Bandeau du mode hors-ligne ---------- */
+
+.bandeau {
+  max-width: 860px;
+  margin: 0 auto 18px;
+  padding: 11px 16px;
+  border-radius: 8px;
+  background: #fff8e6;
+  border: 1px solid #f0dca8;
+  color: #7a5a00;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.bandeau code {
+  background: #f5e9c8;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}

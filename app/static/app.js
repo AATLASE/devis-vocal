@@ -249,3 +249,11 @@ $("btn-texte").addEventListener("click", () => {
 $("btn-pdf").addEventListener("click", telechargerPdf);
 $("btn-nouveau").addEventListener("click", reinitialiser);
 $("btn-recommencer").addEventListener("click", reinitialiser);
+
+/* Signale à l'écran quand le chiffrage est rejoué plutôt que calculé. */
+fetch("/health")
+  .then((r) => r.json())
+  .then((info) => {
+    if (info.mode === "fixtures") $("bandeau-fixtures").classList.remove("cachee");
+  })
+  .catch(() => { /* le bandeau reste caché : pas de quoi bloquer la page */ });

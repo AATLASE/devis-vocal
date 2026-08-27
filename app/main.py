@@ -51,7 +51,10 @@ class DemandeDevis(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok"}
+    # `mode` est lu par le front pour signaler à l'écran que le chiffrage est rejoué.
+    # Sans ce signal, on peut montrer un devis de fixture à un artisan en croyant
+    # qu'il vient d'être calculé — l'erreur serait grossière et invisible.
+    return {"status": "ok", "mode": "fixtures" if get_config().use_fixtures else "reel"}
 
 
 @app.post("/api/transcribe")
