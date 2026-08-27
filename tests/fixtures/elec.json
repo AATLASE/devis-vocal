@@ -3,6 +3,7 @@
   "client_adresse": null,
   "client_telephone": null,
   "type_travaux": "Mise aux normes électriques d'un appartement F3",
+  "duree_estimee": null,
   "lignes": [
     {
       "designation": "Dépose du tableau à fusibles existant, fourniture et pose d'un tableau électrique neuf équipé de dispositifs différentiels",

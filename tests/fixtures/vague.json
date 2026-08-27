@@ -3,6 +3,7 @@
   "client_adresse": null,
   "client_telephone": null,
   "type_travaux": null,
+  "duree_estimee": null,
   "lignes": [],
   "taux_tva_suggere": "10",
   "notes": [

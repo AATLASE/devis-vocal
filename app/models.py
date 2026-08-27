@@ -71,6 +71,7 @@ class DevisExtraction(BaseModel):
     client_adresse: str | None
     client_telephone: str | None
     type_travaux: str | None
+    duree_estimee: str | None  # « 8 jours ouvrés » — seulement si l'artisan l'a dictée
     lignes: list[LigneExtraction]
     taux_tva_suggere: TauxTVA
     notes: list[str]  # ce que l'artisan a dit et qui n'est pas chiffrable en l'état
@@ -86,6 +87,7 @@ class Entreprise(BaseModel):
 
     nom: str
     forme_juridique: str
+    metier: str  # « Plomberie · Chauffage · Sanitaire » — la ligne d'accent du haut de page
     adresse: str
     code_postal_ville: str
     telephone: str
@@ -123,6 +125,7 @@ class Devis(BaseModel):
     entreprise: Entreprise
     client: Client
     type_travaux: str | None = None
+    duree_estimee: str | None = None
 
     lignes: list[LigneDevis]
     notes: list[str] = Field(default_factory=list)
@@ -133,6 +136,10 @@ class Devis(BaseModel):
     total_ttc: Decimal
     acompte_pct: Decimal
     montant_acompte: Decimal
+
+    # Part du HT reposant sur des prix estimés. C'est un total : il se calcule ici,
+    # jamais dans le navigateur. L'écran de relecture l'affiche sous les totaux.
+    total_ht_estime: Decimal = Decimal("0")
 
     transcription: str = ""  # affichée dans le navigateur, jamais dans le PDF
 
@@ -195,6 +202,7 @@ def to_devis(
     # un total qui ne tombe pas juste à l'œil.
     total_ht = arrondi(sum((ligne.total_ht for ligne in lignes), Decimal("0")))
     montant_tva = arrondi(total_ht * taux_tva)
+    total_ht_estime = arrondi(sum((l.total_ht for l in lignes if l.a_valider), Decimal("0")))
 
     return Devis(
         numero=f"DEV-{maintenant:%Y%m%d-%H%M}",
@@ -208,6 +216,7 @@ def to_devis(
             telephone=extraction.client_telephone,
         ),
         type_travaux=extraction.type_travaux,
+        duree_estimee=extraction.duree_estimee,
         lignes=lignes,
         notes=extraction.notes,
         taux_tva=taux_tva,
@@ -216,5 +225,6 @@ def to_devis(
         total_ttc=arrondi(total_ht + montant_tva),
         acompte_pct=acompte_pct,
         montant_acompte=arrondi((total_ht + montant_tva) * acompte_pct),
+        total_ht_estime=total_ht_estime,
         transcription=transcription,
     )

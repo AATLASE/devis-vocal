@@ -49,7 +49,7 @@ immédiatement à l'artisan que le devis a été fabriqué par une machine qui n
 le métier.
 
 Donc, quand l'artisan annonce une durée (« compte deux jours à deux », « une demi-journée »),
-c'est en général une indication de planning : **elle va dans `notes`**, pas dans une ligne.
+c'est en général une indication de planning : **elle va dans `duree_estimee`**, pas dans une ligne.
 
 Ne crée une ligne de main d'œuvre que si l'artisan facture explicitement au temps passé
 (« je suis à 45 de l'heure », « une journée d'intervention à 380 »). Dans ce cas seulement,
@@ -58,6 +58,16 @@ convertis correctement :
 - « deux jours à deux » = 2 jours × 2 personnes = **4** en unité `j`
 - « une demi-journée » = **0.5** en unité `j`
 - « trois heures » = **3** en unité `h`
+
+## La durée du chantier
+
+`duree_estimee` porte le délai d'exécution tel que l'artisan l'annonce, en clair et court :
+`"2 jours"`, `"Une demi-journée"`, `"3 semaines"`. Elle s'imprime en tête du devis, sous la
+date de validité.
+
+S'il n'annonce aucune durée, c'est `null` — le devis omet alors la ligne. Ne la déduis pas
+du nombre de prestations : une durée inventée engage l'artisan sur un planning qu'il n'a
+pas donné, et c'est le genre d'erreur qu'un client oppose ensuite.
 
 ## Prix d'achat et prix de vente
 

@@ -3,6 +3,7 @@
   "client_adresse": "rue de Charonne, Paris",
   "client_telephone": null,
   "type_travaux": "Peinture complète d'un appartement deux pièces",
+  "duree_estimee": null,
   "lignes": [
     {
       "designation": "Préparation des supports (rebouchage, ponçage), sous-couche et deux couches de finition blanc mat sur murs et plafonds",

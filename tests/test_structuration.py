@@ -31,6 +31,7 @@ INSTANT = datetime(2026, 8, 27, 14, 32)
 ENTREPRISE = Entreprise(
     nom="Test SARL",
     forme_juridique="SARL",
+    metier="Plomberie · Chauffage",
     adresse="1 rue du Test",
     code_postal_ville="75001 Paris",
     telephone="01 02 03 04 05",
@@ -117,6 +118,7 @@ def test_arrondi_commercial_a_la_hausse():
 def test_un_total_juste_meme_avec_des_centimes():
     extraction = DevisExtraction(
         client_nom=None, client_adresse=None, client_telephone=None, type_travaux=None,
+        duree_estimee=None,
         lignes=[
             LigneExtraction(designation="A", detail=None, quantite=3, unite=Unite.U,
                             prix_unitaire_ht=0.335, a_valider=False),

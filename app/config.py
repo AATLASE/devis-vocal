@@ -26,6 +26,7 @@ class EntrepriseSettings(Entreprise, BaseSettings):
 
     nom: str = "Bâti Rénov"
     forme_juridique: str = "SARL au capital de 10 000 €"
+    metier: str = "Rénovation · Plomberie · Second œuvre"
     adresse: str = "12 rue des Compagnons"
     code_postal_ville: str = "75011 Paris"
     telephone: str = "06 12 34 56 78"

@@ -3,6 +3,7 @@
   "client_adresse": "12 rue des Lilas, 75011 Paris",
   "client_telephone": null,
   "type_travaux": "Rénovation d'une salle de bain",
+  "duree_estimee": "2 jours",
   "lignes": [
     {
       "designation": "Dépose de l'ancien carrelage, sol et mural",
@@ -63,7 +64,6 @@
   ],
   "taux_tva_suggere": "10",
   "notes": [
-    "Durée annoncée par l'artisan : 2 jours à 2 personnes.",
     "Le carrelage de sol est fourni par la cliente.",
     "Travaux souhaités avant les vacances de la Toussaint."
   ]
