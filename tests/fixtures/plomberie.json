@@ -1,0 +1,47 @@
+{
+  "client_nom": null,
+  "client_adresse": "8 avenue Gambetta, 2e étage",
+  "client_telephone": null,
+  "type_travaux": "Remplacement d'un ballon d'eau chaude 200 litres",
+  "lignes": [
+    {
+      "designation": "Dépose de l'ancien ballon d'eau chaude et évacuation",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 180.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Fourniture et pose d'un ballon d'eau chaude 200 litres, raccordement et mise en service",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 1150.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Remplacement du groupe de sécurité",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 95.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Fourniture et pose d'un mitigeur thermostatique",
+      "detail": "modèle à définir",
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 260.0,
+      "a_valider": true
+    }
+  ],
+  "taux_tva_suggere": "10",
+  "notes": [
+    "Ballon annoncé à 680 € HT au prix d'achat fournisseur : prix de vente à confirmer.",
+    "Durée annoncée par l'artisan : une demi-journée.",
+    "Le modèle de mitigeur thermostatique n'est pas encore arrêté par la cliente.",
+    "Accès difficile : escalier étroit pour la montée du ballon."
+  ]
+}

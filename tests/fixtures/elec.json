@@ -1,0 +1,44 @@
+{
+  "client_nom": "M. Bertrand",
+  "client_adresse": null,
+  "client_telephone": null,
+  "type_travaux": "Mise aux normes électriques d'un appartement F3",
+  "lignes": [
+    {
+      "designation": "Dépose du tableau à fusibles existant, fourniture et pose d'un tableau électrique neuf équipé de dispositifs différentiels",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 890.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Création de points lumineux",
+      "detail": "2 au séjour, 1 par chambre",
+      "quantite": 4.0,
+      "unite": "u",
+      "prix_unitaire_ht": 120.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Création de prises de courant",
+      "detail": "4 au séjour, 2 en chambre",
+      "quantite": 6.0,
+      "unite": "u",
+      "prix_unitaire_ht": 85.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Réalisation des saignées et passage des gaines",
+      "detail": null,
+      "quantite": 25.0,
+      "unite": "ml",
+      "prix_unitaire_ht": 32.0,
+      "a_valider": true
+    }
+  ],
+  "taux_tva_suggere": "10",
+  "notes": [
+    "Le passage du Consuel n'est pas inclus dans ce devis."
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "client_nom": "Mme Durand",
+  "client_adresse": "12 rue des Lilas, 75011 Paris",
+  "client_telephone": null,
+  "type_travaux": "Rénovation d'une salle de bain",
+  "lignes": [
+    {
+      "designation": "Dépose de l'ancien carrelage, sol et mural",
+      "detail": null,
+      "quantite": 15.0,
+      "unite": "m²",
+      "prix_unitaire_ht": 24.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Dépose du doublage dégradé derrière la douche",
+      "detail": "deux murs",
+      "quantite": 12.0,
+      "unite": "m²",
+      "prix_unitaire_ht": 18.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Fourniture et pose de plaques de plâtre hydrofuges BA13",
+      "detail": null,
+      "quantite": 12.0,
+      "unite": "m²",
+      "prix_unitaire_ht": 52.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Pose de carrelage au sol",
+      "detail": "fourniture client",
+      "quantite": 15.0,
+      "unite": "m²",
+      "prix_unitaire_ht": 48.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Dépose et remplacement du receveur de douche",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 450.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Fourniture et pose d'un mitigeur de douche",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "u",
+      "prix_unitaire_ht": 190.0,
+      "a_valider": true
+    },
+    {
+      "designation": "Évacuation et traitement des gravats en déchèterie",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "forfait",
+      "prix_unitaire_ht": 280.0,
+      "a_valider": true
+    }
+  ],
+  "taux_tva_suggere": "10",
+  "notes": [
+    "Durée annoncée par l'artisan : 2 jours à 2 personnes.",
+    "Le carrelage de sol est fourni par la cliente.",
+    "Travaux souhaités avant les vacances de la Toussaint."
+  ]
+}

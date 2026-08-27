@@ -1,0 +1,14 @@
+{
+  "client_nom": null,
+  "client_adresse": null,
+  "client_telephone": null,
+  "type_travaux": null,
+  "lignes": [],
+  "taux_tva_suggere": "10",
+  "notes": [
+    "Origine de l'infiltration en cuisine non identifiée : mesure à l'humidimètre nécessaire.",
+    "Deux hypothèses à écarter : toiture ou remontée capillaire.",
+    "Point à faire avec le syndic.",
+    "Aucune prestation chiffrable en l'état."
+  ]
+}

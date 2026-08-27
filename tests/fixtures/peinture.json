@@ -1,0 +1,44 @@
+{
+  "client_nom": null,
+  "client_adresse": "rue de Charonne, Paris",
+  "client_telephone": null,
+  "type_travaux": "Peinture complète d'un appartement deux pièces",
+  "lignes": [
+    {
+      "designation": "Préparation des supports (rebouchage, ponçage), sous-couche et deux couches de finition blanc mat sur murs et plafonds",
+      "detail": "deux pièces et couloir",
+      "quantite": 85.0,
+      "unite": "m²",
+      "prix_unitaire_ht": 28.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Mise en peinture des portes, laque satinée deux couches",
+      "detail": null,
+      "quantite": 6.0,
+      "unite": "u",
+      "prix_unitaire_ht": 95.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Mise en peinture des plinthes",
+      "detail": null,
+      "quantite": 40.0,
+      "unite": "ml",
+      "prix_unitaire_ht": 12.0,
+      "a_valider": false
+    },
+    {
+      "designation": "Protection du chantier et nettoyage en fin de travaux",
+      "detail": null,
+      "quantite": 1.0,
+      "unite": "forfait",
+      "prix_unitaire_ht": 150.0,
+      "a_valider": false
+    }
+  ],
+  "taux_tva_suggere": "10",
+  "notes": [
+    "Surfaces annoncées de mémoire par l'artisan : à confirmer au métré."
+  ]
+}

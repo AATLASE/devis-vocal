@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devis Vocal</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header class="tete">
+  <div class="marque">Devis&nbsp;Vocal</div>
+  <div class="baseline">Dictez le chantier. Récupérez le devis.</div>
+</header>
+
+<main>
+
+  <section id="etape-depot" class="carte">
+    <label id="depot" for="fichier" class="depot">
+      <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
+      <div class="depot-icone">🎙️</div>
+      <div class="depot-titre">Déposez votre note vocale</div>
+      <div class="depot-aide">ou cliquez pour choisir un fichier — m4a, ogg, mp3, wav</div>
+    </label>
+
+    <details class="repli">
+      <summary>Pas de micro sous la main&nbsp;? Coller une transcription</summary>
+      <textarea id="texte" rows="6" placeholder="Alors la salle de bain de madame Durand, 12 rue des Lilas…"></textarea>
+      <button id="btn-texte" class="bouton">Générer le devis</button>
+    </details>
+  </section>
+
+  <section id="etape-progression" class="carte cachee">
+    <ol class="etapes">
+      <li id="pas-transcription"><span class="pastille"></span>Transcription de l'enregistrement</li>
+      <li id="pas-analyse"><span class="pastille"></span>Analyse et chiffrage</li>
+      <li id="pas-pdf"><span class="pastille"></span>Génération du devis</li>
+    </ol>
+    <div id="chrono" class="chrono"></div>
+  </section>
+
+  <section id="etape-erreur" class="carte erreur cachee">
+    <div class="erreur-titre">Ça n'a pas marché</div>
+    <div id="erreur-message"></div>
+    <button id="btn-recommencer" class="bouton bouton-clair">Recommencer</button>
+  </section>
+
+  <section id="etape-transcription" class="carte cachee">
+    <div class="libelle">Ce que vous avez dicté</div>
+    <p id="transcription" class="transcription"></p>
+  </section>
+
+  <section id="etape-devis" class="carte cachee">
+    <div class="entete-devis">
+      <div>
+        <div class="libelle">Devis</div>
+        <div id="devis-numero" class="devis-numero"></div>
+        <div id="devis-client" class="devis-client"></div>
+      </div>
+      <button id="btn-pdf" class="bouton">Télécharger le PDF</button>
+    </div>
+
+    <table class="lignes">
+      <thead>
+        <tr>
+          <th>Désignation</th>
+          <th class="droite">Qté</th>
+          <th class="centre">Unité</th>
+          <th class="droite">P.U. HT</th>
+          <th class="droite">Total HT</th>
+        </tr>
+      </thead>
+      <tbody id="lignes"></tbody>
+    </table>
+
+    <div id="legende-estime" class="legende cachee">
+      <span class="etoile">*</span> Prix estimé par l'IA — à vérifier avant d'envoyer.
+    </div>
+
+    <div class="pied-devis">
+      <div id="observations" class="observations"></div>
+      <div class="totaux">
+        <div class="tot-ligne"><span>Total HT</span><span id="total-ht"></span></div>
+        <div class="tot-ligne"><span id="libelle-tva"></span><span id="montant-tva"></span></div>
+        <div class="tot-ligne tot-ttc"><span>Total TTC</span><span id="total-ttc"></span></div>
+        <div class="tot-acompte"><span id="libelle-acompte"></span><span id="montant-acompte"></span></div>
+      </div>
+    </div>
+
+    <button id="btn-nouveau" class="bouton bouton-clair">Nouveau devis</button>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
