@@ -256,3 +256,30 @@ def test_appel_reel(monkeypatch):
     assert extraction.client_nom and "Durand" in extraction.client_nom
     # Le carrelage est fourni par la cliente : rien ne doit facturer sa fourniture.
     assert any("fourniture client" in (l.detail or "").lower() for l in extraction.lignes)
+
+
+# ---------------------------------------------------------------------------
+# Le durcissement de schéma pour les sorties contraintes façon OpenAI
+# ---------------------------------------------------------------------------
+
+
+def test_le_schema_strict_ferme_tous_les_objets():
+    """Groq refuse le schéma si un seul objet imbriqué autorise des clés en plus."""
+    from app.structuration import _schema_strict
+
+    def objets(noeud):
+        if isinstance(noeud, dict):
+            if noeud.get("type") == "object":
+                yield noeud
+            for valeur in noeud.values():
+                yield from objets(valeur)
+        elif isinstance(noeud, list):
+            for valeur in noeud:
+                yield from objets(valeur)
+
+    trouves = list(objets(_schema_strict()))
+    assert trouves, "Le schéma doit contenir des objets."
+    for obj in trouves:
+        assert obj["additionalProperties"] is False
+        if "properties" in obj:
+            assert set(obj["required"]) == set(obj["properties"])

@@ -9,6 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,7 +46,12 @@ class Config(BaseSettings):
     groq_api_key: str = ""
 
     # --- Modèles ---
+    # `anthropic` est le fournisseur de référence : c'est lui qui doit tourner en démo.
+    # `groq` est une option gratuite pour dégrossir sans consommer de crédit — le
+    # chiffrage y est sensiblement moins juste (voir CONTRIBUTING.md).
+    structuration_provider: Literal["anthropic", "groq"] = "anthropic"
     model_structuration: str = "claude-opus-5"
+    model_structuration_groq: str = "openai/gpt-oss-120b"
     model_transcription: str = "whisper-large-v3-turbo"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 

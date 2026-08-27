@@ -51,6 +51,65 @@ def _depuis_fixture(transcript: str) -> DevisExtraction:
     )
 
 
+def _schema_strict() -> dict:
+    """Le schéma JSON du devis, durci pour les sorties contraintes façon OpenAI.
+
+    Ces API exigent `additionalProperties: false` et un `required` exhaustif sur *chaque*
+    objet, y compris les définitions imbriquées — ce que Pydantic ne génère pas seul.
+    """
+
+    def durcir(noeud):
+        if isinstance(noeud, dict):
+            if noeud.get("type") == "object":
+                noeud["additionalProperties"] = False
+                if "properties" in noeud:
+                    noeud["required"] = list(noeud["properties"])
+            for valeur in noeud.values():
+                durcir(valeur)
+        elif isinstance(noeud, list):
+            for valeur in noeud:
+                durcir(valeur)
+        return noeud
+
+    return durcir(DevisExtraction.model_json_schema())
+
+
+def _structure_groq(transcript: str) -> DevisExtraction:
+    """Chiffrage par un modèle ouvert servi gratuitement par Groq.
+
+    Option de dépannage : elle évite de consommer du crédit pendant qu'on tâtonne, mais
+    le jugement sur les prix est nettement moins bon qu'avec Claude — prix de vente
+    sous-évalués, unités parfois fausses. Ne jamais démontrer là-dessus.
+    """
+    from openai import OpenAI, OpenAIError
+
+    config = get_config()
+    if not config.groq_api_key:
+        raise StructurationError("GROQ_API_KEY absente : impossible de chiffrer via Groq.")
+
+    client = OpenAI(api_key=config.groq_api_key, base_url=config.groq_base_url)
+    try:
+        reponse = client.chat.completions.create(
+            model=config.model_structuration_groq,
+            messages=[
+                {"role": "system", "content": _prompt_systeme()},
+                {"role": "user", "content": transcript},
+            ],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "devis", "schema": _schema_strict(), "strict": True},
+            },
+            temperature=0,
+        )
+    except OpenAIError as err:
+        raise StructurationError(f"Appel Groq en échec : {err}") from err
+
+    contenu = reponse.choices[0].message.content
+    if not contenu:
+        raise StructurationError("Groq n'a rien renvoyé.")
+    return DevisExtraction.model_validate_json(contenu)
+
+
 def structure(transcript: str) -> DevisExtraction:
     """Transforme une transcription en devis structuré, non chiffré."""
     transcript = transcript.strip()
@@ -60,6 +119,9 @@ def structure(transcript: str) -> DevisExtraction:
     config = get_config()
     if config.use_fixtures:
         return _depuis_fixture(transcript)
+
+    if config.structuration_provider == "groq":
+        return _structure_groq(transcript)
 
     if not config.anthropic_api_key:
         raise StructurationError(
