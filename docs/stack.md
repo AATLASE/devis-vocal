@@ -1,3 +1,6 @@
+> **Note d'exploration, antérieure au code.** Les choix réellement retenus sont documentés
+> dans `CLAUDE.md` et `README.md` (Groq pour la transcription, Playwright pour le PDF).
+
 # Stack — pistes
 
 ## Speech-to-text

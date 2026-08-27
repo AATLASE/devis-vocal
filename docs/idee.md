@@ -1,3 +1,5 @@
+> **Note d'idée initiale, antérieure au code.** Voir `README.md` pour l'état réel du projet.
+
 # Devis Vocal
 
 > Statut : **idée** — créé le 2026-08-27
