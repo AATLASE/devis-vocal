@@ -61,8 +61,9 @@ note vocale ──▶ POST /api/transcribe ──▶ transcription
 | `app/structuration.py` | `structure(transcript) -> DevisExtraction` |
 | `app/prompts/structuration.md` | Le prompt de chiffrage. Le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` |
-| `templates/devis.html` | La mise en page du devis |
-| `app/static/` | La page unique, JS vanilla |
+| `templates/devis.html` | Le devis A4, en pages |
+| `templates/pdf.css` | La feuille A4 du handoff design |
+| `app/static/` | Les quatre écrans, JS vanilla · `tokens.css` fait foi pour toute valeur visuelle |
 
 ## Les deux règles qui comptent
 

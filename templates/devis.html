@@ -1,386 +1,278 @@
+{#
+  Devis Vocal — le document A4.
+
+  Reprise du handoff `reference/pdf/devis.html`, branchée sur le modèle `Devis`.
+  Trois choses à savoir avant d'y toucher :
+
+  - La mise en page vient de `pdf.css`, qui vient du design. On ne met pas de style
+    ici : les seuls attributs `style` sont ceux que le handoff portait déjà en ligne.
+  - La pagination est décidée en Python (`app.pdf.paginer`), pas par le navigateur :
+    la page 1 porte l'en-tête d'entreprise, les suivantes un titre courant, et la
+    dernière les mentions. Aucun moteur CSS ne sait faire ça seul.
+  - Feuilles et polices sont inlinées : Chromium rend depuis `about:blank`, donc
+    aucune URL relative ne résoudrait, et un devis ne doit pas dépendre du réseau
+    au moment où on le montre à un artisan.
+#}
 <!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<title>{{ devis.numero }}</title>
-<style>
-  :root {
-    --encre:      #16202e;
-    --gris:       #5a6474;
-    --gris-clair: #949cab;
-    --filet:      #d7dce4;
-    --fond:       #f4f6f9;
-    --accent:     #1d3557;
-  }
-
-  * { box-sizing: border-box; }
-
-  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-
-  body {
-    margin: 0;
-    font-family: "Segoe UI", "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
-    font-size: 9.5pt;
-    line-height: 1.45;
-    color: var(--encre);
-  }
-
-  h1, h2, h3 { margin: 0; font-weight: 600; }
-
-  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-  /* ---------- En-tête ---------- */
-
-  .entete {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 14mm;
-    padding-bottom: 5mm;
-    border-bottom: 2px solid var(--accent);
-  }
-
-  .identite .raison-sociale {
-    font-size: 15pt;
-    font-weight: 600;
-    letter-spacing: -0.2px;
-    color: var(--accent);
-  }
-
-  .identite .forme { color: var(--gris); font-size: 8.5pt; }
-  .identite .coords { margin-top: 2.5mm; color: var(--gris); font-size: 8.5pt; }
-
-  .bloc-devis { text-align: right; flex: 0 0 auto; }
-  .bloc-devis .titre {
-    font-size: 19pt;
-    font-weight: 300;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--accent);
-    line-height: 1;
-  }
-  .bloc-devis .numero { font-size: 11pt; font-weight: 600; margin-top: 1mm; }
-  .bloc-devis .dates { margin-top: 2mm; color: var(--gris); font-size: 8.5pt; }
-
-  /* ---------- Parties ---------- */
-
-  .parties { display: flex; gap: 6mm; margin-top: 6mm; }
-  .parties .carte { flex: 1; background: var(--fond); border-radius: 2mm; padding: 4mm 4.5mm; }
-  .carte .libelle {
-    font-size: 7.5pt;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--gris-clair);
-    margin-bottom: 1.5mm;
-  }
-  .carte .valeur { font-weight: 600; }
-  .carte .secondaire { color: var(--gris); }
-  .carte .absent { color: var(--gris-clair); font-style: italic; font-weight: 400; }
-
-  /* ---------- Tableau des prestations ---------- */
-
-  table.prestations { width: 100%; border-collapse: collapse; margin-top: 7mm; }
-
-  table.prestations thead { display: table-header-group; }
-
-  table.prestations th {
-    font-size: 7.5pt;
-    text-transform: uppercase;
-    letter-spacing: 0.7px;
-    color: #fff;
-    background: var(--accent);
-    padding: 2.4mm 3mm;
-    text-align: left;
-    font-weight: 600;
-  }
-
-  table.prestations td {
-    padding: 2.6mm 3mm;
-    border-bottom: 1px solid var(--filet);
-    vertical-align: top;
-  }
-
-  table.prestations tbody tr:nth-child(even) td { background: #fafbfc; }
-
-  .col-qte, .col-unite, .col-pu, .col-total { text-align: right; white-space: nowrap; }
-  .col-unite { text-align: center; color: var(--gris); }
-  .col-total { font-weight: 600; }
-
-  td.designation .detail { display: block; color: var(--gris); font-size: 8.5pt; }
-
-  .marque-estime {
-    color: #b26a00;
-    font-weight: 700;
-    padding-left: 1px;
-  }
-
-  .aucune-prestation {
-    padding: 6mm 3mm;
-    text-align: center;
-    color: var(--gris);
-    font-style: italic;
-    border-bottom: 1px solid var(--filet);
-  }
-
-  .legende-estime {
-    margin-top: 2mm;
-    font-size: 8pt;
-    color: #b26a00;
-  }
-
-  /* ---------- Bas de devis ---------- */
-
-  .bas { display: flex; gap: 8mm; margin-top: 6mm; align-items: flex-start; }
-
-  .observations { flex: 1; }
-  .observations .libelle {
-    font-size: 7.5pt;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--gris-clair);
-    margin-bottom: 1.5mm;
-  }
-  .observations ul { margin: 0; padding-left: 4mm; color: var(--gris); }
-  .observations li { margin-bottom: 0.8mm; }
-
-  .totaux { flex: 0 0 72mm; }
-  .totaux .ligne {
-    display: flex;
-    justify-content: space-between;
-    padding: 1.8mm 3.5mm;
-  }
-  .totaux .ligne + .ligne { border-top: 1px solid var(--filet); }
-  .totaux .cadre { border: 1px solid var(--filet); border-radius: 2mm; overflow: hidden; }
-  .totaux .ttc {
-    background: var(--accent);
-    color: #fff;
-    font-size: 11.5pt;
-    font-weight: 600;
-    padding: 2.6mm 3.5mm;
-    border-top: none;
-  }
-  .totaux .acompte {
-    margin-top: 2.5mm;
-    padding: 2.2mm 3.5mm;
-    background: var(--fond);
-    border-radius: 2mm;
-    display: flex;
-    justify-content: space-between;
-    font-size: 8.5pt;
-    color: var(--gris);
-  }
-  .totaux .acompte strong { color: var(--encre); }
-
-  /* ---------- Accord ---------- */
-
-  .accord {
-    margin-top: 7mm;
-    border: 1px solid var(--filet);
-    border-radius: 2mm;
-    padding: 4mm 4.5mm 14mm;
-    break-inside: avoid;
-  }
-  .accord .titre { font-weight: 600; margin-bottom: 1mm; }
-  .accord .consigne { color: var(--gris); font-size: 8.5pt; }
-
-  /* ---------- Mentions ---------- */
-
-  .mentions {
-    margin-top: 6mm;
-    padding-top: 3mm;
-    border-top: 1px solid var(--filet);
-    font-size: 7.5pt;
-    line-height: 1.5;
-    color: var(--gris);
-  }
-  .mentions p { margin: 0 0 1.4mm; }
-  .mentions .cle { color: var(--encre); font-weight: 600; }
-
-  .pied {
-    margin-top: 3mm;
-    padding-top: 2mm;
-    border-top: 1px solid var(--filet);
-    font-size: 7pt;
-    color: var(--gris-clair);
-    text-align: center;
-  }
-</style>
+<title>Devis {{ devis.numero }} — {{ e.nom }}</title>
+<style>{{ css }}</style>
 </head>
 <body>
 
-<header class="entete">
-  <div class="identite">
-    <div class="raison-sociale">{{ e.nom }}</div>
-    <div class="forme">{{ e.forme_juridique }}</div>
-    <div class="coords">
-      {{ e.adresse }}<br>
-      {{ e.code_postal_ville }}<br>
-      {{ e.telephone }} · {{ e.email }}
-    </div>
-  </div>
-  <div class="bloc-devis">
-    <div class="titre">Devis</div>
-    <div class="numero">{{ devis.numero }}</div>
-    <div class="dates">
-      Émis le {{ devis.date_emission | date_fr }}<br>
-      Valable jusqu'au {{ devis.date_validite | date_fr }}
-    </div>
-  </div>
-</header>
+{%- macro entete_courante(mention) -%}
+  <header class="doc-runhead">
+    <div class="doc-runhead__name">{{ e.nom }}</div>
+    <div class="doc-runhead__ref">{{ mention }}</div>
+  </header>
+{%- endmacro -%}
 
-<section class="parties">
-  <div class="carte">
-    <div class="libelle">Devis établi pour</div>
-    {% if devis.client.nom %}
-      <div class="valeur">{{ devis.client.nom }}</div>
-    {% else %}
-      <div class="valeur absent">Nom du client à compléter</div>
-    {% endif %}
-    {% if devis.client.adresse %}<div class="secondaire">{{ devis.client.adresse }}</div>{% endif %}
-    {% if devis.client.telephone %}<div class="secondaire">{{ devis.client.telephone }}</div>{% endif %}
+{%- macro pied_courant(numero) -%}
+  <footer class="doc-runfoot">
+    <div>{{ e.nom }} · Devis {{ devis.numero }}</div>
+    <div>Page {{ numero }} / {{ total_pages }}</div>
+  </footer>
+{%- endmacro -%}
+
+{%- macro note_dague() -%}
+  {%- if devis.a_des_prix_estimes -%}
+  <p class="doc-note">† Prix non dicté lors de la prise de mesure, estimé d'après les
+  tarifs pratiqués par l'entreprise. Ces montants sont à confirmer avant signature.</p>
+  {%- endif -%}
+{%- endmacro -%}
+
+{%- macro entete_tableau() -%}
+  <div class="doc-table__row doc-table__head">
+    <div>N°</div><div>Désignation</div>
+    <div class="r">Qté</div><div class="r">U.</div>
+    <div class="r">P.U. HT</div><div class="r">Total HT</div>
   </div>
-  <div class="carte">
-    <div class="libelle">Objet des travaux</div>
-    {% if devis.type_travaux %}
-      <div class="valeur">{{ devis.type_travaux }}</div>
-    {% else %}
-      <div class="valeur absent">Nature des travaux à préciser</div>
-    {% endif %}
-    <div class="secondaire">
-      {{ devis.lignes | length }} prestation{{ 's' if devis.lignes | length > 1 }} chiffrée{{ 's' if devis.lignes | length > 1 }}
-    </div>
+{%- endmacro -%}
+
+{%- macro lignes_tableau(bloc) -%}
+  {%- for numero, ligne in bloc %}
+  <div class="doc-table__row doc-table__line">
+    <div class="n">{{ '%02d' % numero }}</div>
+    <div class="doc-table__desc">{{ ligne.designation
+      }}{% if ligne.a_valider %}<span class="mark-estime">estimé †</span>{% endif
+      %}{% if ligne.detail %}<span class="doc-table__detail">{{ ligne.detail }}</span>{% endif %}</div>
+    <div class="r num">{{ ligne.quantite | nombre }}</div>
+    <div class="r unit">{{ ligne.unite.value }}</div>
+    <div class="r num">{{ ligne.prix_unitaire_ht | montant }}</div>
+    <div class="r num">{{ ligne.total_ht | montant }}</div>
   </div>
-</section>
+  {%- else %}
+  <div class="doc-table__vide">Aucune prestation chiffrable à ce stade — voir les observations.</div>
+  {%- endfor %}
+{%- endmacro -%}
 
-<table class="prestations">
-  <thead>
-    <tr>
-      <th>Désignation</th>
-      <th class="col-qte">Qté</th>
-      <th class="col-unite">Unité</th>
-      <th class="col-pu">P.U. HT</th>
-      <th class="col-total">Total HT</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for ligne in devis.lignes %}
-    <tr>
-      <td class="designation">
-        {{ ligne.designation }}{% if ligne.a_valider %}<span class="marque-estime">*</span>{% endif %}
-        {% if ligne.detail %}<span class="detail">{{ ligne.detail }}</span>{% endif %}
-      </td>
-      <td class="col-qte num">{{ ligne.quantite | nombre }}</td>
-      <td class="col-unite">{{ ligne.unite.value }}</td>
-      <td class="col-pu num">{{ ligne.prix_unitaire_ht | euro }}</td>
-      <td class="col-total num">{{ ligne.total_ht | euro }}</td>
-    </tr>
-    {% else %}
-    <tr>
-      <td colspan="5" class="aucune-prestation">
-        Aucune prestation chiffrable à ce stade — voir les observations ci-dessous.
-      </td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-{% if devis.a_des_prix_estimes %}
-<div class="legende-estime">* Prix estimé, à confirmer par l'entreprise avant signature.</div>
-{% endif %}
-
-<section class="bas">
-  <div class="observations">
-    {% if devis.notes %}
-      <div class="libelle">Observations</div>
-      <ul>
-        {% for note in devis.notes %}<li>{{ note }}</li>{% endfor %}
-      </ul>
-    {% endif %}
-  </div>
-
-  <div class="totaux">
-    <div class="cadre">
-      <div class="ligne">
-        <span>Total HT</span>
-        <span class="num">{{ devis.total_ht | euro }}</span>
+{%- macro cloture() -%}
+  <section class="doc-foot">
+    <div>
+      {%- if devis.notes %}
+      <div class="doc-label">Observations</div>
+      <div class="doc-observations">
+        {%- for note in devis.notes %}
+        <div class="doc-observation"><em>—</em><p>{{ note }}</p></div>
+        {%- endfor %}
       </div>
-      <div class="ligne">
-        <span>TVA {{ devis.taux_tva_libelle }} %</span>
-        <span class="num">{{ devis.montant_tva | euro }}</span>
-      </div>
-      <div class="ligne ttc">
-        <span>Total TTC</span>
-        <span class="num">{{ devis.total_ttc | euro }}</span>
+      {%- endif %}
+    </div>
+    <div class="doc-totaux">
+      <div><span>Total HT</span><span class="num">{{ devis.total_ht | euro }}</span></div>
+      <div><span>TVA {{ devis.taux_tva_libelle }}&#8239;%</span><span class="num">{{ devis.montant_tva | euro }}</span></div>
+      <div class="ttc"><span>Total TTC</span><span>{{ devis.total_ttc | euro }}</span></div>
+      <div class="acompte">
+        <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% à la commande</span>
+        <span class="num">{{ devis.montant_acompte | euro }}</span>
       </div>
     </div>
-    <div class="acompte">
-      <span>Acompte à la commande ({{ devis.acompte_pct | pourcent }} %)</span>
-      <strong class="num">{{ devis.montant_acompte | euro }}</strong>
+  </section>
+{%- endmacro -%}
+
+{%- macro bon_pour_accord() -%}
+  <div class="doc-accord">
+    <div>
+      <h3>Bon pour accord</h3>
+      <p>Date et signature du client, précédées de la mention manuscrite
+      « Bon pour accord, devis reçu avant l'exécution des travaux ».</p>
+      <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / {{ devis.date_emission.year }}</div>
+    </div>
+    <div class="doc-accord__sign">
+      <div class="doc-label">Signature</div>
+      <i></i>
     </div>
   </div>
-</section>
+{%- endmacro -%}
 
-<section class="accord">
-  <div class="titre">Bon pour accord</div>
-  <div class="consigne">
-    Date, et signature du client précédée de la mention manuscrite « Bon pour accord ».
-  </div>
-</section>
 
-<section class="mentions">
-  <p>
-    <span class="cle">Validité —</span>
-    Le présent devis est valable jusqu'au {{ devis.date_validite | date_fr }},
-    soit {{ devis.validite_jours }} jours à compter de son émission.
-  </p>
-  <p>
-    <span class="cle">Conditions de règlement —</span>
-    Acompte de {{ devis.acompte_pct | pourcent }} % à la commande, soit {{ devis.montant_acompte | euro }}.
-    Solde à la réception des travaux, payable à 30 jours par virement bancaire.
-    Aucun escompte n'est accordé pour paiement anticipé.
-  </p>
-  <p>
-    <span class="cle">Retard de paiement —</span>
-    Pénalités au taux d'intérêt appliqué par la Banque centrale européenne à son opération de
-    refinancement la plus récente, majoré de 10 points de pourcentage, exigibles sans rappel,
-    ainsi qu'une indemnité forfaitaire pour frais de recouvrement de 40 €
-    (art. L441-10 et D441-5 du code de commerce).
-  </p>
-  {% if devis.taux_tva == taux_reduit %}
-  <p>
-    <span class="cle">TVA à taux réduit —</span>
-    TVA de 10 % appliquée au titre de l'article 279-0 bis du code général des impôts
-    (travaux d'amélioration, de transformation, d'aménagement ou d'entretien portant sur un
-    local à usage d'habitation achevé depuis plus de deux ans). En signant le présent devis,
-    le client atteste que cette condition est remplie.
-  </p>
-  {% else %}
-  <p>
-    <span class="cle">TVA —</span>
-    TVA au taux normal de {{ devis.taux_tva_libelle }} %.
-  </p>
-  {% endif %}
-  <p>
-    <span class="cle">Droit de rétractation —</span>
-    Lorsque le contrat est conclu hors établissement, le client dispose d'un délai de
-    quatorze jours pour exercer son droit de rétractation (art. L221-18 du code de la consommation).
-  </p>
-  <p>
-    <span class="cle">Assurance —</span>
-    Assurance de responsabilité décennale souscrite auprès de {{ e.assurance }},
-    police n° {{ e.assurance_police }}, couvrant les travaux réalisés en France métropolitaine.
-  </p>
-  <p>
-    <span class="cle">Médiation —</span>
-    En cas de litige, le client peut recourir gratuitement au médiateur de la consommation
-    dont relève l'entreprise (art. L612-1 du code de la consommation).
-  </p>
-</section>
+{# ---- pages du tableau ------------------------------------------------- #}
 
-<div class="pied">
-  {{ e.nom }} · {{ e.adresse }}, {{ e.code_postal_ville }} ·
-  SIRET {{ e.siret }} · APE {{ e.code_ape }} · TVA {{ e.tva_intracom }}
-</div>
+{%- for bloc in pages %}
+{%- set cloture_ici = loop.last and cloture_sur_derniere %}
+<article class="page">
+  {%- if loop.first %}
+
+  <header class="doc-head">
+    <div>
+      <div class="doc-head__name">{{ e.nom }}</div>
+      <div class="doc-head__trade">{{ e.metier }}</div>
+      <div class="doc-head__coords">
+        {{ e.forme_juridique }}<br>
+        {{ e.adresse }}, {{ e.code_postal_ville }}<br>
+        {{ e.telephone }} · {{ e.email }}
+      </div>
+      <div class="doc-head__legal">
+        SIRET {{ e.siret }} · APE {{ e.code_ape }}<br>
+        TVA {{ e.tva_intracom }}<br>
+        Décennale {{ e.assurance }} n° {{ e.assurance_police }}
+      </div>
+    </div>
+    <div class="doc-meta">
+      <div class="doc-meta__kind">DEVIS</div>
+      <div class="doc-meta__num">N° {{ devis.numero }}</div>
+      <div class="doc-meta__rows">
+        <div><span>Émis le</span><span>{{ devis.date_emission | date_longue }}</span></div>
+        <div><span>Valable jusqu'au</span><span>{{ devis.date_validite | date_longue }}</span></div>
+        {%- if devis.duree_estimee %}
+        <div><span>Durée estimée</span><span>{{ devis.duree_estimee }}</span></div>
+        {%- endif %}
+      </div>
+    </div>
+  </header>
+
+  <section class="doc-parties">
+    <div>
+      <div class="doc-label">Client</div>
+      <p>
+        {{ devis.client.nom or 'Nom du client à compléter' }}
+        {%- if devis.client.adresse %}<br>{{ devis.client.adresse }}{% endif %}
+        {%- if devis.client.telephone %}<br>{{ devis.client.telephone }}{% endif %}
+      </p>
+    </div>
+    <div>
+      <div class="doc-label">Objet des travaux</div>
+      <p>
+        {{ devis.type_travaux or 'Nature des travaux à préciser' }}.
+        {%- if devis.taux_tva == taux_reduit %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
+      </p>
+    </div>
+  </section>
+
+  <section class="doc-table"{% if not cloture_ici %} style="flex:1"{% endif %}>
+  {%- else %}
+
+  {{ entete_courante('Devis ' ~ devis.numero ~ ' · suite') }}
+
+  <section class="doc-table" style="margin-top:22px{% if not cloture_ici %};flex:1{% endif %}">
+  {%- endif %}
+    {{ entete_tableau() }}
+    {{ lignes_tableau(bloc) }}
+    {%- if cloture_ici %}{{ note_dague() }}{% endif %}
+  </section>
+
+  {%- if cloture_ici %}
+  {{ cloture() }}
+  <section class="push" style="padding-top:34px">
+    {{ bon_pour_accord() }}
+    {{ pied_courant(loop.index) }}
+  </section>
+  {%- else %}
+  {{ pied_courant(loop.index) }}
+  {%- endif %}
+</article>
+{%- endfor %}
+
+{# ---- page de clôture, quand elle ne tient pas sous le tableau --------- #}
+
+{%- if not cloture_sur_derniere %}
+<article class="page">
+  {{ entete_courante('Devis ' ~ devis.numero ~ ' · récapitulatif') }}
+  <section style="margin-top:22px">{{ note_dague() }}</section>
+  {{ cloture() }}
+  {#- Sur sa page à elle, la clôture n'a pas de tableau au-dessus : le bon pour accord
+      suit les totaux au lieu d'être poussé en bas, sinon la page s'ouvre en deux. Seul
+      le pied de page descend. #}
+  <section style="padding-top:34px">{{ bon_pour_accord() }}</section>
+  <div class="push"></div>
+  {{ pied_courant(pages | length + 1) }}
+</article>
+{%- endif %}
+
+{# ---- mentions légales, toujours seules sur la dernière page ----------- #}
+
+<article class="page">
+  {{ entete_courante('Conditions générales') }}
+
+  <h2 style="font-family:var(--dv-serif);font-size:19px;font-weight:600;margin:26px 0 20px">Mentions légales et conditions</h2>
+
+  <section class="doc-mentions">
+    <div class="doc-mention">
+      <h4>Validité</h4>
+      <p>Le présent devis est valable {{ devis.validite_jours }} jours à compter de sa date
+      d'émission, soit jusqu'au {{ devis.date_validite | date_longue }}. Passé ce délai, les
+      prix des fournitures et de la main-d'œuvre pourront être révisés.</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Conditions de règlement</h4>
+      <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;% à la commande, soit
+      {{ devis.montant_acompte | euro }}, solde à la réception des travaux. Règlement par
+      virement ou par chèque à 30 jours. Aucun escompte n'est accordé pour paiement anticipé.</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Pénalités de retard</h4>
+      <p>En cas de retard de paiement, des pénalités au taux d'intérêt appliqué par la Banque
+      centrale européenne à son opération de refinancement la plus récente, majoré de dix
+      points, seront exigibles sans mise en demeure préalable, ainsi qu'une indemnité
+      forfaitaire de 40&#8239;€ pour frais de recouvrement (art. L441-10 et D441-5 du Code de
+      commerce).</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Taux de TVA</h4>
+      {%- if devis.taux_tva == taux_reduit %}
+      <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
+      l'article 279-0 bis du Code général des impôts, les travaux portant sur un local à usage
+      d'habitation achevé depuis plus de deux ans. En signant le présent devis, le client
+      atteste que cette condition est remplie.</p>
+      {%- else %}
+      <p>TVA au taux normal de {{ devis.taux_tva_libelle }}&#8239;%, les travaux ne relevant
+      pas des cas d'application du taux réduit prévus à l'article 279-0 bis du Code général
+      des impôts.</p>
+      {%- endif %}
+    </div>
+    <div class="doc-mention">
+      <h4>Droit de rétractation</h4>
+      <p>Pour tout contrat conclu hors établissement, le client dispose d'un délai de quatorze
+      (14) jours à compter de la signature pour exercer son droit de rétractation, conformément
+      à l'article L221-18 du Code de la consommation.</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Assurance décennale</h4>
+      <p>Entreprise assurée auprès de {{ e.assurance }}, police n° {{ e.assurance_police }},
+      au titre de la responsabilité décennale, pour les travaux réalisés sur l'ensemble du
+      territoire français métropolitain.</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Médiation de la consommation</h4>
+      <p>En cas de litige n'ayant pas trouvé d'issue amiable, le client peut recourir
+      gratuitement au médiateur de la consommation dont relève l'entreprise, conformément à
+      l'article L612-1 du Code de la consommation.</p>
+    </div>
+    <div class="doc-mention">
+      <h4>Réserves</h4>
+      <p>Les travaux non décrits au présent devis, notamment les reprises de maçonnerie,
+      d'électricité ou de plâtrerie révélées en cours de chantier, feront l'objet d'un devis
+      complémentaire soumis à l'accord du client.</p>
+    </div>
+  </section>
+
+  <footer class="doc-runfoot doc-runfoot--rule push">
+    <div>{{ e.nom }} · {{ e.forme_juridique }} · SIRET {{ e.siret }}</div>
+    <div>Page {{ total_pages }} / {{ total_pages }}</div>
+  </footer>
+</article>
 
 </body>
 </html>

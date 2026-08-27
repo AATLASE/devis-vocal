@@ -4,99 +4,132 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Devis Vocal</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
 
-<header class="tete">
-  <div class="marque">Devis&nbsp;Vocal</div>
-  <div class="baseline">Dictez le chantier. Récupérez le devis.</div>
-</header>
-
-<div id="bandeau-fixtures" class="bandeau cachee">
+<!-- Le chiffrage est-il calculé ou rejoué ? Sans ce bandeau, on peut montrer une
+     fixture à un artisan en croyant qu'elle sort du modèle. Caché par défaut. -->
+<div id="bandeau" class="bandeau" hidden>
   <strong>Mode démonstration hors-ligne.</strong>
   Le chiffrage n'est pas calculé, il est rejoué depuis un enregistrement.
   Ne pas montrer tel quel à un artisan — passer <code>USE_FIXTURES=false</code>.
 </div>
 
-<main>
+<!-- 1 ......................................................... accueil -->
+<section class="screen is-active accueil" id="ecran-accueil">
+  <div class="accueil__inner">
+    <div class="wordmark">
+      <h1>Devis&nbsp;Vocal</h1>
+      <div class="rule"></div>
+    </div>
+    <p class="accueil__baseline">Dictez le chantier en sortant de la visite.<br>Le devis est prêt avant que vous soyez rentré.</p>
 
-  <section id="etape-depot" class="carte">
-    <label id="depot" for="fichier" class="depot">
+    <div class="dropzone" id="depot" role="button" tabindex="0" aria-label="Déposer ou choisir une note vocale">
+      <div class="dropzone__mic"><i></i></div>
+      <div class="dropzone__title">Déposez votre note vocale</div>
+      <div class="dropzone__hint">ou touchez pour choisir un fichier · m4a, ogg, mp3, wav</div>
       <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
-      <div class="depot-icone">🎙️</div>
-      <div class="depot-titre">Déposez votre note vocale</div>
-      <div class="depot-aide">ou cliquez pour choisir un fichier — m4a, ogg, mp3, wav</div>
-    </label>
+    </div>
 
-    <details class="repli">
-      <summary>Pas de micro sous la main&nbsp;? Coller une transcription</summary>
-      <textarea id="texte" rows="6" placeholder="Alors la salle de bain de madame Durand, 12 rue des Lilas…"></textarea>
-      <button id="btn-texte" class="bouton">Générer le devis</button>
-    </details>
-  </section>
+    <div class="paste-toggle" id="repli-bascule"><span>+</span><span>Pas de vocal ? Coller le texte à la place</span></div>
+    <div class="paste" id="repli">
+      <textarea id="texte" placeholder="Tapez ou collez ce que vous auriez dicté…"></textarea>
+      <button class="btn" id="btn-texte">Établir le devis</button>
+    </div>
+  </div>
+</section>
 
-  <section id="etape-progression" class="carte cachee">
-    <ol class="etapes">
-      <li id="pas-transcription"><span class="pastille"></span>Transcription de l'enregistrement</li>
-      <li id="pas-analyse"><span class="pastille"></span>Analyse et chiffrage</li>
-      <li id="pas-pdf"><span class="pastille"></span>Génération du devis</li>
-    </ol>
-    <div id="chrono" class="chrono"></div>
-  </section>
+<!-- 2 ...................................................... traitement -->
+<section class="screen traitement" id="ecran-traitement">
+  <div class="traitement__inner">
+    <div class="traitement__head">
+      <h2>En cours d'établissement</h2>
+      <div class="chrono" id="chrono">0 s</div>
+    </div>
+    <div class="steps" id="etapes"></div>
+    <div class="transcript-card" id="carte-transcription" hidden>
+      <div class="label label--accent">Ce que vous avez dit</div>
+      <div class="transcript-body" id="transcription-directe"></div>
+    </div>
+  </div>
+</section>
 
-  <section id="etape-erreur" class="carte erreur cachee">
-    <div class="erreur-titre">Ça n'a pas marché</div>
-    <div id="erreur-message"></div>
-    <button id="btn-recommencer" class="bouton bouton-clair">Recommencer</button>
-  </section>
-
-  <section id="etape-transcription" class="carte cachee">
-    <div class="libelle">Ce que vous avez dicté</div>
-    <p id="transcription" class="transcription"></p>
-  </section>
-
-  <section id="etape-devis" class="carte cachee">
-    <div class="entete-devis">
+<!-- 3 ....................................................... relecture -->
+<section class="screen relecture" id="ecran-relecture">
+  <div class="relecture__inner">
+    <div class="relecture__head">
       <div>
-        <div class="libelle">Devis</div>
-        <div id="devis-numero" class="devis-numero"></div>
-        <div id="devis-client" class="devis-client"></div>
+        <div class="label" id="rel-numero">Devis n° —</div>
+        <h2 id="rel-objet"></h2>
+        <div class="relecture__client" id="rel-client"></div>
       </div>
-      <button id="btn-pdf" class="bouton">Télécharger le PDF</button>
+      <button class="btn" id="btn-pdf">Télécharger le PDF</button>
     </div>
 
-    <table class="lignes">
-      <thead>
-        <tr>
-          <th>Désignation</th>
-          <th class="droite">Qté</th>
-          <th class="centre">Unité</th>
-          <th class="droite">P.U. HT</th>
-          <th class="droite">Total HT</th>
-        </tr>
-      </thead>
-      <tbody id="lignes"></tbody>
-    </table>
+    <details class="transcript">
+      <summary class="label label--accent" id="rel-duree">Transcription de la note vocale</summary>
+      <div id="rel-transcription"></div>
+    </details>
 
-    <div id="legende-estime" class="legende cachee">
-      <span class="etoile">*</span> Prix estimé par l'IA — à vérifier avant d'envoyer.
+    <div class="section-head">
+      <div class="label">Prestations</div>
+      <div class="rule"></div>
+      <div class="count" id="rel-compte"></div>
     </div>
 
-    <div class="pied-devis">
-      <div id="observations" class="observations"></div>
-      <div class="totaux">
-        <div class="tot-ligne"><span>Total HT</span><span id="total-ht"></span></div>
-        <div class="tot-ligne"><span id="libelle-tva"></span><span id="montant-tva"></span></div>
-        <div class="tot-ligne tot-ttc"><span>Total TTC</span><span id="total-ttc"></span></div>
-        <div class="tot-acompte"><span id="libelle-acompte"></span><span id="montant-acompte"></span></div>
+    <div class="table">
+      <div class="table__row table__head">
+        <div>Désignation</div><div class="r">Qté</div><div class="r">Unité</div>
+        <div class="r">P.U. HT</div><div class="r">Total HT</div>
       </div>
+      <div id="rel-lignes"></div>
     </div>
 
-    <button id="btn-nouveau" class="bouton bouton-clair">Nouveau devis</button>
-  </section>
+    <div class="foot">
+      <div>
+        <div class="label" id="rel-titre-observations">Observations</div>
+        <div class="observations" id="rel-observations"></div>
+      </div>
+      <div class="totaux" id="rel-totaux"></div>
+    </div>
+  </div>
+</section>
 
-</main>
+<!-- 4 ...................................................... devis vide -->
+<!-- Quand le vocal ne contient rien de chiffrable, le produit refuse d'établir
+     un devis. La page se lit comme un compte rendu, pas comme un échec. -->
+<section class="screen vide" id="ecran-vide">
+  <div class="vide__inner">
+    <div class="label" id="vide-source">Note vocale</div>
+    <h2>Il n'y a pas assez d'éléments pour établir un devis.</h2>
+    <p class="vide__lede">Rien n'a été chiffré. Plutôt que de proposer un document approximatif que vous auriez à refaire, voici ce qui manque.</p>
+    <div class="vide__quote">
+      <div class="label label--accent">Ce que vous avez dit</div>
+      <p id="vide-transcription"></p>
+    </div>
+    <div class="label" id="vide-titre-observations">Observations</div>
+    <div class="observations" id="vide-observations"></div>
+    <div class="vide__actions">
+      <button class="btn" data-recommencer>Dicter à nouveau</button>
+      <button class="btn btn--ghost" id="btn-copier-observations">Garder ces observations</button>
+    </div>
+  </div>
+</section>
+
+<!-- 5 .......................................................... erreur -->
+<!-- Absent du handoff : l'API peut échouer, et il faut bien le dire. Même
+     idiome que le devis vide. -->
+<section class="screen erreur" id="ecran-erreur">
+  <div class="erreur__inner">
+    <div class="label">Interruption</div>
+    <h2>Le devis n'a pas pu être établi.</h2>
+    <p class="erreur__message" id="erreur-message"></p>
+    <button class="btn" data-recommencer>Recommencer</button>
+  </div>
+</section>
 
 <script src="/static/app.js"></script>
 </body>

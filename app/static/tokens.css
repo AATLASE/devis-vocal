@@ -1,0 +1,44 @@
+/* Devis Vocal — design tokens
+   Single source of truth. Every colour, size and font in the UI and in the
+   PDF comes from here. Do not introduce values outside this file. */
+
+:root {
+  /* Ink & text */
+  --dv-ink:          #1b1a17;  /* titles, table rules, PDF black blocks */
+  --dv-ink-soft:     #31302b;  /* transcription body */
+  --dv-text:         #4b463e;  /* running text */
+  --dv-muted:        #6b665e;  /* secondary text */
+  --dv-faint:        #8f8a80;  /* labels, meta, page numbers */
+
+  /* Surfaces */
+  --dv-bg:           #efece5;  /* app background (warm paper grey) */
+  --dv-bg-alt:       #f7f4ee;  /* inset blocks: transcription, quiet panels */
+  --dv-paper:        #fffdfa;  /* cards and inputs in the web UI */
+  --dv-white:        #ffffff;  /* PDF sheet only */
+  --dv-desk:         #3b3833;  /* dark desk behind the PDF preview */
+
+  /* Rules */
+  --dv-rule:         #ddd8cf;  /* 1px separators */
+  --dv-rule-soft:    #ece8e0;  /* PDF table rows */
+  --dv-rule-faint:   #f0ece4;  /* web table rows */
+  --dv-rule-strong:  #c3bcae;  /* dashed drop zone / signature rule */
+  --dv-border-input: #d5cfc4;
+
+  /* Accent — brick. One accent only. Reserved for signals:
+     estimated prices, section labels, observation dashes, hover. */
+  --dv-accent:       #8a4b25;
+  --dv-accent-dark:  #6d3a1c;
+  --dv-accent-tint:  #f6ede2;
+  --dv-accent-edge:  #e6d5bf;
+
+  /* Type */
+  --dv-serif: 'Source Serif 4', Georgia, serif;
+  --dv-sans:  'IBM Plex Sans', system-ui, sans-serif;
+  --dv-mono:  'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Radius — deliberately almost flat. Documents are not cards. */
+  --dv-radius:      4px;
+  --dv-radius-pill: 999px;
+
+  /* Spacing scale (px): 4 6 8 12 14 18 22 26 30 38 56 */
+}
