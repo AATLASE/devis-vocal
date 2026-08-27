@@ -1,5 +1,8 @@
 # Devis Vocal — démonstrateur
 
+> **Tu rejoins le projet ?** Commence par [CONTRIBUTING.md](CONTRIBUTING.md) : setup en
+> dix minutes sans aucune clé API, découpage du travail, conventions.
+
 Un artisan dépose une note vocale décrivant son chantier. Il récupère un devis PDF
 propre et envoyable, en français, conforme aux mentions obligatoires.
 
