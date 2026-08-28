@@ -7,6 +7,7 @@ un client. Aucun appel API, aucun accès réseau — les polices voyagent avec l
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -63,6 +64,24 @@ async def test_le_pdf_se_genere():
     try:
         assert contenu[:4] == b"%PDF"
         assert len(contenu) > 10_000
+    finally:
+        await arreter()
+
+
+async def test_le_pdf_embarque_ses_polices_de_texte():
+    """Chromium n'embarque pas les polices variables : il en dessine les lettres en
+    courbes. Le document reste juste à l'œil, mais son texte cesse d'être du texte —
+    plus de sélection, plus de recherche, sur l'adresse du client comme sur les
+    mentions légales. Le sans et le mono sont donc aplatis en graisses statiques
+    (`scripts/aplatir_polices.py`), et ce test empêche qu'on les y remette.
+
+    Source Serif 4 est volontairement absent de cette liste : il garde son axe
+    optique, et ses six titres sortent en courbes. C'est assumé."""
+    contenu = await render(devis_de("sdb"))
+    try:
+        familles = {m.decode().split("+")[-1] for m in re.findall(rb"/BaseFont\s*/([\w+#\-,]+)", contenu)}
+        assert any(f.startswith("IBMPlexSans") for f in familles), familles
+        assert any(f.startswith("IBMPlexMono") for f in familles), familles
     finally:
         await arreter()
 
