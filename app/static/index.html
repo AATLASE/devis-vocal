@@ -27,11 +27,25 @@
     </div>
     <p class="accueil__baseline">Dictez le chantier en sortant de la visite.<br>Le devis est prêt avant que vous soyez rentré.</p>
 
-    <div class="dropzone" id="depot" role="button" tabindex="0" aria-label="Déposer ou choisir une note vocale">
+    <!-- L'action principale : on parle. Le produit s'appelle « Devis Vocal » — faire
+         chercher un fichier à l'artisan, ce serait le contredire dès le premier écran. -->
+    <div class="dropzone dictee" id="dictee" role="button" tabindex="0"
+         aria-label="Enregistrer une note vocale">
       <div class="dropzone__mic"><i></i></div>
-      <div class="dropzone__title">Déposez votre note vocale</div>
-      <div class="dropzone__hint">ou touchez pour choisir un fichier · m4a, ogg, mp3, wav</div>
-      <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
+      <div class="dropzone__title" id="dictee-titre">Dictez votre devis</div>
+      <div class="dropzone__hint" id="dictee-aide">Touchez pour commencer à parler</div>
+    </div>
+
+    <!-- Les deux chemins de repli, dans l'affordance que le handoff leur réserve.
+         Chaque panneau suit son propre lien : ouverts tous les deux, on doit voir
+         lequel appartient à quoi. -->
+    <div class="paste-toggle" id="depot-bascule"><span>+</span><span>Déjà enregistré ? Déposer un fichier</span></div>
+    <div class="paste" id="depot-repli">
+      <div class="dropzone" id="depot" role="button" tabindex="0" aria-label="Déposer ou choisir un fichier audio">
+        <div class="dropzone__title">Déposez votre note vocale</div>
+        <div class="dropzone__hint">ou touchez pour choisir un fichier · m4a, ogg, mp3, wav</div>
+        <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
+      </div>
     </div>
 
     <div class="paste-toggle" id="repli-bascule"><span>+</span><span>Pas de vocal ? Coller le texte à la place</span></div>

@@ -56,10 +56,12 @@ function reinitialiser() {
   clearInterval(chrono);
   clearInterval(revelation);
   chrono = revelation = null;
+  arreterDictee();
   devisCourant = null;
   dureeVocal = null;
   $('fichier').value = '';
   $('repli').classList.remove('is-open');
+  $('depot-repli').classList.remove('is-open');
   $('carte-transcription').hidden = true;
   $('transcription-directe').textContent = '';
   montrer('accueil');
@@ -199,9 +201,140 @@ function formaterDuree(secondes) {
   return `${Math.floor(total / 60)} min ${String(total % 60).padStart(2, '0')}`;
 }
 
+/* ---- 1. dictée --------------------------------------------------------- */
+/* On enregistre dans la page et on envoie le blob au même `POST /api/transcribe`
+   que n'importe quel fichier : l'API ne sait pas d'où vient l'audio, et n'a pas
+   à le savoir. Le format suit ce que le navigateur sait produire — webm/opus
+   partout, mp4 sur Safari — et les deux sont dans les extensions acceptées par
+   `app/transcription.py`. */
+
+const FORMATS = [
+  ['audio/webm;codecs=opus', 'webm'],
+  ['audio/webm', 'webm'],
+  ['audio/mp4', 'mp4'],            // Safari, iOS
+  ['audio/ogg;codecs=opus', 'ogg'],
+];
+const DUREE_MAX = 600;   // 10 min : un garde-fou, pas une contrainte de produit
+const DUREE_MIN = 1;     // en deçà, c'est un double appui, pas une dictée
+
+let enregistreur = null;
+let morceaux = [];
+let micro = null;
+let chronoDictee = null;
+let secondesDictee = 0;
+
+const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+
+function formatDisponible() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  return FORMATS.find(([type]) => MediaRecorder.isTypeSupported(type)) || ['', 'webm'];
+}
+
+function peindreDictee(actif) {
+  const zone = $('dictee');
+  zone.classList.toggle('enregistre', actif);
+  if (actif) {
+    $('dictee-titre').textContent = mmss(0);
+    $('dictee-aide').replaceChildren(
+      noeud('span', 'dictee__point'),
+      document.createTextNode('Enregistrement · touchez pour arrêter'),
+    );
+    zone.setAttribute('aria-label', "Arrêter l'enregistrement");
+  } else {
+    $('dictee-titre').textContent = 'Dictez votre devis';
+    $('dictee-aide').textContent = 'Touchez pour commencer à parler';
+    zone.setAttribute('aria-label', 'Enregistrer une note vocale');
+  }
+}
+
+/* Le micro peut manquer pour trois raisons, et chacune a sa réponse. On le dit
+   sur place et on déplie le dépôt de fichier : l'artisan n'est jamais coincé. */
+function refuserDictee(message) {
+  fermerMicro();
+  peindreDictee(false);
+  $('dictee-aide').textContent = message;
+  $('depot-repli').classList.add('is-open');
+}
+
+function raisonMicro(err) {
+  if (!window.isSecureContext) return 'Le micro exige une connexion sécurisée (https). Déposez un fichier.';
+  if (err && err.name === 'NotAllowedError') return 'Micro refusé. Autorisez-le dans le navigateur, ou déposez un fichier.';
+  if (err && err.name === 'NotFoundError') return 'Aucun micro détecté sur cet appareil. Déposez un fichier.';
+  return 'Micro indisponible ici. Déposez un fichier à la place.';
+}
+
+function fermerMicro() {
+  // Sans ça, le navigateur laisse le voyant d'enregistrement allumé.
+  if (micro) micro.getTracks().forEach((t) => t.stop());
+  micro = null;
+}
+
+async function demarrerDictee() {
+  const format = formatDisponible();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !format) {
+    refuserDictee(raisonMicro(null));
+    return;
+  }
+
+  try {
+    micro = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    refuserDictee(raisonMicro(err));
+    return;
+  }
+
+  const [type, extension] = format;
+  morceaux = [];
+  // Référence locale : `arreterDictee()` remet `enregistreur` à null dès l'appel
+  // à stop(), or l'événement, lui, n'arrive qu'après.
+  const recorder = new MediaRecorder(micro, type ? { mimeType: type } : undefined);
+  enregistreur = recorder;
+
+  recorder.addEventListener('dataavailable', (e) => {
+    if (e.data && e.data.size) morceaux.push(e.data);
+  });
+
+  recorder.addEventListener('stop', () => {
+    const blob = new Blob(morceaux, { type: recorder.mimeType || type });
+    const secondes = secondesDictee;
+    fermerMicro();
+    peindreDictee(false);
+
+    if (secondes < DUREE_MIN || !blob.size) {
+      $('dictee-aide').textContent = 'Trop court — parlez quelques secondes.';
+      return;
+    }
+    // La durée vient du chronomètre et non du blob : un webm sorti de
+    // MediaRecorder annonce presque toujours une durée infinie.
+    lancer(new File([blob], `dictee.${extension}`, { type: blob.type }), null, secondes);
+  });
+
+  recorder.start();
+  secondesDictee = 0;
+  peindreDictee(true);
+  chronoDictee = setInterval(() => {
+    secondesDictee += 1;
+    $('dictee-titre').textContent = mmss(secondesDictee);
+    if (secondesDictee >= DUREE_MAX) arreterDictee();
+  }, 1000);
+}
+
+function arreterDictee() {
+  clearInterval(chronoDictee);
+  chronoDictee = null;
+  if (enregistreur && enregistreur.state !== 'inactive') enregistreur.stop();
+  else { fermerMicro(); peindreDictee(false); }
+  enregistreur = null;
+}
+
+function basculerDictee() {
+  if (chronoDictee) arreterDictee();
+  else demarrerDictee();
+}
+
 /* ---- parcours ---------------------------------------------------------- */
 
-async function lancer(fichier, texte) {
+async function lancer(fichier, texte, dureeSecondes) {
   clearInterval(revelation);
   revelation = null;
   $('carte-transcription').hidden = true;
@@ -214,7 +347,8 @@ async function lancer(fichier, texte) {
     let transcription = texte;
 
     if (fichier) {
-      dureeVocal = formaterDuree(await dureeAudio(fichier));
+      // Une dictée connaît sa durée : elle sort du chronomètre, pas du fichier.
+      dureeVocal = formaterDuree(dureeSecondes != null ? dureeSecondes : await dureeAudio(fichier));
       transcription = await transcrire(fichier);
     } else {
       dureeVocal = null;
@@ -364,6 +498,15 @@ async function telechargerPdf() {
 
 /* ---- branchements ------------------------------------------------------ */
 
+const dictee = $('dictee');
+dictee.addEventListener('click', basculerDictee);
+dictee.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    basculerDictee();
+  }
+});
+
 const depot = $('depot');
 
 depot.addEventListener('click', () => $('fichier').click());
@@ -386,6 +529,7 @@ $('fichier').addEventListener('change', (e) => {
   if (e.target.files.length) lancer(e.target.files[0], null);
 });
 
+$('depot-bascule').addEventListener('click', () => $('depot-repli').classList.toggle('is-open'));
 $('repli-bascule').addEventListener('click', () => $('repli').classList.toggle('is-open'));
 
 $('btn-texte').addEventListener('click', () => {

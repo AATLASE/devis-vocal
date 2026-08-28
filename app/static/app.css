@@ -321,6 +321,40 @@ details.transcript > div {
 /* Les écrans se centrent sur la hauteur de fenêtre : le bandeau la réduit d'autant. */
 body.a-bandeau .screen { min-height: calc(100svh - 39px); }
 
+/* ---- zone de dictée ---------------------------------------------------- */
+/* Le handoff n'a que le dépôt de fichier. Mais le produit s'appelle « Devis
+   Vocal » : l'action principale doit être de parler, et le fichier devient le
+   repli. La zone porte la classe `.dropzone` du handoff, donc elle en hérite la
+   boîte au pixel près — même bordure tiretée, même fond, même respiration — et
+   n'ajoute ici que ses deux états. */
+
+.dictee { user-select: none; }
+
+/* Enregistrement en cours. La bordure passe en trait plein et en brique : le
+   même vocabulaire que le survol, poussé d'un cran. La pastille du micro devient
+   un carré — le signe d'arrêt se lit sans légende — et le titre laisse la place
+   au chronomètre, en mono comme tous les chiffres du produit. */
+.dictee.enregistre { border-style: solid; border-color: var(--dv-accent); background: #fff; }
+.dictee.enregistre .dropzone__mic i { width: 14px; height: 14px; border-radius: 1px; }
+.dictee.enregistre .dropzone__title {
+  font-family: var(--dv-mono); font-size: 26px; font-weight: 400; letter-spacing: .02em;
+}
+
+/* Le point qui bat. `dvpulse` est la seule animation que le prototype du
+   designer ait définie ; elle n'y servait nulle part. Elle sert ici à dire la
+   seule chose que l'écran ne peut pas dire autrement : le micro est ouvert. */
+@keyframes dvpulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+.dictee__point {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--dv-accent); margin-right: 8px;
+  animation: dvpulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .dictee__point { animation: none; } }
+
+/* Devenue secondaire, la zone de dépôt respire moins et perd son micro : deux
+   cercles brique sur le même écran diraient deux fois la même chose. */
+#depot-repli .dropzone { padding: 32px 20px; }
+
 /* ---- détail d'une ligne ------------------------------------------------ */
 /* `LigneDevis.detail` : « fourniture client », une marque, une finition. Le handoff
    n'avait pas ce champ ; le modèle l'a, donc il s'affiche, sous la désignation et
