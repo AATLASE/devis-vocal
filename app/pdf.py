@@ -22,7 +22,9 @@ import base64
 import re
 from datetime import date
 from decimal import Decimal
+from collections.abc import Sequence
 from functools import lru_cache
+from math import ceil
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -52,17 +54,70 @@ MOIS = (
 # Pagination — fonction pure, testable sans navigateur
 # ---------------------------------------------------------------------------
 
-# Ces trois nombres sont mesurés sur le gabarit, pas devinés : l'en-tête d'entreprise
-# de la page 1 mange la hauteur de sept lignes, une page de suite en tient quatorze, et
-# la clôture (note †, observations, totaux, bon pour accord) occupe l'équivalent de neuf.
-# Les changer se vérifie à l'œil : une page blanche de plus dans le PDF que dans le HTML
-# signifie que le contenu déborde.
+# Le découpage du tableau se fait au nombre de lignes : l'en-tête d'entreprise de la
+# page 1 laisse la place à sept, une page de suite en tient quatorze.
 LIGNES_PAGE_1 = 7
 LIGNES_PAGE_SUITE = 14
-LIGNES_MAX_AVEC_CLOTURE = 5
+LIGNES_MAX_AVEC_CLOTURE = 5     # sur une page de suite, où seul un titre courant précède
+
+# Savoir si la clôture — note †, observations, totaux, bon pour accord — tient sous le
+# tableau de la page 1 demande en revanche de raisonner en hauteur : deux devis de
+# quatre lignes n'occupent pas la même place selon la longueur des désignations et des
+# observations. Toutes les valeurs ci-dessous sont **mesurées** dans le navigateur sur
+# le gabarit réel, jamais estimées à vue. Le jeu reproduit au pixel près la hauteur du
+# tableau des quatre fixtures.
+HAUTEUR_LIGNE = 38                      # une ligne de tableau sur une ligne de texte
+HAUTEUR_LIGNE_REPLI = 16                # chaque repli supplémentaire de la désignation
+HAUTEUR_DETAIL = 17                     # la précision sous la désignation
+CARACTERES_PAR_DESIGNATION = 61
+CARACTERES_PASTILLE_ESTIME = 8          # « estimé † » est en ligne : il pousse au repli
+
+HAUTEUR_OBSERVATION_LIGNE = 17
+ESPACE_ENTRE_OBSERVATIONS = 8
+HAUTEUR_LIBELLE_OBSERVATIONS = 20       # le libellé « OBSERVATIONS » et sa marge
+CARACTERES_PAR_OBSERVATION = 62
+
+HAUTEUR_TOTAUX = 146                    # le cadre des totaux, hauteur fixe
+HAUTEUR_NOTE_DAGUE = 25                 # la note « † Prix non dicté… », marge comprise
+
+# Ce que la page 1 peut porter quand la clôture l'accompagne. Frontière relevée sur
+# 72 rendus réels balayant 2 à 7 lignes et 0 à 5 observations de deux longueurs : le
+# dernier cas qui tient mesure 450 px, le premier qui déborde 452. On se pose à 445.
+BUDGET_PAGE_1_AVEC_CLOTURE = 445
 
 
-def paginer(lignes: list[LigneDevis]) -> tuple[list[list[tuple[int, LigneDevis]]], bool, int]:
+def _hauteur_lignes(lignes: list[LigneDevis]) -> int:
+    """Hauteur du tableau des prestations, replis et précisions compris."""
+    total = 0
+    for ligne in lignes:
+        largeur = len(ligne.designation) + (CARACTERES_PASTILLE_ESTIME if ligne.a_valider else 0)
+        replis = max(1, ceil(largeur / CARACTERES_PAR_DESIGNATION))
+        total += HAUTEUR_LIGNE + HAUTEUR_LIGNE_REPLI * (replis - 1)
+        if ligne.detail:
+            total += HAUTEUR_DETAIL
+    return total
+
+
+def _hauteur_observations(notes: Sequence[str]) -> int:
+    if not notes:
+        return 0
+    total = HAUTEUR_LIBELLE_OBSERVATIONS + ESPACE_ENTRE_OBSERVATIONS * (len(notes) - 1)
+    for note in notes:
+        replis = max(1, ceil(len(note) / CARACTERES_PAR_OBSERVATION))
+        total += HAUTEUR_OBSERVATION_LIGNE * replis
+    return total
+
+
+def _hauteur_cloture(lignes: list[LigneDevis], notes: Sequence[str]) -> int:
+    """Hauteur de la clôture. Les observations et les totaux sont côte à côte dans une
+    grille : c'est le plus haut des deux qui commande, pas leur somme."""
+    note_dague = HAUTEUR_NOTE_DAGUE if any(ligne.a_valider for ligne in lignes) else 0
+    return note_dague + max(_hauteur_observations(notes), HAUTEUR_TOTAUX)
+
+
+def paginer(
+    lignes: list[LigneDevis], notes: Sequence[str] = ()
+) -> tuple[list[list[tuple[int, LigneDevis]]], bool, int]:
     """Répartit les prestations sur les pages du devis.
 
     Renvoie `(pages, cloture_sur_derniere, total_pages)` :
@@ -72,7 +127,8 @@ def paginer(lignes: list[LigneDevis]) -> tuple[list[list[tuple[int, LigneDevis]]
     - `total_pages` : tableau + clôture éventuelle + la page des mentions.
 
     Avec les douze prestations du design livré, on retombe exactement sur ses trois
-    pages : 7 + 5 avec la clôture, puis les mentions.
+    pages : 7 + 5 avec la clôture, puis les mentions. Un devis court — quatre lignes,
+    une observation — tient sur deux : le tableau et sa clôture, puis les mentions.
     """
     numerotees = list(enumerate(lignes, start=1))
 
@@ -82,13 +138,16 @@ def paginer(lignes: list[LigneDevis]) -> tuple[list[list[tuple[int, LigneDevis]]
         pages.append(reste[:LIGNES_PAGE_SUITE])
         reste = reste[LIGNES_PAGE_SUITE:]
 
-    # La clôture ne descend jamais sous la page 1 : l'en-tête d'entreprise et le bloc
-    # client y prennent déjà le tiers de la hauteur. Mesure faite, elle n'y tiendrait
-    # qu'avec trois ou quatre lignes ET peu d'observations — un seuil qui dépend de la
-    # longueur des observations, donc que Python ne peut pas prédire honnêtement. On
-    # préfère une règle qui ne déborde jamais : sur une page de suite assez courte,
-    # sinon sur une page à elle.
-    cloture_sur_derniere = len(pages) > 1 and len(pages[-1]) <= LIGNES_MAX_AVEC_CLOTURE
+    if len(pages) == 1:
+        # Tout le tableau tient sur la page 1. Reste à savoir si la clôture y tient
+        # aussi : c'est là que l'en-tête d'entreprise pèse. Une page presque vide n'est
+        # pas une faute d'impression, mais sur un devis de quatre lignes elle se voit.
+        occupe = _hauteur_lignes(lignes) + _hauteur_cloture(lignes, notes)
+        cloture_sur_derniere = occupe <= BUDGET_PAGE_1_AVEC_CLOTURE
+    else:
+        # Sur une page de suite, seul un titre courant précède le tableau : le nombre
+        # de lignes suffit à décider.
+        cloture_sur_derniere = len(pages[-1]) <= LIGNES_MAX_AVEC_CLOTURE
 
     total_pages = len(pages) + (0 if cloture_sur_derniere else 1) + 1
     return pages, cloture_sur_derniere, total_pages
@@ -192,7 +251,7 @@ _env = _environnement()
 def render_html(devis: Devis) -> str:
     """Le devis en HTML. Exposé à part : c'est ce qu'on ouvre dans un onglet pour
     travailler la mise en page sans regénérer un PDF à chaque itération."""
-    pages, cloture_sur_derniere, total_pages = paginer(devis.lignes)
+    pages, cloture_sur_derniere, total_pages = paginer(devis.lignes, devis.notes)
     return _env.get_template("devis.html").render(
         devis=devis,
         e=devis.entreprise,

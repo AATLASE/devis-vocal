@@ -355,6 +355,14 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
    cercles brique sur le même écran diraient deux fois la même chose. */
 #depot-repli .dropzone { padding: 32px 20px; }
 
+/* ---- actions de la relecture ------------------------------------------- */
+/* Le handoff ne proposait que « Télécharger le PDF », et donc aucun moyen de revenir
+   en arrière : après un devis, il fallait recharger la page. En rendez-vous on en
+   fait deux ou trois d'affilée. On reprend le couple plein + contour que le handoff
+   utilise déjà sur l'écran du devis vide. */
+
+.relecture__actions { display: flex; gap: 12px; flex-shrink: 0; }
+
 /* ---- détail d'une ligne ------------------------------------------------ */
 /* `LigneDevis.detail` : « fourniture client », une marque, une finition. Le handoff
    n'avait pas ce champ ; le modèle l'a, donc il s'affiche, sous la désignation et
@@ -401,7 +409,8 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   .erreur     { padding-top: 72px; }
 
   .relecture__head { flex-direction: column; align-items: stretch; gap: 18px; }
-  .relecture__head .btn { width: 100%; }
+  .relecture__actions { width: 100%; }
+  .relecture__actions .btn { flex: 1; }
 
   .section-head { flex-wrap: wrap; }
   .section-head .count { flex-basis: 100%; }
@@ -477,6 +486,7 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
 
   .relecture { padding: 56px 18px 60px; }
   .relecture__head h2 { font-size: 24px; }
+  .relecture__actions { flex-direction: column; }
   details.transcript { padding: 14px 16px; margin-bottom: 26px; }
   details.transcript > div { font-size: 15px; }
 

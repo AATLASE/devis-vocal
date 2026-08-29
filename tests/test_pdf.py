@@ -20,6 +20,7 @@ from app.pdf import (
     f_montant,
     f_nombre,
     f_pourcent,
+    _hauteur_lignes,
     paginer,
     render,
     render_html,
@@ -48,7 +49,7 @@ def test_le_html_a_exactement_le_nombre_de_pages_annonce(nom):
     """Une page de plus dans le PDF que dans le HTML signifierait un débordement ;
     ici on vérifie déjà que le gabarit produit ce que `paginer()` a décidé."""
     devis = devis_de(nom)
-    _, _, total_pages = paginer(devis.lignes)
+    _, _, total_pages = paginer(devis.lignes, devis.notes)
     assert render_html(devis).count('<article class="page">') == total_pages
 
 
@@ -64,6 +65,36 @@ async def test_le_pdf_se_genere():
     try:
         assert contenu[:4] == b"%PDF"
         assert len(contenu) > 10_000
+    finally:
+        await arreter()
+
+
+async def test_le_pdf_a_exactement_le_nombre_de_pages_annonce():
+    """Le filet de la pagination. `paginer()` raisonne sur des hauteurs mesurées ; si un
+    jour le gabarit change et que ces mesures se périment, le contenu déborde et Chromium
+    ajoute une page blanche — invisible au HTML, bien visible chez le client. Ce test rend
+    réellement le PDF et compare. Il tourne sur les six fixtures et sur deux cas placés de
+    part et d'autre de la frontière mesurée."""
+    cas = [devis_de(nom) for nom in noms_fixtures()]
+
+    court = devis_de("peinture").model_copy(deep=True)
+    court.notes = ["Une seule remarque, courte."]
+    cas.append(court)
+
+    charge = devis_de("peinture").model_copy(deep=True)
+    charge.notes = ["Le support n'a pas été précisé, un doublage hydrofuge peut "
+                    "être nécessaire et n'est pas compté au présent devis."] * 5
+    cas.append(charge)
+
+    try:
+        for devis in cas:
+            _, _, attendu = paginer(devis.lignes, devis.notes)
+            contenu = await render(devis)
+            pages = int(re.search(rb"/Count (\d+)", contenu).group(1))
+            assert pages == attendu, (
+                f"{len(devis.lignes)} lignes, {len(devis.notes)} observations : "
+                f"{pages} pages rendues pour {attendu} annoncées"
+            )
     finally:
         await arreter()
 
@@ -107,9 +138,9 @@ def _lignes(n: int) -> list[LigneDevis]:
 @pytest.mark.parametrize(
     "nb, tranches, cloture_sous_le_tableau, total_pages",
     [
-        (0, [0], False, 3),   # devis vide : le gabarit ne doit pas casser pour autant
-        (4, [4], False, 3),
-        (7, [7], False, 3),   # la page 1 est pleine
+        (0, [0], True, 2),    # devis vide : le gabarit ne doit pas casser pour autant
+        (4, [4], True, 2),
+        (7, [7], True, 2),    # la page 1 est pleine, la clôture y tient encore
         (8, [7, 1], True, 3),
         (12, [7, 5], True, 3),  # les douze prestations du design livré, sur ses trois pages
         (13, [7, 6], False, 4),
@@ -121,6 +152,32 @@ def test_la_pagination(nb, tranches, cloture_sous_le_tableau, total_pages):
     assert [len(p) for p in pages] == tranches
     assert cloture is cloture_sous_le_tableau
     assert total == total_pages
+
+
+def test_des_observations_volumineuses_chassent_la_cloture_de_la_page_1():
+    """Deux devis de quatre lignes n'occupent pas la même place : c'est la hauteur qui
+    décide, pas le nombre de lignes. Sans ça, la clôture déborderait sur une page
+    fantôme — une page blanche de plus dans le PDF que dans le HTML."""
+    longue = "Le support n'a pas été précisé, un doublage hydrofuge peut être nécessaire. " * 3
+    _, avec_peu, pages_peu = paginer(_lignes(4), ["Une remarque courte."])
+    _, avec_beaucoup, pages_beaucoup = paginer(_lignes(4), [longue] * 5)
+    assert (avec_peu, pages_peu) == (True, 2)
+    assert (avec_beaucoup, pages_beaucoup) == (False, 3)
+
+
+def test_la_pastille_estime_pousse_la_designation_au_repli():
+    """« estimé † » est en ligne dans la désignation : il la fait se replier plus tôt,
+    et donc grandir. Une ligne estimée est plus haute qu'une ligne dictée."""
+    from decimal import Decimal
+
+    def ligne(a_valider):
+        return LigneDevis(
+            designation="Fourniture et pose de plaques de plâtre hydrofuges BA13",
+            quantite=Decimal("1"), unite=Unite.U, a_valider=a_valider,
+            prix_unitaire_ht=Decimal("100"), total_ht=Decimal("100"),
+        )
+
+    assert _hauteur_lignes([ligne(True)]) > _hauteur_lignes([ligne(False)])
 
 
 def test_les_lignes_sont_numerotees_en_continu_d_une_page_a_l_autre():
