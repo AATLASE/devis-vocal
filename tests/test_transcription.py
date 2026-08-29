@@ -49,9 +49,11 @@ def test_un_fichier_trop_lourd_est_refuse_avant_tout_appel(monkeypatch):
 
 
 def test_les_formats_du_telephone_et_de_whatsapp_passent_le_controle():
-    """m4a (iPhone), ogg/opus (WhatsApp) : ils doivent aller jusqu'au contrôle de clé,
-    donc échouer sur la clé manquante et pas sur le format."""
-    for nom in ["vocal.m4a", "vocal.ogg", "vocal.opus", "vocal.mp3", "vocal.wav"]:
+    """m4a (iPhone), ogg/opus (WhatsApp), webm et mp4 (ce que produit la dictée dans la
+    page, selon le navigateur) : ils doivent aller jusqu'au contrôle de clé, donc échouer
+    sur la clé manquante et pas sur le format."""
+    for nom in ["vocal.m4a", "vocal.ogg", "vocal.opus", "vocal.mp3", "vocal.wav",
+                "dictee.webm", "dictee.mp4"]:
         with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
             transcribe(b"x" * 100, nom)
 
