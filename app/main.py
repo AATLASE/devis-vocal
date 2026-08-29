@@ -36,7 +36,19 @@ STATIQUE = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     # Chromium est lancé une fois pour toutes : le démarrer à chaque devis coûterait
     # une seconde de plus par rendu.
-    await pdf_module.demarrer()
+    try:
+        await pdf_module.demarrer()
+    except NotImplementedError as err:
+        # Sous Windows, `--reload` fait basculer uvicorn sur SelectorEventLoop, qui ne
+        # sait pas lancer de sous-processus — donc pas de Chromium, donc pas de PDF.
+        # Sans ce message, on ne récolte qu'un NotImplementedError nu à trente lignes
+        # de pile, et la commande de démarrage documentée a l'air simplement cassée.
+        raise RuntimeError(
+            "Chromium n'a pas pu démarrer : la boucle asyncio en place ne sait pas lancer "
+            "de sous-processus. Sous Windows, c'est ce que provoque `--reload`. Relance "
+            "sans cette option — ou, pour garder le rechargement à chaud : "
+            'uv run watchfiles "uvicorn app.main:app" app templates'
+        ) from err
     yield
     await pdf_module.arreter()
 

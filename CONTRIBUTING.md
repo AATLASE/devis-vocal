@@ -14,7 +14,7 @@ uv pip install -r requirements.txt
 uv run playwright install chromium       # ~150 Mo, une seule fois
 
 cp .env.example .env                     # ne rien modifier pour l'instant
-uv run python -m uvicorn app.main:app --reload
+uv run python -m uvicorn app.main:app
 ```
 
 <http://localhost:8000> — déplie « Coller une transcription », colle le contenu de
@@ -22,6 +22,15 @@ n'importe quel `tests/fixtures/*.txt`, et tu as le parcours complet jusqu'au PDF
 
 Aucune dépendance système à installer, pas de Docker, pas de WSL, pas de droits admin.
 Windows, macOS et Linux se comportent pareil.
+
+> **Sous Windows, retire `--reload`.** uvicorn bascule alors sur une boucle asyncio
+> incapable de lancer un sous-processus, et Chromium — donc le PDF — ne démarre pas :
+> l'application s'arrête au démarrage. Pour garder le rechargement à chaud, fais
+> redémarrer uvicorn en entier plutôt que par son reloader interne :
+>
+> ```
+> uv run watchfiles "uvicorn app.main:app" app templates
+> ```
 
 > Sous Windows, si `uv run uvicorn …` échoue avec « Une stratégie de contrôle
 > d'application a bloqué ce fichier », utilise `uv run python -m uvicorn …`.

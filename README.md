@@ -23,7 +23,7 @@ uv pip install -r requirements.txt
 uv run playwright install chromium       # ~150 Mo, une seule fois
 
 cp .env.example .env                     # laisser USE_FIXTURES=true pour commencer
-uv run python -m uvicorn app.main:app --reload --port 8000
+uv run python -m uvicorn app.main:app --port 8000
 ```
 
 Puis <http://localhost:8000>.
@@ -32,6 +32,15 @@ Avec `USE_FIXTURES=true` (la valeur par défaut du `.env.example`), l'applicatio
 des extractions enregistrées : **aucun appel API, aucune clé, aucun euro**. Déplie
 « Coller une transcription » et colle le contenu de n'importe quel `tests/fixtures/*.txt`.
 C'est le mode de travail pour itérer sur le PDF et le front.
+
+> **Sous Windows, retire `--reload`.** uvicorn bascule alors sur une boucle asyncio
+> incapable de lancer un sous-processus, et Chromium — donc le PDF — ne démarre pas :
+> l'application s'arrête au démarrage. Pour garder le rechargement à chaud, fais
+> redémarrer uvicorn en entier plutôt que par son reloader interne :
+>
+> ```
+> uv run watchfiles "uvicorn app.main:app" app templates
+> ```
 
 > Si `uv run uvicorn …` échoue avec « Une stratégie de contrôle d'application a bloqué ce
 > fichier », c'est Windows qui bloque le `.exe` du paquet : utiliser
