@@ -40,9 +40,13 @@ function noeud(balise, classe, texte) {
 /* ---- état -------------------------------------------------------------- */
 
 let devisCourant = null;
+// La transcription survit à l'échec du chiffrage : c'est ce qui permet de rejouer
+// la seule étape qui a raté, au lieu de renvoyer l'artisan dicter.
+let transcriptionCourante = null;
 let dureeVocal = null;
 let chrono = null;
 let revelation = null;
+let fournisseur = 'anthropic';   // renseigné par /health
 
 /* ---- navigation -------------------------------------------------------- */
 
@@ -56,14 +60,20 @@ function reinitialiser() {
   clearInterval(chrono);
   clearInterval(revelation);
   chrono = revelation = null;
-  arreterDictee();
+  // `true` : on annule, on n'envoie pas. Sans cet argument, arrêter une dictée en
+  // cours déclencherait son gestionnaire `stop`, qui enchaînerait sur l'envoi — et
+  // « Recommencer » lancerait un devis au lieu d'en effacer un.
+  arreterDictee(true);
+  fermerRelu();
   devisCourant = null;
+  transcriptionCourante = null;
   dureeVocal = null;
   $('fichier').value = '';
   $('repli').classList.remove('is-open');
   $('depot-repli').classList.remove('is-open');
   $('carte-transcription').hidden = true;
   $('transcription-directe').textContent = '';
+  peindreDictee(false);
   montrer('accueil');
 }
 
@@ -71,6 +81,10 @@ function echouer(message) {
   clearInterval(chrono);
   clearInterval(revelation);
   $('erreur-message').textContent = message;
+  // Le chiffrage peut échouer après une transcription réussie — une limite de débit,
+  // un 500. Le texte est là, il a coûté quarante secondes de parole : on propose de
+  // rejouer l'étape qui a raté, pas tout le parcours.
+  $('btn-rechiffrer').hidden = !transcriptionCourante;
   montrer('erreur');
 }
 
@@ -79,12 +93,23 @@ function echouer(message) {
    chiffrage annonce l'attente pendant qu'elle a lieu : une attente annoncée est
    supportée, une attente muette est subie. */
 
+/* Le libellé d'attente est celui du moteur qui tourne réellement. Anthropic met
+   vingt à quarante secondes, Groq en met six, une fixture répond tout de suite.
+   Annoncer quarante secondes pour six est aussi trompeur que de ne rien annoncer :
+   l'artisan repose son téléphone et rate le moment où la machine le comprend. */
+const ATTENTE = {
+  anthropic: 'Chiffrage en cours — 20 à 40 secondes',
+  openai:    'Chiffrage en cours — 20 à 40 secondes',
+  groq:      'Chiffrage en cours — quelques secondes',
+  fixtures:  'Lecture du chiffrage enregistré',
+};
+
 const ETAPES = [
   { titre: 'Transcription', detail: 'Lecture de la note vocale, mot pour mot' },
   {
     titre: 'Analyse et chiffrage',
     detail: 'Identification des prestations, des quantités et des prix',
-    occupe: 'Chiffrage en cours — 20 à 40 secondes',
+    occupe: ATTENTE.anthropic,   // ajusté au retour de /health
   },
   { titre: 'Génération du devis', detail: 'Mise en forme du document et des mentions légales' },
 ];
@@ -217,13 +242,116 @@ const FORMATS = [
 const DUREE_MAX = 600;   // 10 min : un garde-fou, pas une contrainte de produit
 const DUREE_MIN = 1;     // en deçà, c'est un double appui, pas une dictée
 
+// RMS en dessous duquel on considère que le micro n'a rien entendu du tout.
+// Calibré à voix normale, téléphone à bout de bras : un micro coupé reste sous
+// 0,002, une pièce silencieuse sous 0,006, une phrase dictée dépasse 0,05.
+const SEUIL_SILENCE = 0.012;
+
 let enregistreur = null;
 let morceaux = [];
 let micro = null;
 let chronoDictee = null;
 let secondesDictee = 0;
+let dicteeAnnulee = false;
 
 const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+
+/* ---- ce que le micro entend -------------------------------------------- */
+/* Le chronomètre dit que l'enregistrement tourne ; il ne dit pas que le micro
+   entend. Un micro coupé produit quatre-vingt-dix secondes de silence, un
+   aller-retour chez Whisper, et un « Aucune parole détectée » — après coup, quand
+   l'artisan a déjà parlé pour rien. L'analyseur répond pendant, et le pic retenu
+   permet de refuser l'envoi avant de faire recommencer. */
+
+let contexteAudio = null;
+let analyseur = null;
+let trameNiveau = null;
+let picNiveau = 0;
+let niveauMesure = false;
+
+function ouvrirNiveau(flux) {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;             // sans analyseur, `dvpulse` reprend la main
+  try {
+    contexteAudio = new Ctx();
+    analyseur = contexteAudio.createAnalyser();
+    analyseur.fftSize = 512;
+    contexteAudio.createMediaStreamSource(flux).connect(analyseur);
+  } catch (_) {
+    fermerNiveau();
+    return false;
+  }
+
+  const echantillons = new Uint8Array(analyseur.fftSize);
+  const zone = $('dictee');
+  picNiveau = 0;
+  zone.classList.add('a-niveau');
+
+  const mesurer = () => {
+    if (!analyseur) return;
+    analyseur.getByteTimeDomainData(echantillons);
+    let somme = 0;
+    for (const v of echantillons) {
+      const ecart = (v - 128) / 128;
+      somme += ecart * ecart;
+    }
+    const rms = Math.sqrt(somme / echantillons.length);
+    if (rms > picNiveau) picNiveau = rms;
+    // Racine puis plafond : l'oreille est logarithmique. Une échelle linéaire
+    // laisserait le point presque éteint à voix normale, donc muette elle aussi.
+    zone.style.setProperty('--dv-niveau', Math.min(1, Math.sqrt(rms * 6)).toFixed(3));
+    trameNiveau = requestAnimationFrame(mesurer);
+  };
+  mesurer();
+  return true;
+}
+
+function fermerNiveau() {
+  cancelAnimationFrame(trameNiveau);
+  trameNiveau = null;
+  analyseur = null;
+  // Sans fermeture explicite, le contexte reste ouvert et le micro chaud.
+  if (contexteAudio) contexteAudio.close().catch(() => {});
+  contexteAudio = null;
+  const zone = $('dictee');
+  zone.classList.remove('a-niveau');
+  zone.style.removeProperty('--dv-niveau');
+}
+
+/* ---- réécoute avant envoi ---------------------------------------------- */
+
+let vocalPret = null;   // { fichier, secondes, url } entre l'arrêt et l'envoi
+
+function montrerRelu(fichier, secondes) {
+  fermerRelu();
+  vocalPret = { fichier, secondes, url: URL.createObjectURL(fichier) };
+  $('relu-audio').src = vocalPret.url;
+  $('relu').hidden = false;
+  $('ecran-accueil').classList.add('a-relu');
+
+  const zone = $('dictee');
+  zone.classList.add('relu');
+  zone.setAttribute('aria-disabled', 'true');
+  zone.setAttribute('aria-label', 'Note vocale enregistrée, ' + mmss(secondes));
+  $('dictee-titre').textContent = mmss(secondes);
+  $('dictee-aide').textContent = 'Réécoutez avant d’envoyer';
+}
+
+function fermerRelu() {
+  if (vocalPret) URL.revokeObjectURL(vocalPret.url);
+  vocalPret = null;
+
+  const audio = $('relu-audio');
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();                       // sans quoi Chrome garde le flux précédent
+  $('relu').hidden = true;
+  $('ecran-accueil').classList.remove('a-relu');
+
+  const zone = $('dictee');
+  zone.classList.remove('relu');
+  zone.removeAttribute('aria-disabled');
+}
 
 function formatDisponible() {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -264,12 +392,15 @@ function raisonMicro(err) {
 }
 
 function fermerMicro() {
+  fermerNiveau();
   // Sans ça, le navigateur laisse le voyant d'enregistrement allumé.
   if (micro) micro.getTracks().forEach((t) => t.stop());
   micro = null;
 }
 
 async function demarrerDictee() {
+  fermerRelu();
+
   const format = formatDisponible();
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !format) {
     refuserDictee(raisonMicro(null));
@@ -282,6 +413,8 @@ async function demarrerDictee() {
     refuserDictee(raisonMicro(err));
     return;
   }
+
+  niveauMesure = ouvrirNiveau(micro);
 
   const [type, extension] = format;
   morceaux = [];
@@ -297,16 +430,35 @@ async function demarrerDictee() {
   recorder.addEventListener('stop', () => {
     const blob = new Blob(morceaux, { type: recorder.mimeType || type });
     const secondes = secondesDictee;
+    const pic = picNiveau;
+    const mesure = niveauMesure;
     fermerMicro();
     peindreDictee(false);
+
+    // Arrêt demandé pour annuler, pas pour envoyer : « Recommencer » et « Refaire »
+    // passent par ici, et ne doivent surtout pas déclencher un devis.
+    if (dicteeAnnulee) {
+      dicteeAnnulee = false;
+      return;
+    }
 
     if (secondes < DUREE_MIN || !blob.size) {
       $('dictee-aide').textContent = 'Trop court — parlez quelques secondes.';
       return;
     }
+
+    // Le micro était ouvert mais n'a jamais rien capté : le dire ici épargne à
+    // l'artisan un aller-retour chez Whisper et un écran d'erreur pour l'apprendre.
+    if (mesure && pic < SEUIL_SILENCE) {
+      $('dictee-aide').textContent =
+        "Le micro n’a rien capté — vérifiez qu’il n’est pas coupé, ou déposez un fichier.";
+      $('depot-repli').classList.add('is-open');
+      return;
+    }
+
     // La durée vient du chronomètre et non du blob : un webm sorti de
     // MediaRecorder annonce presque toujours une durée infinie.
-    lancer(new File([blob], `dictee.${extension}`, { type: blob.type }), null, secondes);
+    montrerRelu(new File([blob], `dictee.${extension}`, { type: blob.type }), secondes);
   });
 
   recorder.start();
@@ -319,16 +471,22 @@ async function demarrerDictee() {
   }, 1000);
 }
 
-function arreterDictee() {
+/* `annuler` sépare les deux façons d'arrêter : le doigt qui met fin à la dictée
+   pour l'envoyer, et le code qui la coupe pour en effacer la trace. L'événement
+   `stop` du MediaRecorder n'arrive qu'après coup et ne saurait pas les distinguer
+   tout seul — il enchaînerait sur l'envoi dans les deux cas. */
+function arreterDictee(annuler) {
   clearInterval(chronoDictee);
   chronoDictee = null;
+  dicteeAnnulee = !!annuler;
   if (enregistreur && enregistreur.state !== 'inactive') enregistreur.stop();
-  else { fermerMicro(); peindreDictee(false); }
+  else { fermerMicro(); peindreDictee(false); dicteeAnnulee = false; }
   enregistreur = null;
 }
 
 function basculerDictee() {
-  if (chronoDictee) arreterDictee();
+  if (vocalPret) return;   // en réécoute, ce sont les deux boutons qui décident
+  if (chronoDictee) arreterDictee(false);
   else demarrerDictee();
 }
 
@@ -344,15 +502,17 @@ async function lancer(fichier, texte, dureeSecondes) {
   demarrerChrono();
 
   try {
-    let transcription = texte;
-
     if (fichier) {
       // Une dictée connaît sa durée : elle sort du chronomètre, pas du fichier.
       dureeVocal = formaterDuree(dureeSecondes != null ? dureeSecondes : await dureeAudio(fichier));
-      transcription = await transcrire(fichier);
+      transcriptionCourante = await transcrire(fichier);
     } else {
-      dureeVocal = null;
+      // Sans fichier, le texte est déjà là. `dureeVocal` n'est pas touchée ici :
+      // c'est l'appelant qui sait s'il colle un texte neuf (durée inconnue) ou s'il
+      // rejoue le chiffrage d'une dictée dont on connaît déjà la durée.
+      transcriptionCourante = texte;
     }
+    const transcription = transcriptionCourante;
 
     peindreEtapes(1);
     $('carte-transcription').hidden = false;
@@ -470,24 +630,73 @@ function peindreVide(d) {
 
 /* ---- PDF --------------------------------------------------------------- */
 
-async function telechargerPdf() {
+/* L'artisan ne veut pas un fichier, il veut que sa cliente l'ait. Sur un téléphone,
+   un PDF téléchargé atterrit dans « Fichiers » et le parcours s'arrête là ; la feuille
+   de partage du système, elle, mène à WhatsApp, aux messages, au courrier. Ce n'est
+   pas une intégration — c'est le partage de l'OS, et il tient en un appel. */
+
+async function genererPdf() {
+  const r = await poste('/api/pdf', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(devisCourant),
+  });
+  return await r.blob();
+}
+
+/* Le partage de fichiers ne se déduit pas de la présence de `navigator.share` :
+   Chrome sur bureau l'expose et refuse les fichiers. On lui soumet un PDF vide. */
+function saitPartagerUnPdf() {
+  try {
+    return !!navigator.canShare &&
+      navigator.canShare({ files: [new File([], 'devis.pdf', { type: 'application/pdf' })] });
+  } catch (_) {
+    return false;
+  }
+}
+
+/* Deux précautions que le chemin naïf oublie, et qui se paient précisément sur
+   l'appareil de l'artisan : l'ancre doit être dans le document — Safari ignore les
+   ancres détachées — et l'URL du blob ne doit pas être révoquée dans la foulée du
+   clic, sinon le téléchargement est annulé avant d'avoir commencé. */
+function telecharger(blob, nom) {
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = nom;
+  lien.style.display = 'none';
+  document.body.append(lien);
+  lien.click();
+  setTimeout(() => { lien.remove(); URL.revokeObjectURL(url); }, 60_000);
+}
+
+async function envoyerPdf() {
   const bouton = $('btn-pdf');
   const libelle = bouton.textContent;
   bouton.disabled = true;
   bouton.textContent = 'Génération…';
 
   try {
-    const r = await poste('/api/pdf', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(devisCourant),
-    });
-    const url = URL.createObjectURL(await r.blob());
-    const lien = document.createElement('a');
-    lien.href = url;
-    lien.download = `${devisCourant.numero}.pdf`;
-    lien.click();
-    URL.revokeObjectURL(url);
+    const blob = await genererPdf();
+    const nom = `${devisCourant.numero}.pdf`;
+
+    if (saitPartagerUnPdf()) {
+      try {
+        await navigator.share({
+          files: [new File([blob], nom, { type: 'application/pdf' })],
+          title: `Devis ${devisCourant.numero}`,
+        });
+        return;
+      } catch (err) {
+        // Feuille de partage fermée : ce n'est pas une panne, on n'affiche rien.
+        if (err && err.name === 'AbortError') return;
+        // iOS exige que `share()` parte dans la fenêtre d'activation du geste, or la
+        // génération du PDF prend deux secondes et a pu la laisser expirer. Le refus
+        // n'est donc pas nécessairement une absence de support : on retombe sur le
+        // fichier plutôt que d'annoncer une erreur qui n'en est pas une.
+      }
+    }
+    telecharger(blob, nom);
   } catch (err) {
     echouer(err.message);
   } finally {
@@ -534,10 +743,35 @@ $('repli-bascule').addEventListener('click', () => $('repli').classList.toggle('
 
 $('btn-texte').addEventListener('click', () => {
   const texte = $('texte').value.trim();
-  if (texte) lancer(null, texte);
+  if (!texte) return;
+  dureeVocal = null;          // texte collé : il n'y a pas de vocal à dater
+  lancer(null, texte);
 });
 
-$('btn-pdf').addEventListener('click', telechargerPdf);
+/* Les deux issues de la réécoute. « Établir le devis » envoie exactement le blob
+   qu'on vient d'entendre ; « Refaire » le jette et rouvre le micro. */
+$('btn-envoyer-dictee').addEventListener('click', () => {
+  if (!vocalPret) return;
+  const { fichier, secondes } = vocalPret;
+  fermerRelu();
+  peindreDictee(false);
+  lancer(fichier, null, secondes);
+});
+
+$('btn-refaire-dictee').addEventListener('click', () => {
+  fermerRelu();
+  peindreDictee(false);
+  demarrerDictee();
+});
+
+/* Rejoue le chiffrage sur la transcription déjà obtenue. `dureeVocal` n'est pas
+   touchée : c'est toujours la même note vocale, elle a toujours la même durée. */
+$('btn-rechiffrer').addEventListener('click', () => {
+  if (transcriptionCourante) lancer(null, transcriptionCourante);
+});
+
+$('btn-pdf').addEventListener('click', envoyerPdf);
+if (saitPartagerUnPdf()) $('btn-pdf').textContent = 'Envoyer le devis';
 
 document.querySelectorAll('[data-recommencer]').forEach((b) =>
   b.addEventListener('click', reinitialiser));
@@ -558,11 +792,28 @@ $('btn-copier-observations').addEventListener('click', async (e) => {
   setTimeout(() => { bouton.textContent = libelle; }, 1800);
 });
 
-/* Signale à l'écran quand le chiffrage est rejoué plutôt que calculé. */
+/* Deux façons de montrer autre chose que ce qu'on croit montrer : un chiffrage
+   rejoué depuis une fixture, et un chiffrage calculé par un moteur de secours. La
+   première était signalée, la seconde ne l'était pas — or Groq reprend fidèlement
+   les prix dictés mais sous-estime les prix estimés de 6 à 46 %. Les deux méritent
+   la même bande. Au passage, l'attente annoncée s'aligne sur le moteur réel. */
+
+const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI' };
+
 fetch('/health')
   .then((r) => r.json())
   .then((info) => {
-    if (info.mode !== 'fixtures') return;
+    fournisseur = info.provider || 'anthropic';
+    const rejoue = info.mode === 'fixtures';
+
+    ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.anthropic);
+
+    const secours = !rejoue && fournisseur !== 'anthropic';
+    if (!rejoue && !secours) return;
+
+    $('bandeau-fixtures').hidden = !rejoue;
+    $('bandeau-fournisseur').hidden = !secours;
+    if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
     $('bandeau').hidden = false;
     document.body.classList.add('a-bandeau');
   })

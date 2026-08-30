@@ -10,12 +10,22 @@
 </head>
 <body>
 
-<!-- Le chiffrage est-il calculé ou rejoué ? Sans ce bandeau, on peut montrer une
-     fixture à un artisan en croyant qu'elle sort du modèle. Caché par défaut. -->
+<!-- Le chiffrage est-il calculé ou rejoué, et par quel moteur ? Sans ce bandeau, on
+     peut montrer une fixture à un artisan en croyant qu'elle sort du modèle — ou lui
+     montrer un chiffrage de secours en croyant voir le moteur de référence. Les deux
+     variantes sont peintes depuis /health ; le bandeau reste caché sinon. -->
 <div id="bandeau" class="bandeau" hidden>
-  <strong>Mode démonstration hors-ligne.</strong>
-  Le chiffrage n'est pas calculé, il est rejoué depuis un enregistrement.
-  Ne pas montrer tel quel à un artisan — passer <code>USE_FIXTURES=false</code>.
+  <div id="bandeau-fixtures" hidden>
+    <strong>Mode démonstration hors-ligne.</strong>
+    Le chiffrage n'est pas calculé, il est rejoué depuis un enregistrement.
+    Ne pas montrer tel quel à un artisan — passer <code>USE_FIXTURES=false</code>.
+  </div>
+  <div id="bandeau-fournisseur" hidden>
+    <strong>Chiffrage sur un moteur de secours (<span id="bandeau-moteur"></span>).</strong>
+    Les prix dictés sont repris fidèlement ; les prix estimés sortent nettement plus bas
+    que sur le moteur de référence. Pour une démonstration, passer
+    <code>STRUCTURATION_PROVIDER=anthropic</code>.
+  </div>
 </div>
 
 <!-- 1 ......................................................... accueil -->
@@ -34,6 +44,18 @@
       <div class="dropzone__mic"><i></i></div>
       <div class="dropzone__title" id="dictee-titre">Dictez votre devis</div>
       <div class="dropzone__hint" id="dictee-aide">Touchez pour commencer à parler</div>
+    </div>
+
+    <!-- Après l'arrêt, avant l'envoi. On bafouille, on tousse, on se reprend sur la
+         dernière phrase : envoyer sans laisser réécouter, c'est faire payer quarante
+         secondes de pipeline pour une reprise de trois mots. Pas un écran de plus —
+         la carte de dictée change d'état, et les deux actions s'affichent dessous. -->
+    <div class="relu" id="relu" hidden>
+      <audio id="relu-audio" controls preload="metadata"></audio>
+      <div class="relu__actions">
+        <button class="btn" id="btn-envoyer-dictee">Établir le devis</button>
+        <button class="btn btn--ghost" id="btn-refaire-dictee">Refaire</button>
+      </div>
     </div>
 
     <!-- Les deux chemins de repli, dans l'affordance que le handoff leur réserve.
@@ -144,7 +166,13 @@
     <div class="label">Interruption</div>
     <h2>Le devis n'a pas pu être établi.</h2>
     <p class="erreur__message" id="erreur-message"></p>
-    <button class="btn" data-recommencer>Recommencer</button>
+    <!-- La transcription a coûté de la parole et du temps. Tant qu'on l'a en mémoire,
+         on ne renvoie pas l'artisan dicter : c'est le chiffrage seul qui se rejoue. Le
+         bouton n'apparaît que dans ce cas — voir `echouer()`. -->
+    <div class="erreur__actions">
+      <button class="btn" id="btn-rechiffrer" hidden>Réessayer le chiffrage</button>
+      <button class="btn btn--ghost" data-recommencer>Recommencer</button>
+    </div>
   </div>
 </section>
 
