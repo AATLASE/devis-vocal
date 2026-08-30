@@ -336,7 +336,11 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
    au chronomètre, en mono comme tous les chiffres du produit. */
 .dictee.enregistre { border-style: solid; border-color: var(--dv-accent); background: #fff; }
 .dictee.enregistre .dropzone__mic i { width: 14px; height: 14px; border-radius: 1px; }
-.dictee.enregistre .dropzone__title {
+
+/* Le chronomètre pendant, la durée après : dans les deux cas un nombre, donc du
+   mono, comme partout ailleurs dans le produit. */
+.dictee.enregistre .dropzone__title,
+.dictee.relu .dropzone__title {
   font-family: var(--dv-mono); font-size: 26px; font-weight: 400; letter-spacing: .02em;
 }
 
@@ -350,6 +354,56 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   animation: dvpulse 1.4s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) { .dictee__point { animation: none; } }
+
+/* Le même point, mais battant sur la voix plutôt que sur une horloge. `--dv-niveau`
+   est écrite à chaque trame par `app.js` ; `dvpulse` n'est plus qu'un repli pour les
+   navigateurs sans AudioContext. Un chronomètre dit que l'enregistrement tourne, il
+   ne dit pas que le micro entend — et un micro coupé ne se découvre autrement qu'au
+   retour de la transcription, quatre-vingt-dix secondes trop tard.
+   Effet heureux : sous mouvement réduit, l'oscillation décorative disparaît et il ne
+   reste que le signal utile. La règle améliore le résultat au lieu de l'appauvrir. */
+.dictee.a-niveau .dictee__point {
+  animation: none;
+  opacity: calc(.25 + .75 * var(--dv-niveau, 0));
+}
+
+/* ---- réécoute avant envoi ---------------------------------------------- */
+/* La carte cesse d'être un bouton : ce sont le lecteur et les deux actions qui
+   commandent. D'où la bordure neutre — plus de brique, l'enregistrement est fini —
+   et l'annulation du survol, que `.dropzone:hover` appliquerait sinon. */
+
+.dictee.relu {
+  cursor: default;
+  border-style: solid;
+  border-color: var(--dv-rule-strong);
+  background: var(--dv-paper);
+}
+
+.relu { margin-top: 14px; }
+.relu__actions { display: flex; gap: 12px; margin-top: 14px; }
+
+/* Le lecteur natif arrive avec la teinte et le rayon de Chrome : un galet gris de
+   999px au milieu d'une page qui n'a que des angles à 4px. On garde les commandes
+   natives — elles sont accessibles au clavier, familières, et lues par les lecteurs
+   d'écran, ce qu'un lecteur maison coûterait cher à retrouver — mais on les ramène
+   au rayon du produit et sur le fond des blocs en creux. Le sélecteur `-webkit-` ne
+   vaut que pour Blink et WebKit, donc pour le téléphone de l'artisan ; ailleurs il
+   est simplement ignoré, et le rayon suffit. */
+.relu audio {
+  width: 100%; display: block;
+  border-radius: var(--dv-radius);
+  background: var(--dv-bg-alt);
+}
+.relu audio::-webkit-media-controls-enclosure,
+.relu audio::-webkit-media-controls-panel {
+  border-radius: var(--dv-radius);
+  background: var(--dv-bg-alt);
+}
+
+/* Pendant la réécoute, les deux chemins de repli disparaissent : proposer trois
+   entrées à la fois quand l'artisan vient d'en emprunter une, c'est du bruit. */
+.accueil.a-relu .paste-toggle,
+.accueil.a-relu .paste { display: none; }
 
 /* Devenue secondaire, la zone de dépôt respire moins et perd son micro : deux
    cercles brique sur le même écran diraient deux fois la même chose. */
@@ -386,6 +440,7 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   font-size: 16px; line-height: 1.65; color: var(--dv-muted);
   margin-bottom: 30px; text-wrap: pretty;
 }
+.erreur__actions { display: flex; gap: 12px; flex-wrap: wrap; }
 
 /* ======================================================================== */
 /* responsive                                                               */
@@ -470,6 +525,9 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   .paste-toggle { min-height: 44px; margin-top: 14px; }
   .paste .btn { width: 100%; }
 
+  .relu__actions { flex-direction: column; }
+  .relu__actions .btn { width: 100%; }
+
   .traitement { padding: 56px 18px 60px; }
   .traitement__head { margin-bottom: 26px; }
   .traitement__head h2 { font-size: 21px; }
@@ -498,9 +556,8 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   .vide h2, .erreur h2 { font-size: 23px; }
   .vide__lede, .erreur__message { font-size: 15px; }
   .vide__quote { padding: 16px 18px; }
-  .vide__actions { flex-direction: column; }
-  .vide__actions .btn { width: 100%; }
-  .erreur .btn { width: 100%; }
+  .vide__actions,   .erreur__actions   { flex-direction: column; }
+  .vide__actions .btn, .erreur__actions .btn { width: 100%; }
 
   .bandeau { padding: 9px 18px; font-size: 10.5px; }
   body.a-bandeau .screen { min-height: calc(100svh - 52px); }

@@ -63,10 +63,18 @@ class DemandeDevis(BaseModel):
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    # `mode` est lu par le front pour signaler à l'écran que le chiffrage est rejoué.
-    # Sans ce signal, on peut montrer un devis de fixture à un artisan en croyant
-    # qu'il vient d'être calculé — l'erreur serait grossière et invisible.
-    return {"status": "ok", "mode": "fixtures" if get_config().use_fixtures else "reel"}
+    # `mode` et `provider` sont lus par le front pour signaler à l'écran ce qui tourne
+    # vraiment. Sans eux, on peut montrer à un artisan un devis rejoué depuis une
+    # fixture — ou chiffré par un moteur de secours — en croyant voir le moteur de
+    # référence. Dans les deux cas l'erreur est grossière et parfaitement invisible.
+    # `provider` sert aussi à annoncer la bonne attente : quarante secondes chez
+    # Anthropic, six chez Groq.
+    config = get_config()
+    return {
+        "status": "ok",
+        "mode": "fixtures" if config.use_fixtures else "reel",
+        "provider": config.structuration_provider,
+    }
 
 
 @app.post("/api/transcribe")
