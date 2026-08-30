@@ -91,7 +91,29 @@ Le découpage du code suit ce pipeline :
 | `app/pdf.py` | `render(devis) -> bytes` — Chromium headless via Playwright, et la pagination du document |
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |
 | `templates/pdf.css` | La feuille A4, reprise du handoff design |
-| `app/static/` | Les quatre écrans du parcours, JS vanilla, polices embarquées |
+| `app/static/` | Les cinq écrans du parcours, JS vanilla, polices embarquées |
+
+### Ce que fait le navigateur
+
+Le produit s'appelle « Devis Vocal » : l'action principale de l'accueil est de parler, pas
+de chercher un fichier. Le dépôt de fichier et le texte collé restent en repli, dépliables.
+
+- **La dictée** s'enregistre dans la page (`MediaRecorder`) et part vers le même
+  `POST /api/transcribe` que n'importe quel fichier. Le micro exige un **contexte
+  sécurisé** : `localhost` convient, une adresse IP en clair non — pour tester depuis un
+  téléphone, il faut un tunnel https. Sans micro, l'écran le dit et déplie le dépôt.
+- **Le point qui bat suit la voix**, pas une horloge : un analyseur mesure le niveau en
+  continu. Si le pic n'a jamais dépassé le seuil, l'enregistrement n'est pas envoyé — un
+  micro coupé se découvrirait sinon au retour de la transcription, trop tard.
+- **On réécoute avant d'envoyer.** L'arrêt ne déclenche plus le devis : il propose
+  « Établir le devis » ou « Refaire ».
+- **Si le chiffrage échoue**, la transcription est conservée et l'écran d'erreur propose de
+  rejouer cette seule étape — sans refaire parler l'artisan.
+- **Le bouton final partage** le PDF par la feuille du système (`navigator.share`) quand
+  l'appareil sait le faire — donc vers WhatsApp ou les messages, depuis un téléphone — et
+  retombe sur un téléchargement partout ailleurs.
+- **Un bandeau prévient** quand le chiffrage est rejoué depuis une fixture, ou calculé par
+  un moteur de secours plutôt que par le moteur de référence.
 
 ### Deux modèles Pydantic, et c'est volontaire
 
