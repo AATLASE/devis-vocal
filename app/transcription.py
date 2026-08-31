@@ -11,10 +11,13 @@ en bas de fichier.
 from __future__ import annotations
 
 import io
+import logging
 
 from openai import OpenAI, OpenAIError
 
 from app.config import get_config
+
+logger = logging.getLogger("devis-vocal")
 
 # Ce que produisent les téléphones et WhatsApp.
 EXTENSIONS_ACCEPTEES = {".m4a", ".mp3", ".mp4", ".mpga", ".ogg", ".opus", ".wav", ".webm", ".flac"}
@@ -69,7 +72,15 @@ def transcribe(audio: bytes, filename: str) -> str:
             ),
         )
     except OpenAIError as err:
-        raise TranscriptionError(f"Appel de transcription en échec : {err}") from err
+        # Le message du fournisseur est un dictionnaire Python sérialisé en anglais —
+        # « Error code: 500 - {'error': {'message': 'Internal Server Error'...} ». Il
+        # a sa place dans le journal, pas sous les yeux d'un artisan. Ce qu'il doit
+        # lire, c'est que la panne n'est pas la sienne et que son vocal est gardé.
+        logger.warning("Transcription refusée par le fournisseur : %s", err)
+        raise TranscriptionError(
+            "Le service de transcription n'a pas répondu. Votre enregistrement est "
+            "conservé — réessayez dans un instant."
+        ) from err
 
     texte = (reponse.text or "").strip()
     if not texte:

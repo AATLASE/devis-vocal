@@ -166,11 +166,11 @@
     <div class="label">Interruption</div>
     <h2>Le devis n'a pas pu être établi.</h2>
     <p class="erreur__message" id="erreur-message"></p>
-    <!-- La transcription a coûté de la parole et du temps. Tant qu'on l'a en mémoire,
-         on ne renvoie pas l'artisan dicter : c'est le chiffrage seul qui se rejoue. Le
-         bouton n'apparaît que dans ce cas — voir `echouer()`. -->
+    <!-- Le vocal et la transcription ont coûté de la parole et du temps. Tant qu'on
+         les a en mémoire, on ne renvoie pas l'artisan dicter : on rejoue la seule
+         étape qui a raté. Libellé et visibilité posés par `echouer()`. -->
     <div class="erreur__actions">
-      <button class="btn" id="btn-rechiffrer" hidden>Réessayer le chiffrage</button>
+      <button class="btn" id="btn-reprendre" hidden></button>
       <button class="btn btn--ghost" data-recommencer>Recommencer</button>
     </div>
   </div>

@@ -40,8 +40,11 @@ function noeud(balise, classe, texte) {
 /* ---- état -------------------------------------------------------------- */
 
 let devisCourant = null;
-// La transcription survit à l'échec du chiffrage : c'est ce qui permet de rejouer
-// la seule étape qui a raté, au lieu de renvoyer l'artisan dicter.
+// Le vocal et la transcription survivent à l'échec de l'étape qui les suit. C'est ce
+// qui permet de rejouer la seule étape qui a raté, au lieu de renvoyer l'artisan
+// dicter — et il n'y a aucune raison de le faire reparler quand le fournisseur de
+// transcription a simplement renvoyé un 500 passager.
+let vocalCourant = null;            // { fichier, secondes }
 let transcriptionCourante = null;
 let dureeVocal = null;
 let chrono = null;
@@ -66,6 +69,7 @@ function reinitialiser() {
   arreterDictee(true);
   fermerRelu();
   devisCourant = null;
+  vocalCourant = null;
   transcriptionCourante = null;
   dureeVocal = null;
   $('fichier').value = '';
@@ -81,11 +85,28 @@ function echouer(message) {
   clearInterval(chrono);
   clearInterval(revelation);
   $('erreur-message').textContent = message;
-  // Le chiffrage peut échouer après une transcription réussie — une limite de débit,
-  // un 500. Le texte est là, il a coûté quarante secondes de parole : on propose de
-  // rejouer l'étape qui a raté, pas tout le parcours.
-  $('btn-rechiffrer').hidden = !transcriptionCourante;
+  // Chaque étape peut échouer après que la précédente a réussi — un 500 passager du
+  // fournisseur suffit. Ce qui a déjà été obtenu est gardé, et on ne propose de
+  // rejouer que ce qui a raté. Renvoyer l'artisan redicter quinze secondes parce que
+  // Groq a hoqueté, ce serait lui faire payer une panne qui n'est pas la sienne.
+  const bouton = $('btn-reprendre');
+  if (transcriptionCourante) {
+    bouton.textContent = 'Réessayer le chiffrage';
+    bouton.hidden = false;
+  } else if (vocalCourant) {
+    bouton.textContent = 'Réessayer la transcription';
+    bouton.hidden = false;
+  } else {
+    bouton.hidden = true;
+  }
   montrer('erreur');
+}
+
+/* Reprend au dernier point acquis : le chiffrage si la transcription est en main,
+   la transcription si on n'a plus que l'audio. */
+function reprendre() {
+  if (transcriptionCourante) lancer(null, transcriptionCourante);
+  else if (vocalCourant) lancer(vocalCourant.fichier, null, vocalCourant.secondes);
 }
 
 /* ---- 2. traitement ----------------------------------------------------- */
@@ -170,7 +191,15 @@ function devoiler(texte, cible) {
 /* ---- appels ------------------------------------------------------------ */
 
 async function poste(url, options) {
-  const reponse = await fetch(url, options);
+  let reponse;
+  try {
+    reponse = await fetch(url, options);
+  } catch (_) {
+    // `fetch` ne rejette que sur un échec réseau — coupure, serveur arrêté, tunnel
+    // tombé. Le navigateur donne « Failed to fetch », en anglais et sans sujet :
+    // illisible pour un artisan, et surtout muet sur ce qu'il peut faire.
+    throw new Error('La connexion au serveur a été perdue. Vérifiez le réseau, puis réessayez.');
+  }
   if (!reponse.ok) {
     let detail = `Erreur ${reponse.status}.`;
     try {
@@ -335,6 +364,36 @@ function montrerRelu(fichier, secondes) {
   zone.setAttribute('aria-label', 'Note vocale enregistrée, ' + mmss(secondes));
   $('dictee-titre').textContent = mmss(secondes);
   $('dictee-aide').textContent = 'Réécoutez avant d’envoyer';
+}
+
+/* Un webm sorti de MediaRecorder n'a pas de durée dans son en-tête : le flux est
+   écrit au fil de l'enregistrement, et personne ne revient inscrire la longueur en
+   tête de fichier. Le lecteur natif annonce alors l'infini, que Chrome affiche sous
+   forme de valeur aberrante — « 1:39:12 » pour quinze secondes de dictée.
+
+   Le contournement connu : demander une position absurde. Le navigateur parcourt le
+   flux jusqu'au bout, en établit la vraie durée, et on revient au début. On ne le
+   déclenche que si la durée annoncée dément le chronomètre — lui ne se trompe pas,
+   c'est la même source que le titre de la carte. */
+function reparerDureeAffichee() {
+  const audio = $('relu-audio');
+  if (!vocalPret) return;
+
+  const annoncee = audio.duration;
+  if (Number.isFinite(annoncee) && Math.abs(annoncee - vocalPret.secondes) <= 2) return;
+
+  const retour = () => {
+    audio.removeEventListener('timeupdate', retour);
+    audio.currentTime = 0;
+  };
+  audio.addEventListener('timeupdate', retour);
+  try {
+    audio.currentTime = 1e101;
+  } catch (_) {
+    // Navigateur qui refuse la position : on laisse la durée telle quelle plutôt
+    // que de casser la réécoute. Le titre de la carte, lui, reste juste.
+    audio.removeEventListener('timeupdate', retour);
+  }
 }
 
 function fermerRelu() {
@@ -503,6 +562,9 @@ async function lancer(fichier, texte, dureeSecondes) {
 
   try {
     if (fichier) {
+      // Gardé avant l'appel, pas après : c'est justement quand la transcription
+      // échoue qu'on a besoin de retrouver l'audio.
+      vocalCourant = { fichier, secondes: dureeSecondes };
       // Une dictée connaît sa durée : elle sort du chronomètre, pas du fichier.
       dureeVocal = formaterDuree(dureeSecondes != null ? dureeSecondes : await dureeAudio(fichier));
       transcriptionCourante = await transcrire(fichier);
@@ -744,7 +806,9 @@ $('repli-bascule').addEventListener('click', () => $('repli').classList.toggle('
 $('btn-texte').addEventListener('click', () => {
   const texte = $('texte').value.trim();
   if (!texte) return;
-  dureeVocal = null;          // texte collé : il n'y a pas de vocal à dater
+  // Texte collé : il n'y a pas de vocal, ni à dater ni à retranscrire.
+  dureeVocal = null;
+  vocalCourant = null;
   lancer(null, texte);
 });
 
@@ -764,11 +828,14 @@ $('btn-refaire-dictee').addEventListener('click', () => {
   demarrerDictee();
 });
 
-/* Rejoue le chiffrage sur la transcription déjà obtenue. `dureeVocal` n'est pas
-   touchée : c'est toujours la même note vocale, elle a toujours la même durée. */
-$('btn-rechiffrer').addEventListener('click', () => {
-  if (transcriptionCourante) lancer(null, transcriptionCourante);
-});
+/* `dureeVocal` n'est pas touchée : c'est toujours la même note vocale, elle a
+   toujours la même durée. */
+$('btn-reprendre').addEventListener('click', reprendre);
+
+// Attaché une fois pour toutes plutôt qu'à chaque enregistrement : un écouteur posé
+// par dictée survivrait à celle-ci si l'événement n'arrivait jamais, et se
+// déclencherait sur la suivante avec la durée de la précédente.
+$('relu-audio').addEventListener('loadedmetadata', reparerDureeAffichee);
 
 $('btn-pdf').addEventListener('click', envoyerPdf);
 if (saitPartagerUnPdf()) $('btn-pdf').textContent = 'Envoyer le devis';
