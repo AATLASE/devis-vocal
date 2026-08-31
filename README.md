@@ -55,8 +55,16 @@ Deux clés à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 | `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte bancaire | gratuit |
 | `ANTHROPIC_API_KEY` | <https://console.anthropic.com> — pas de tier gratuit | 5 € de crédit ≈ plusieurs centaines de devis |
 
-Renseigner aussi les variables `ENTREPRISE_*` : un devis au nom de l'artisan qu'on a en
-face de soi est nettement plus convaincant qu'un devis « Bâti Rénov ».
+Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
+nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
+produit. Huit des dix lignes sont publiques — cherche son entreprise sur
+<https://annuaire-entreprises.data.gouv.fr> et tu as le SIRET, le code APE, l'adresse et
+de quoi former le n° de TVA. Seuls l'assurance décennale et l'IBAN doivent lui être
+demandés.
+
+Les identifiants légaux livrés par défaut sont à zéro, et pas remplis de valeurs
+plausibles : un devis dont l'argument est la conformité aux mentions obligatoires ne peut
+pas porter un faux SIRET crédible.
 
 ## Tests
 

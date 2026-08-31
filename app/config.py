@@ -24,19 +24,25 @@ class EntrepriseSettings(Entreprise, BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="ENTREPRISE_", env_file=".env", extra="ignore")
 
+    # Le nom et l'adresse sont manifestement fictifs : personne ne s'y trompe.
+    # Les identifiants légaux, eux, sont laissés à zéro plutôt que remplis de valeurs
+    # plausibles. Un devis dont l'argument est la conformité aux mentions obligatoires
+    # ne peut pas porter un faux SIRET crédible : l'artisan qui le repère cesse
+    # d'écouter, et le document n'a rien à faire en circulation. À zéro, ils se lisent
+    # pour ce qu'ils sont — des champs à remplir.
     nom: str = "Bâti Rénov"
     forme_juridique: str = "SARL au capital de 10 000 €"
     metier: str = "Rénovation · Plomberie · Second œuvre"
     adresse: str = "12 rue des Compagnons"
     code_postal_ville: str = "75011 Paris"
-    telephone: str = "06 12 34 56 78"
-    email: str = "contact@batirenov.fr"
-    siret: str = "912 345 678 00019"
+    telephone: str = "00 00 00 00 00"
+    email: str = "contact@example.com"
+    siret: str = "000 000 000 00000"
     code_ape: str = "4399C"
-    tva_intracom: str = "FR45912345678"
-    assurance: str = "AXA France IARD"
-    assurance_police: str = "10 987 654 321"
-    iban: str = "FR76 3000 4000 0100 0012 3456 789"
+    tva_intracom: str = "FR00 000 000 000"
+    assurance: str = "Assureur à renseigner"
+    assurance_police: str = "000 000 000"
+    iban: str = "FR76 0000 0000 0000 0000 0000 000"
 
 
 class Config(BaseSettings):
