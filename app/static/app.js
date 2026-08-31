@@ -271,6 +271,20 @@ const FORMATS = [
 const DUREE_MAX = 600;   // 10 min : un garde-fou, pas une contrainte de produit
 const DUREE_MIN = 1;     // en deçà, c'est un double appui, pas une dictée
 
+// Chrome enregistre par défaut à 112 kbit/s en stéréo — 280 Ko pour vingt secondes —
+// alors que Whisper ramène de toute façon tout en 16 kHz mono avant de transcrire.
+// À 32 kbit/s le même vocal pèse 71 Ko et se transcrit à l'identique : c'est quatre
+// fois moins à téléverser depuis une camionnette en 4G, là où la démonstration a lieu.
+// Les contraintes sont en `ideal` et non en valeurs exigées : un appareil qui ne sait
+// pas les tenir doit dégrader, jamais refuser le micro.
+const DEBIT_DICTEE = 32000;
+const CONTRAINTES_MICRO = {
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 16000 },
+  echoCancellation: true,
+  noiseSuppression: true,
+};
+
 // RMS en dessous duquel on considère que le micro n'a rien entendu du tout.
 // Calibré à voix normale, téléphone à bout de bras : un micro coupé reste sous
 // 0,002, une pièce silencieuse sous 0,006, une phrase dictée dépasse 0,05.
@@ -462,7 +476,7 @@ async function demarrerDictee() {
   }
 
   try {
-    micro = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micro = await navigator.mediaDevices.getUserMedia({ audio: CONTRAINTES_MICRO });
   } catch (err) {
     refuserDictee(raisonMicro(err));
     return;
@@ -474,7 +488,15 @@ async function demarrerDictee() {
   morceaux = [];
   // Référence locale : `arreterDictee()` remet `enregistreur` à null dès l'appel
   // à stop(), or l'événement, lui, n'arrive qu'après.
-  const recorder = new MediaRecorder(micro, type ? { mimeType: type } : undefined);
+  const reglages = { audioBitsPerSecond: DEBIT_DICTEE };
+  if (type) reglages.mimeType = type;
+  let recorder;
+  try {
+    recorder = new MediaRecorder(micro, reglages);
+  } catch (_) {
+    // Débit refusé par ce navigateur : mieux vaut un vocal lourd que pas de vocal.
+    recorder = new MediaRecorder(micro, type ? { mimeType: type } : undefined);
+  }
   enregistreur = recorder;
 
   recorder.addEventListener('dataavailable', (e) => {
