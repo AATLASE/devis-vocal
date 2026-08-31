@@ -21,6 +21,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app import journal
 from app import pdf as pdf_module
 from app.config import get_config
 from app.models import Devis, to_devis
@@ -80,8 +81,13 @@ async def health() -> dict[str, str]:
 @app.post("/api/transcribe")
 async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     contenu = await audio.read()
+    nom = audio.filename or "audio.m4a"
     try:
-        return {"transcription": transcribe(contenu, audio.filename or "audio.m4a")}
+        transcription = transcribe(contenu, nom)
+        # Le vocal d'un vrai artisan ne repasse pas deux fois : on le garde si le
+        # journal est armé. Voir app/journal.py — ce n'est pas du stockage produit.
+        journal.noter_vocal(contenu, nom, transcription)
+        return {"transcription": transcription}
     except TranscriptionError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     except Exception:
@@ -99,6 +105,8 @@ async def api_devis(demande: DemandeDevis) -> Devis:
     except Exception:
         logger.exception("Structuration en échec")
         raise HTTPException(status_code=500, detail="La génération du devis a échoué.") from None
+
+    journal.noter_extraction(demande.transcription, extraction)
 
     return to_devis(
         extraction,

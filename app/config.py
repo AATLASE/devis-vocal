@@ -61,6 +61,14 @@ class Config(BaseSettings):
     # --- Mode hors-ligne : rejoue une extraction enregistrée, zéro appel API, zéro euro ---
     use_fixtures: bool = False
 
+    # --- Journal de démonstration ---
+    # Garde sur disque les vocaux réels et ce que le modèle en a tiré. Ce sont eux, et
+    # pas des fonctionnalités, qui font progresser le prompt : cinq artisans rencontrés,
+    # cinq vocaux dont il ne resterait rien le lendemain. Désactivé par défaut — il
+    # enregistre la voix de quelqu'un, et ça se demande avant.
+    journal: bool = False
+    journal_dir: Path = RACINE / "journal"
+
     # --- Règles de devis ---
     tva_defaut: Decimal = Decimal("0.10")  # rénovation logement > 2 ans
     validite_jours: int = 30

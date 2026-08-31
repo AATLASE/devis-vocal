@@ -92,6 +92,7 @@ Le découpage du code suit ce pipeline :
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |
 | `templates/pdf.css` | La feuille A4, reprise du handoff design |
 | `app/static/` | Les cinq écrans du parcours, JS vanilla, polices embarquées |
+| `app/journal.py` | Garde les vocaux réels des rendez-vous — hors du parcours, désactivé par défaut |
 
 ### Ce que fait le navigateur
 
@@ -119,6 +120,37 @@ de chercher un fichier. Le dépôt de fichier et le texte collé restent en repl
   d'activation du geste, que deux secondes de Chromium laissaient expirer.
 - **Un bandeau prévient** quand le chiffrage est rejoué depuis une fixture, ou calculé par
   un moteur de secours plutôt que par le moteur de référence.
+
+### Le journal, seule chose que le serveur garde
+
+Le produit ne stocke rien : le devis fait l'aller-retour en JSON et le serveur l'oublie.
+Une exception, désactivée par défaut, à armer avant une tournée de rendez-vous :
+
+```bash
+JOURNAL=true
+```
+
+Chaque vocal réel est alors conservé avec ce que le modèle en a tiré :
+
+```
+journal/2026-08-31/103412-a1b2c3d4e5/
+    audio.webm          le vocal tel qu'il a été dicté
+    transcription.txt   ce que Whisper en a compris
+    extraction.json     ce que le modèle en a tiré
+    meta.json           quand, par quels modèles, combien de prix estimés
+```
+
+C'est de la matière première, pas du stockage : **rien n'est jamais relu par
+l'application**. Ce qui fait progresser le prompt, ce ne sont pas des fonctionnalités,
+ce sont de vrais vocaux d'artisans — dictés vite, en camionnette, avec les mots du
+métier. On en croise cinq dans une semaine de rendez-vous, et sans trace il n'en reste
+rien le lendemain.
+
+Les deux requêtes du pipeline sont indépendantes et le serveur reste sans état : c'est
+l'empreinte de la transcription qui rapproche l'audio de son chiffrage.
+
+> Le journal enregistre la voix de quelqu'un. Le dossier est ignoré par git et ne doit
+> pas quitter la machine ; le dire à l'artisan avant d'enregistrer n'est pas une option.
 
 ### Deux modèles Pydantic, et c'est volontaire
 
