@@ -355,6 +355,8 @@ function montrerRelu(fichier, secondes) {
   fermerRelu();
   vocalPret = { fichier, secondes, url: URL.createObjectURL(fichier) };
   $('relu-audio').src = vocalPret.url;
+  $('lecteur').classList.remove('joue');
+  peindreLecteur();
   $('relu').hidden = false;
   $('ecran-accueil').classList.add('a-relu');
 
@@ -366,34 +368,25 @@ function montrerRelu(fichier, secondes) {
   $('dictee-aide').textContent = 'Réécoutez avant d’envoyer';
 }
 
-/* Un webm sorti de MediaRecorder n'a pas de durée dans son en-tête : le flux est
-   écrit au fil de l'enregistrement, et personne ne revient inscrire la longueur en
-   tête de fichier. Le lecteur natif annonce alors l'infini, que Chrome affiche sous
-   forme de valeur aberrante — « 1:39:12 » pour quinze secondes de dictée.
+/* Le lecteur. Un webm sorti de MediaRecorder n'a pas de durée dans son en-tête : le
+   flux est écrit au fil de l'enregistrement, personne ne revient inscrire la longueur
+   au début. Le lecteur natif en invente alors une — « 32:04 » pour treize secondes de
+   dictée, observé sur Android. D'où celui-ci : la durée vient de `vocalPret.secondes`,
+   c'est-à-dire du chronomètre, la même source que le titre de la carte. La seule
+   valeur qu'on lit du média est `currentTime`, qui, elle, est fiable. */
 
-   Le contournement connu : demander une position absurde. Le navigateur parcourt le
-   flux jusqu'au bout, en établit la vraie durée, et on revient au début. On ne le
-   déclenche que si la durée annoncée dément le chronomètre — lui ne se trompe pas,
-   c'est la même source que le titre de la carte. */
-function reparerDureeAffichee() {
-  const audio = $('relu-audio');
+function peindreLecteur() {
   if (!vocalPret) return;
+  const ecoule = Math.min($('relu-audio').currentTime || 0, vocalPret.secondes);
+  const part = vocalPret.secondes ? Math.min(1, ecoule / vocalPret.secondes) : 0;
+  $('relu-avance').style.width = (part * 100).toFixed(1) + '%';
+  $('relu-temps').textContent = mmss(Math.floor(ecoule)) + ' / ' + mmss(vocalPret.secondes);
+}
 
-  const annoncee = audio.duration;
-  if (Number.isFinite(annoncee) && Math.abs(annoncee - vocalPret.secondes) <= 2) return;
-
-  const retour = () => {
-    audio.removeEventListener('timeupdate', retour);
-    audio.currentTime = 0;
-  };
-  audio.addEventListener('timeupdate', retour);
-  try {
-    audio.currentTime = 1e101;
-  } catch (_) {
-    // Navigateur qui refuse la position : on laisse la durée telle quelle plutôt
-    // que de casser la réécoute. Le titre de la carte, lui, reste juste.
-    audio.removeEventListener('timeupdate', retour);
-  }
+function basculerLecture() {
+  const audio = $('relu-audio');
+  if (audio.paused) audio.play().catch(() => {});
+  else audio.pause();
 }
 
 function fermerRelu() {
@@ -404,6 +397,8 @@ function fermerRelu() {
   audio.pause();
   audio.removeAttribute('src');
   audio.load();                       // sans quoi Chrome garde le flux précédent
+  $('lecteur').classList.remove('joue');
+  $('relu-avance').style.width = '0';
   $('relu').hidden = true;
   $('ecran-accueil').classList.remove('a-relu');
 
@@ -832,10 +827,34 @@ $('btn-refaire-dictee').addEventListener('click', () => {
    toujours la même durée. */
 $('btn-reprendre').addEventListener('click', reprendre);
 
-// Attaché une fois pour toutes plutôt qu'à chaque enregistrement : un écouteur posé
-// par dictée survivrait à celle-ci si l'événement n'arrivait jamais, et se
-// déclencherait sur la suivante avec la durée de la précédente.
-$('relu-audio').addEventListener('loadedmetadata', reparerDureeAffichee);
+// Le lecteur de réécoute. Écouteurs posés une fois pour toutes, pas à chaque dictée.
+$('relu-jouer').addEventListener('click', basculerLecture);
+$('relu-audio').addEventListener('timeupdate', peindreLecteur);
+$('relu-audio').addEventListener('play', () => {
+  $('lecteur').classList.add('joue');
+  $('relu-jouer').setAttribute('aria-label', 'Mettre en pause');
+});
+$('relu-audio').addEventListener('pause', () => {
+  $('lecteur').classList.remove('joue');
+  $('relu-jouer').setAttribute('aria-label', "Écouter l'enregistrement");
+});
+$('relu-audio').addEventListener('ended', () => {
+  $('relu-audio').currentTime = 0;
+  peindreLecteur();
+});
+
+/* Déplacement dans l'enregistrement. La position se calcule sur la durée du
+   chronomètre, pas sur celle du média — qui est fausse. Un webm sans index peut
+   refuser le saut : dans ce cas on ne fait rien, plutôt que de casser la lecture. */
+$('relu-piste').addEventListener('click', (e) => {
+  if (!vocalPret) return;
+  const piste = e.currentTarget.getBoundingClientRect();
+  const part = Math.min(1, Math.max(0, (e.clientX - piste.left) / piste.width));
+  try {
+    $('relu-audio').currentTime = part * vocalPret.secondes;
+    peindreLecteur();
+  } catch (_) { /* saut refusé : la lecture continue là où elle en était */ }
+});
 
 $('btn-pdf').addEventListener('click', envoyerPdf);
 if (saitPartagerUnPdf()) $('btn-pdf').textContent = 'Envoyer le devis';
