@@ -76,7 +76,12 @@ def transcribe(audio: bytes, filename: str) -> str:
         # « Error code: 500 - {'error': {'message': 'Internal Server Error'...} ». Il
         # a sa place dans le journal, pas sous les yeux d'un artisan. Ce qu'il doit
         # lire, c'est que la panne n'est pas la sienne et que son vocal est gardé.
-        logger.warning("Transcription refusée par le fournisseur : %s", err)
+        # Le format et la taille sont dans la ligne : un 500 sur un envoi de 3 Ko
+        # n'a pas la même cause qu'un 500 sur un webm de 200 Ko bien formé.
+        logger.warning(
+            "Transcription refusée (%s, %.0f Ko, modèle %s) : %s",
+            filename, len(audio) / 1024, config.model_transcription, err,
+        )
         raise TranscriptionError(
             "Le service de transcription n'a pas répondu. Votre enregistrement est "
             "conservé — réessayez dans un instant."

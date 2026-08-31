@@ -51,7 +51,17 @@
          secondes de pipeline pour une reprise de trois mots. Pas un écran de plus —
          la carte de dictée change d'état, et les deux actions s'affichent dessous. -->
     <div class="relu" id="relu" hidden>
-      <audio id="relu-audio" controls preload="metadata"></audio>
+      <!-- Lecteur maison, et pour une raison précise : un webm sorti de MediaRecorder
+           n'a pas de durée dans son en-tête, et le lecteur natif en affiche une
+           aberrante — « 32:04 » pour treize secondes. Ici la durée vient du
+           chronomètre de la dictée, qui lui ne ment pas ; l'élément <audio> ne sert
+           plus qu'à produire le son. -->
+      <div class="lecteur" id="lecteur">
+        <button class="lecteur__jouer" id="relu-jouer" aria-label="Écouter l'enregistrement"><i></i></button>
+        <div class="lecteur__piste" id="relu-piste"><div class="lecteur__avance" id="relu-avance"></div></div>
+        <div class="lecteur__temps num" id="relu-temps">0:00</div>
+      </div>
+      <audio id="relu-audio" preload="metadata"></audio>
       <div class="relu__actions">
         <button class="btn" id="btn-envoyer-dictee">Établir le devis</button>
         <button class="btn btn--ghost" id="btn-refaire-dictee">Refaire</button>

@@ -382,22 +382,54 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
 .relu { margin-top: 14px; }
 .relu__actions { display: flex; gap: 12px; margin-top: 14px; }
 
-/* Le lecteur natif arrive avec la teinte et le rayon de Chrome : un galet gris de
-   999px au milieu d'une page qui n'a que des angles à 4px. On garde les commandes
-   natives — elles sont accessibles au clavier, familières, et lues par les lecteurs
-   d'écran, ce qu'un lecteur maison coûterait cher à retrouver — mais on les ramène
-   au rayon du produit et sur le fond des blocs en creux. Le sélecteur `-webkit-` ne
-   vaut que pour Blink et WebKit, donc pour le téléphone de l'artisan ; ailleurs il
-   est simplement ignoré, et le rayon suffit. */
-.relu audio {
-  width: 100%; display: block;
-  border-radius: var(--dv-radius);
+/* Le lecteur. Il a d'abord été natif — plus court à écrire, et accessible sans
+   effort. Mais un webm sorti de MediaRecorder n'a pas de durée dans son en-tête, et
+   le lecteur natif d'Android affichait « 32:04 » pour treize secondes : une donnée
+   fausse, bien lisible, au milieu d'un produit dont tout l'argument est qu'on peut
+   se fier à ce qu'il montre. Celui-ci lit la durée du chronomètre de la dictée.
+   Le bouton reste un vrai <button>, donc au clavier et au lecteur d'écran. */
+
+.relu audio { display: none; }
+
+.lecteur {
+  display: flex; align-items: center; gap: 14px;
+  padding: 11px 14px;
   background: var(--dv-bg-alt);
+  border: 1px solid var(--dv-rule-soft);
+  border-radius: var(--dv-radius);
 }
-.relu audio::-webkit-media-controls-enclosure,
-.relu audio::-webkit-media-controls-panel {
-  border-radius: var(--dv-radius);
-  background: var(--dv-bg-alt);
+
+.lecteur__jouer {
+  width: 34px; height: 34px; flex: none; padding: 0;
+  border: 1.5px solid var(--dv-accent); border-radius: 50%;
+  background: var(--dv-paper); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Triangle de lecture en bordures, comme la pastille du micro : aucune image. */
+.lecteur__jouer i {
+  display: block; width: 0; height: 0; margin-left: 3px;
+  border-left: 9px solid var(--dv-accent);
+  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+}
+/* Deux barres pour la pause, dessinées d'un dégradé : toujours pas d'élément en plus. */
+.lecteur.joue .lecteur__jouer i {
+  width: 9px; height: 11px; margin-left: 0; border: none;
+  background: linear-gradient(to right,
+    var(--dv-accent) 0 3px, transparent 3px 6px, var(--dv-accent) 6px 9px);
+}
+
+.lecteur__piste {
+  flex: 1; height: 3px; border-radius: 2px;
+  background: var(--dv-rule); cursor: pointer;
+}
+.lecteur__avance {
+  height: 100%; width: 0; border-radius: 2px;
+  background: var(--dv-accent);
+}
+
+.lecteur__temps {
+  flex: none; min-width: 74px; text-align: right;
+  font-size: 12px; color: var(--dv-faint);
 }
 
 /* Pendant la réécoute, les deux chemins de repli disparaissent : proposer trois
