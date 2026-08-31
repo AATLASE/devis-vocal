@@ -69,6 +69,7 @@ function reinitialiser() {
   arreterDictee(true);
   fermerRelu();
   devisCourant = null;
+  pdfPret = null;
   vocalCourant = null;
   transcriptionCourante = null;
   dureeVocal = null;
@@ -613,6 +614,7 @@ async function lancer(fichier, texte, dureeSecondes) {
       setTimeout(() => montrer('vide'), 500);
     } else {
       peindreRelecture(devisCourant);
+      preparerPdf();   // fabriqué pendant la relecture, prêt avant le premier appui
       setTimeout(() => montrer('relecture'), 500);
     }
   } catch (err) {
@@ -749,38 +751,66 @@ function telecharger(blob, nom) {
   setTimeout(() => { lien.remove(); URL.revokeObjectURL(url); }, 60_000);
 }
 
+/* Le PDF est fabriqué dès que le devis s'affiche, pendant que l'artisan le relit.
+   Deux raisons, et la seconde est la vraie : le bouton devient instantané, et surtout
+   `navigator.share()` doit partir dans la fenêtre d'activation du geste. Deux secondes
+   de Chromium entre l'appui et l'appel la laissaient expirer — le partage était refusé
+   sans qu'aucune feuille ne s'ouvre, et l'écran restait muet. */
+let pdfPret = null;
+
+function preparerPdf() {
+  const promesse = genererPdf();
+  promesse.catch(() => {});   // l'échec sera revu au clic ; pas de rejet non traité
+  pdfPret = promesse;
+}
+
 async function envoyerPdf() {
   const bouton = $('btn-pdf');
   const libelle = bouton.textContent;
   bouton.disabled = true;
-  bouton.textContent = 'Génération…';
+  // Le libellé d'attente n'apparaît que si l'attente a lieu : le PDF est en général
+  // déjà prêt, et un « Génération… » qui clignote se lit comme un défaut.
+  const attente = setTimeout(() => { bouton.textContent = 'Génération…'; }, 150);
 
+  let blob;
   try {
-    const blob = await genererPdf();
-    const nom = `${devisCourant.numero}.pdf`;
-
-    if (saitPartagerUnPdf()) {
-      try {
-        await navigator.share({
-          files: [new File([blob], nom, { type: 'application/pdf' })],
-          title: `Devis ${devisCourant.numero}`,
-        });
-        return;
-      } catch (err) {
-        // Feuille de partage fermée : ce n'est pas une panne, on n'affiche rien.
-        if (err && err.name === 'AbortError') return;
-        // iOS exige que `share()` parte dans la fenêtre d'activation du geste, or la
-        // génération du PDF prend deux secondes et a pu la laisser expirer. Le refus
-        // n'est donc pas nécessairement une absence de support : on retombe sur le
-        // fichier plutôt que d'annoncer une erreur qui n'en est pas une.
-      }
-    }
-    telecharger(blob, nom);
+    blob = await (pdfPret || genererPdf());
   } catch (err) {
+    pdfPret = null;
     echouer(err.message);
+    return;
   } finally {
+    clearTimeout(attente);
     bouton.disabled = false;
     bouton.textContent = libelle;
+  }
+
+  const nom = `${devisCourant.numero}.pdf`;
+  let partage = false;
+
+  if (saitPartagerUnPdf()) {
+    const debut = Date.now();
+    try {
+      await navigator.share({
+        files: [new File([blob], nom, { type: 'application/pdf' })],
+        title: `Devis ${devisCourant.numero}`,
+      });
+      partage = true;
+    } catch (err) {
+      // Une feuille de partage vraiment ouverte, puis refermée par l'artisan, prend
+      // au moins quelques centaines de millisecondes. Un refus instantané veut dire
+      // que rien ne s'est affiché : dans ce cas on enregistre le fichier, parce que
+      // laisser quelqu'un devant un bouton qui ne fait rien est le pire des deux.
+      partage = err && err.name === 'AbortError' && Date.now() - debut > 250;
+    }
+  }
+
+  if (!partage) {
+    telecharger(blob, nom);
+    // Sur un téléphone, un téléchargement se signale par une notification qu'on
+    // rate. Le bouton, lui, est sous le doigt.
+    bouton.textContent = 'Devis enregistré';
+    setTimeout(() => { bouton.textContent = libelle; }, 2200);
   }
 }
 
