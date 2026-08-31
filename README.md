@@ -109,9 +109,14 @@ de chercher un fichier. Le dépôt de fichier et le texte collé restent en repl
   « Établir le devis » ou « Refaire ».
 - **Si le chiffrage échoue**, la transcription est conservée et l'écran d'erreur propose de
   rejouer cette seule étape — sans refaire parler l'artisan.
+- **L'enregistrement est léger** : mono, 32 kbit/s. Chrome enregistre par défaut quatre
+  fois plus gros, alors que Whisper ramène tout en 16 kHz mono avant de transcrire. Ça
+  compte quand on téléverse depuis une camionnette.
 - **Le bouton final partage** le PDF par la feuille du système (`navigator.share`) quand
   l'appareil sait le faire — donc vers WhatsApp ou les messages, depuis un téléphone — et
-  retombe sur un téléchargement partout ailleurs.
+  retombe sur un téléchargement partout ailleurs. Le PDF est fabriqué dès l'affichage du
+  devis, pendant la relecture : `navigator.share()` doit partir dans la fenêtre
+  d'activation du geste, que deux secondes de Chromium laissaient expirer.
 - **Un bandeau prévient** quand le chiffrage est rejoué depuis une fixture, ou calculé par
   un moteur de secours plutôt que par le moteur de référence.
 
