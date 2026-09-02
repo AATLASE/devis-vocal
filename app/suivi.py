@@ -75,10 +75,13 @@ def configurer() -> None:
     racine.addHandler(fichier)
     racine.addHandler(console)
 
-    # uvicorn tient ses propres handlers et ne remonte pas au logger racine : sans ça,
-    # les requêtes HTTP et les erreurs de démarrage resteraient à l'écran et ne
-    # seraient nulle part le lendemain.
-    for nom in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    # uvicorn tient ses propres handlers et coupe la remontée vers le logger racine :
+    # sans ça, les requêtes HTTP et les erreurs de démarrage resteraient à l'écran et
+    # ne seraient nulle part le lendemain.
+    #
+    # Deux loggers, pas trois : `uvicorn.error` n'a pas de handler à lui et remonte à
+    # `uvicorn`. Lui donner aussi le fichier écrirait chaque démarrage deux fois.
+    for nom in ("uvicorn", "uvicorn.access"):
         logging.getLogger(nom).addHandler(fichier)
 
     # Le détail des sockets et des retries HTTP n'apprend rien ; la ligne de httpx,
