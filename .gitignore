@@ -17,6 +17,10 @@ venv/
 # sur laquelle il a été enregistré.
 journal/
 
+# Suivi d'exécution : recopie les transcriptions et les devis, donc parfois des noms
+# et des adresses de clients. Voir app/suivi.py.
+logs/
+
 # OS / éditeurs
 .DS_Store
 Thumbs.db

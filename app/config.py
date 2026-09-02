@@ -75,6 +75,15 @@ class Config(BaseSettings):
     journal: bool = False
     journal_dir: Path = RACINE / "journal"
 
+    # --- Journalisation d'exécution ---
+    # Voir app/suivi.py. Toujours actif : un log qu'il faut penser à armer est un log
+    # qu'on n'a pas le jour où quelque chose casse devant un artisan.
+    log_dir: Path = RACINE / "logs"
+    log_retention_jours: int = 30
+    # Recopie la transcription et le JSON d'extraction dans le log. C'est ce qui rend
+    # un devis raté compréhensible après coup ; c'est aussi ce qui fait le volume.
+    log_contenu: bool = True
+
     # --- Règles de devis ---
     tva_defaut: Decimal = Decimal("0.10")  # rénovation logement > 2 ans
     validite_jours: int = 30

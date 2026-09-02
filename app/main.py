@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from app import journal
 from app import pdf as pdf_module
+from app import suivi
 from app.config import get_config
 from app.models import Devis, to_devis
 from app.structuration import StructurationError, structure
@@ -35,6 +36,10 @@ STATIQUE = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Avant Chromium : si le navigateur ne démarre pas, on veut que la raison soit
+    # dans le fichier de log et pas seulement dans un terminal qu'on aura fermé.
+    suivi.configurer()
+
     # Chromium est lancé une fois pour toutes : le démarrer à chaque devis coûterait
     # une seconde de plus par rendu.
     try:
@@ -83,7 +88,11 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     contenu = await audio.read()
     nom = audio.filename or "audio.m4a"
     try:
-        transcription = transcribe(contenu, nom)
+        with suivi.etape("transcription", attendu=TranscriptionError,
+                         fichier=nom, ko=len(contenu) / 1024) as detail:
+            transcription = transcribe(contenu, nom)
+            detail["caracteres"] = len(transcription)
+        suivi.bloc("transcription", transcription)
         # Le vocal d'un vrai artisan ne repasse pas deux fois : on le garde si le
         # journal est armé. Voir app/journal.py — ce n'est pas du stockage produit.
         journal.noter_vocal(contenu, nom, transcription)
@@ -91,7 +100,6 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     except TranscriptionError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     except Exception:
-        logger.exception("Transcription en échec")
         raise HTTPException(status_code=500, detail="La transcription a échoué.") from None
 
 
@@ -99,16 +107,20 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
 async def api_devis(demande: DemandeDevis) -> Devis:
     config = get_config()
     try:
-        extraction = structure(demande.transcription)
+        with suivi.etape("structuration", attendu=StructurationError,
+                         caracteres=len(demande.transcription)) as detail:
+            extraction = structure(demande.transcription)
+            detail["lignes"] = len(extraction.lignes)
+            detail["estimees"] = sum(1 for ligne in extraction.lignes if ligne.a_valider)
     except StructurationError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     except Exception:
-        logger.exception("Structuration en échec")
         raise HTTPException(status_code=500, detail="La génération du devis a échoué.") from None
 
+    suivi.bloc("extraction", extraction.model_dump_json(indent=2))
     journal.noter_extraction(demande.transcription, extraction)
 
-    return to_devis(
+    devis = to_devis(
         extraction,
         entreprise=config.entreprise,
         transcription=demande.transcription,
@@ -117,13 +129,24 @@ async def api_devis(demande: DemandeDevis) -> Devis:
         tva_forcee=demande.taux_tva,
     )
 
+    # Les totaux sont la seule partie qui doit être juste à tous les coups : les avoir
+    # sous les yeux pendant la démo permet de comparer au PDF sans rouvrir le devis.
+    logger.info(
+        "  devis  numero=%s lignes=%d tva=%s total_ht=%s montant_tva=%s total_ttc=%s "
+        "acompte=%s dont_estime=%s",
+        devis.numero, len(devis.lignes), devis.taux_tva, devis.total_ht,
+        devis.montant_tva, devis.total_ttc, devis.montant_acompte, devis.total_ht_estime,
+    )
+    return devis
+
 
 @app.post("/api/pdf")
 async def api_pdf(devis: Devis) -> Response:
     try:
-        contenu = await pdf_module.render(devis)
+        with suivi.etape("pdf", numero=devis.numero) as detail:
+            contenu = await pdf_module.render(devis)
+            detail["ko"] = len(contenu) / 1024
     except Exception:
-        logger.exception("Rendu PDF en échec")
         raise HTTPException(status_code=500, detail="La génération du PDF a échoué.") from None
 
     return Response(

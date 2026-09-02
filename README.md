@@ -160,6 +160,40 @@ l'empreinte de la transcription qui rapproche l'audio de son chiffrage.
 > Le journal enregistre la voix de quelqu'un. Le dossier est ignoré par git et ne doit
 > pas quitter la machine ; le dire à l'artisan avant d'enregistrer n'est pas une option.
 
+### Suivre ce qui se passe
+
+Tout passe par `logs/devis-vocal.log`, en même temps qu'à l'écran. Rien à armer.
+
+```
+15:08:15 INFO    transcription fichier=vocal.webm ko=412.3
+15:08:15 INFO      appel fournisseur=groq modele=whisper-large-v3-turbo
+15:08:21 INFO      transcription ok  5.8 s caracteres=1240
+15:08:21 INFO      transcription (1240 caracteres)
+    Alors, pour la salle de bain de Mme Ferrand, rue des Lilas...
+15:08:23 INFO    structuration caracteres=1240
+15:08:54 INFO      appel fournisseur=anthropic modele=claude-opus-5 tokens_entree=2841 tokens_sortie=1102 cout_usd=0.0417
+15:08:54 INFO      structuration ok  31.4 s lignes=9 estimees=2
+15:08:54 INFO      extraction (2180 caracteres)
+    { ... le JSON complet renvoyé par le modèle ... }
+15:08:54 INFO      devis  numero=DEV-20260902-1508 lignes=9 tva=0.1 total_ht=4374.55 ...
+15:08:59 INFO      pdf ok  1.9 s ko=248.1
+```
+
+Chaque étape avec sa durée, le fournisseur et le modèle appelés, les tokens et le coût
+estimé, les totaux calculés — à comparer d'un coup d'œil avec le PDF — et la pile
+complète quand ça casse. Une erreur qu'on renvoie soi-même à l'utilisateur (fichier trop
+lourd, format refusé) tient en une ligne : dérouler trente lignes de pile pour un message
+qu'on a écrit noierait les vraies pannes.
+
+Le fichier est archivé chaque nuit sous `logs/devis-vocal.log.2026-09-01` — le chemin à
+ouvrir ne change jamais, la journée d'un rendez-vous reste retrouvable. Trente jours
+gardés, dossier ignoré par git. `LOG_CONTENU=false` cesse d'y recopier les
+transcriptions et les extractions si le fichier devient lourd.
+
+> À ne pas confondre avec le journal ci-dessus : celui-ci suit l'exécution, l'autre
+> garde les vocaux. Le suivi recopie des transcriptions, donc parfois des noms et des
+> adresses de clients — il ne quitte pas la machine non plus.
+
 ### Deux modèles Pydantic, et c'est volontaire
 
 Un LLM se trompe en arithmétique. Un total faux devant un artisan, c'est la démo morte.
