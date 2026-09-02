@@ -4,8 +4,12 @@ Interface unique : `transcribe(audio, filename) -> str`. Tout le reste du projet
 quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien casser.
 
 Par défaut : Groq (whisper-large-v3-turbo). Endpoint compatible OpenAI, très rapide, et
-son tier gratuit suffit largement à une démo. Une alternative 100 % locale est décrite
-en bas de fichier.
+son tier gratuit suffit largement à une démo.
+
+L'appel ne connaît que trois choses — une URL, une clé, un modèle — donc n'importe quel
+fournisseur parlant le format OpenAI le remplace sans toucher au code : OpenAI lui-même,
+Fireworks, ou un Whisper servi en local. Voir les variables TRANSCRIPTION_* du .env.
+Une alternative 100 % locale est décrite en bas de fichier.
 """
 
 from __future__ import annotations
@@ -47,13 +51,15 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    if not config.groq_api_key:
+    if not config.transcription_key:
         raise TranscriptionError(
-            "GROQ_API_KEY absente. Renseigne-la dans le .env, ou colle directement une "
-            "transcription dans le champ texte de la page."
+            "Aucune clé de transcription. Renseigne GROQ_API_KEY dans le .env — c'est "
+            "gratuit et sans carte bancaire — ou TRANSCRIPTION_API_KEY et "
+            "TRANSCRIPTION_BASE_URL pour un autre fournisseur. Sinon, colle directement "
+            "une transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=config.groq_api_key, base_url=config.groq_base_url)
+    client = OpenAI(api_key=config.transcription_key, base_url=config.transcription_url)
 
     fichier = io.BytesIO(audio)
     fichier.name = filename  # le SDK s'appuie sur l'extension pour typer l'envoi

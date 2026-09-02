@@ -55,6 +55,39 @@ Deux clés à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 | `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte bancaire | gratuit |
 | `ANTHROPIC_API_KEY` | <https://console.anthropic.com> — pas de tier gratuit | 5 € de crédit ≈ plusieurs centaines de devis |
 
+### Avec la clé que tu as déjà
+
+Anthropic est la référence, mais rien n'y oblige. Quasiment toutes les API de modèles
+parlent le format OpenAI, donc trois variables suffisent à en brancher une que le projet
+ne connaît pas — Mistral, DeepSeek, OpenRouter, xAI, ou un modèle local sous Ollama :
+
+```bash
+STRUCTURATION_PROVIDER=autre
+STRUCTURATION_BASE_URL=https://api.mistral.ai/v1
+STRUCTURATION_API_KEY=...
+MODEL_STRUCTURATION_AUTRE=mistral-large-latest
+```
+
+Pour les fournisseurs que le projet connaît déjà, **la clé suffit** : `STRUCTURATION_PROVIDER`
+se déduit de ce qui est renseigné. Poser `OPENAI_API_KEY` et rien d'autre chiffre chez
+OpenAI. On ne le précise que pour trancher quand plusieurs clés cohabitent — typiquement
+une `GROQ_API_KEY` présente pour la transcription alors qu'Anthropic doit chiffrer, ce
+que la déduction fait déjà dans le bon sens. Le moteur retenu est annoncé sur `/health`
+et affiché dans le bandeau : déduit ne veut pas dire invisible.
+
+Même chose pour l'audio avec `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY` —
+laissées vides, elles retombent sur Groq, dont le Whisper est gratuit et difficile à
+battre. Le `.env.example` liste les URL des fournisseurs courants.
+
+Un fournisseur qui ne sait pas imposer un schéma JSON bascule tout seul sur un mode moins
+contraint, avec un avertissement dans les logs. La sortie reste validée par Pydantic,
+donc un devis faux échoue au lieu de passer — mais il échouera plus souvent. Avant de
+faire confiance à un nouveau fournisseur devant un artisan, mesure-le :
+
+```bash
+uv run python scripts/comparer.py anthropic autre
+```
+
 Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
 nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
 produit. Huit des dix lignes sont publiques — cherche son entreprise sur

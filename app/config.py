@@ -6,12 +6,13 @@ sans aucun `.env` ni aucune clé API.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import Entreprise
@@ -57,12 +58,37 @@ class Config(BaseSettings):
     # `anthropic` est le fournisseur de référence : c'est lui qui doit tourner en démo.
     # `groq` est une option gratuite pour dégrossir sans consommer de crédit — le
     # chiffrage y est sensiblement moins juste (voir CONTRIBUTING.md).
-    structuration_provider: Literal["anthropic", "groq", "openai"] = "anthropic"
+    # `autre` accepte n'importe quelle API au format OpenAI — Mistral, DeepSeek,
+    # OpenRouter, Together, xAI, ou un modèle local servi par Ollama ou vLLM. Trois
+    # variables suffisent : l'URL, la clé, le modèle.
+    # Laisse vide et il se déduit de la clé qu'on trouve — voir `_deduire_fournisseur`.
+    structuration_provider: Literal["anthropic", "groq", "openai", "autre"] | None = None
     model_structuration: str = "claude-opus-5"
     model_structuration_groq: str = "openai/gpt-oss-120b"
     model_structuration_openai: str = "gpt-5"
-    model_transcription: str = "whisper-large-v3-turbo"
     groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # --- Fournisseur libre pour le chiffrage (STRUCTURATION_PROVIDER=autre) ---
+    structuration_base_url: str = ""
+    structuration_api_key: str = ""
+    model_structuration_autre: str = ""
+
+    # --- Transcription ---
+    # Groq par défaut : son Whisper est gratuit, rapide, et sans carte bancaire. Les
+    # variables TRANSCRIPTION_* ouvrent le même appel à n'importe quel fournisseur au
+    # format OpenAI. Laissées vides, elles retombent sur Groq : rien ne change pour
+    # les .env existants.
+    model_transcription: str = "whisper-large-v3-turbo"
+    transcription_base_url: str = ""
+    transcription_api_key: str = ""
+
+    @property
+    def transcription_url(self) -> str:
+        return self.transcription_base_url or self.groq_base_url
+
+    @property
+    def transcription_key(self) -> str:
+        return self.transcription_api_key or self.groq_api_key
 
     # --- Mode hors-ligne : rejoue une extraction enregistrée, zéro appel API, zéro euro ---
     use_fixtures: bool = False
@@ -87,6 +113,40 @@ class Config(BaseSettings):
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
 
+    @model_validator(mode="after")
+    def _deduire_fournisseur(self) -> "Config":
+        """Sans STRUCTURATION_PROVIDER explicite, on chiffre avec la clé qu'on a.
+
+        Renseigner une clé et devoir en plus nommer son fournisseur est une double
+        déclaration qui ne sert à rien : la clé désigne déjà le moteur. On ne déduit
+        que le silence — un `STRUCTURATION_PROVIDER` écrit dans le .env gagne toujours,
+        y compris pour forcer un fournisseur dont la clé est absente et obtenir le
+        message d'erreur qui va avec.
+
+        L'ordre suit la qualité du chiffrage, pas la commodité : Anthropic est la
+        référence. Groq passe en dernier bien qu'il soit souvent présent, parce qu'une
+        GROQ_API_KEY est d'abord là pour la transcription — la trouver ne veut pas dire
+        qu'on a choisi Groq pour chiffrer.
+
+        Le moteur retenu reste annoncé par `/health` et affiché à l'écran : déduit ne
+        veut pas dire invisible.
+        """
+        if self.structuration_provider is None:
+            if self.anthropic_api_key:
+                deduit = "anthropic"
+            elif self.openai_api_key:
+                deduit = "openai"
+            elif self.structuration_base_url:
+                deduit = "autre"
+            elif self.groq_api_key:
+                deduit = "groq"
+            else:
+                # Aucune clé nulle part : rester sur la référence, dont le message
+                # d'absence est celui qui aide le plus (il mentionne USE_FIXTURES).
+                deduit = "anthropic"
+            self.structuration_provider = deduit
+        return self
+
     entreprise_settings: EntrepriseSettings = Field(default_factory=EntrepriseSettings)
 
     @property
@@ -97,4 +157,13 @@ class Config(BaseSettings):
 
 @lru_cache
 def get_config() -> Config:
-    return Config()
+    config = Config()
+    # Une ligne au démarrage : quel moteur chiffre, où part l'audio. C'est la
+    # question qu'on se pose toujours en premier quand un devis sort bizarre.
+    logging.getLogger("devis-vocal").info(
+        "Chiffrage : %s · transcription : %s · mode : %s",
+        config.structuration_provider,
+        config.transcription_url,
+        "fixtures" if config.use_fixtures else "réel",
+    )
+    return config

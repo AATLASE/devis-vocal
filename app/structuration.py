@@ -10,6 +10,7 @@ pas de « et si le modèle rajoutait du texte autour ».
 from __future__ import annotations
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,6 +18,8 @@ import anthropic
 
 from app.config import RACINE, get_config
 from app.models import DevisExtraction
+
+logger = logging.getLogger("devis-vocal")
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "structuration.md"
 FIXTURES = RACINE / "tests" / "fixtures"
@@ -89,25 +92,61 @@ def _structure_compatible_openai(
         raise StructurationError(f"Clé API absente : impossible de chiffrer via {fournisseur}.")
 
     client = OpenAI(api_key=api_key, base_url=base_url)
-    try:
-        reponse = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _prompt_systeme()},
-                {"role": "user", "content": transcript},
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": "devis", "schema": _schema_strict(), "strict": True},
-            },
-        )
-    except OpenAIError as err:
-        raise StructurationError(f"Appel {fournisseur} en échec : {err}") from err
 
-    contenu = reponse.choices[0].message.content
-    if not contenu:
-        raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
-    return DevisExtraction.model_validate_json(contenu)
+    # Parler le format OpenAI ne veut pas dire accepter les mêmes sorties contraintes.
+    # OpenAI et Groq gèrent `json_schema` strict ; DeepSeek ou un Ollama local n'ont
+    # que `json_object`. On demande le plus contraint et on redescend d'un cran s'il
+    # est refusé. Pydantic reste le filet : un modèle qui divague échoue franchement
+    # au lieu de produire un devis à moitié faux.
+    schema = _schema_strict()
+    tentatives = (
+        ("json_schema",
+         {"type": "json_schema",
+          "json_schema": {"name": "devis", "schema": schema, "strict": True}},
+         None),
+        ("json_object",
+         {"type": "json_object"},
+         "Réponds uniquement par un objet JSON conforme à ce schéma, sans texte autour : "
+         + json.dumps(schema, ensure_ascii=False)),
+    )
+
+    derniere: Exception | None = None
+    for mode, format_sortie, consigne in tentatives:
+        messages = [
+            {"role": "system", "content": _prompt_systeme()},
+            {"role": "user", "content": transcript},
+        ]
+        if consigne:
+            # Le schéma part dans un message à lui : le prompt de référence ne bouge
+            # pas, et la comparaison entre fournisseurs reste honnête.
+            messages.insert(1, {"role": "system", "content": consigne})
+
+        try:
+            reponse = client.chat.completions.create(
+                model=model, messages=messages, response_format=format_sortie,
+            )
+        except OpenAIError as err:
+            derniere = err
+            # Un 400 trahit en général un `response_format` non supporté. Tout le
+            # reste — clé invalide, crédit épuisé, panne — échouerait pareil au
+            # second essai : inutile de le payer deux fois.
+            if getattr(err, "status_code", None) != 400:
+                break
+            logger.warning("%s refuse le mode %s : %s", fournisseur, mode, str(err)[:200])
+            continue
+
+        contenu = reponse.choices[0].message.content
+        if not contenu:
+            raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
+        if mode != "json_schema":
+            # Ça doit se voir : le schéma n'est plus imposé par l'API, seulement
+            # demandé au modèle. La sortie est moins sûre qu'elle en a l'air.
+            logger.warning(
+                "%s a chiffré en mode %s : schéma non imposé par l'API.", fournisseur, mode,
+            )
+        return DevisExtraction.model_validate_json(contenu)
+
+    raise StructurationError(f"Appel {fournisseur} en échec : {derniere}") from derniere
 
 
 def structure(transcript: str) -> DevisExtraction:
@@ -136,6 +175,22 @@ def structure(transcript: str) -> DevisExtraction:
             base_url=None,  # api.openai.com
             model=config.model_structuration_openai,
             fournisseur="OpenAI",
+        )
+
+    if config.structuration_provider == "autre":
+        if not config.structuration_base_url or not config.model_structuration_autre:
+            raise StructurationError(
+                "STRUCTURATION_PROVIDER=autre exige STRUCTURATION_BASE_URL et "
+                "MODEL_STRUCTURATION_AUTRE dans le .env."
+            )
+        return _structure_compatible_openai(
+            transcript,
+            api_key=config.structuration_api_key,
+            base_url=config.structuration_base_url,
+            model=config.model_structuration_autre,
+            # Le nom du fournisseur est son URL : c'est ce qui identifie vraiment
+            # qui a chiffré, et ça se retrouve tel quel dans les logs.
+            fournisseur=config.structuration_base_url,
         )
 
     if not config.anthropic_api_key:
