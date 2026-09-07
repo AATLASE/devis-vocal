@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -26,6 +26,7 @@ from app import journal
 from app import pdf as pdf_module
 from app.config import get_config
 from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
+from app import securite
 from app.models import Devis, to_devis
 from app.structuration import StructurationError, structure
 from app.transcription import TranscriptionError, transcribe
@@ -58,6 +59,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Devis Vocal", lifespan=lifespan)
 
+# L'ordre compte : le dernier enregistré s'exécute en premier. On refuse donc une
+# requête trop grosse avant de perdre du temps à poser des en-têtes sur sa réponse.
+app.middleware("http")(securite.poser_les_entetes)
+app.middleware("http")(securite.limiter_la_taille)
+
+# Toutes les routes coûteuses passent par là : la porte, puis le débit. Les mettre en
+# dépendance plutôt qu'en middleware garde `/`, `/static` et `/health` accessibles —
+# sans quoi la page où l'on saisit le code ne pourrait pas se charger.
+GARDE = [Depends(securite.verifier_acces), Depends(securite.verifier_debit)]
+
 
 class DemandeDevis(BaseModel):
     transcription: str
@@ -72,22 +83,38 @@ class DemandeDevis(BaseModel):
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health(request: Request) -> dict[str, str]:
     # `mode` et `provider` sont lus par le front pour signaler à l'écran ce qui tourne
     # vraiment. Sans eux, on peut montrer à un artisan un devis rejoué depuis une
     # fixture — ou chiffré par un moteur de secours — en croyant voir le moteur de
     # référence. Dans les deux cas l'erreur est grossière et parfaitement invisible.
     # `provider` sert aussi à annoncer la bonne attente : quarante secondes chez
     # Anthropic, six chez Groq.
+    # `acces` est la seule information donnée sans le code : c'est elle qui permet à
+    # la page de savoir qu'il faut le demander. Le moteur et le mode, eux, ne
+    # regardent pas un visiteur de passage — ils disent quelles clés tournent derrière.
+    if securite.acces_requis():
+        try:
+            securite.verifier_acces(request)
+        except HTTPException:
+            return {"status": "ok", "acces": "requis"}
+
     config = get_config()
+    # `acces` décrit l'état de CETTE requête, pas la configuration du serveur :
+    # « requis » veut dire « il me manque un code valide », « ouvert » veut dire
+    # « tu peux continuer ». Confondre les deux, c'est une porte qui ne s'ouvre jamais.
+    # Les compteurs de dépense sont annoncés ici : savoir où on en est ne doit pas
+    # demander d'ouvrir un fichier sur le serveur, ni d'attendre la facture.
     return {
         "status": "ok",
+        "acces": "ouvert",
         "mode": "fixtures" if config.use_fixtures else "reel",
         "provider": config.structuration_provider,
+        **{cle: str(valeur) for cle, valeur in securite.compteurs().items()},
     }
 
 
-@app.post("/api/transcribe")
+@app.post("/api/transcribe", dependencies=GARDE)
 async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     contenu = await audio.read()
     nom = audio.filename or "audio.m4a"
@@ -104,9 +131,12 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
         raise HTTPException(status_code=500, detail="La transcription a échoué.") from None
 
 
-@app.post("/api/devis")
+@app.post("/api/devis", dependencies=GARDE)
 async def api_devis(demande: DemandeDevis) -> Devis:
     config = get_config()
+    # Compté avant l'appel, pas après : ce qu'on protège, c'est la dépense, et elle
+    # est engagée dès que la requête part chez le fournisseur.
+    securite.consommer_devis()
     try:
         extraction = structure(demande.transcription)
     except StructurationError as err:
@@ -133,8 +163,18 @@ async def api_devis(demande: DemandeDevis) -> Devis:
     )
 
 
-@app.post("/api/pdf")
+@app.post("/api/pdf", dependencies=GARDE)
 async def api_pdf(devis: Devis) -> Response:
+    # Le corps de la requête est un devis quelconque, fabriqué par le client. Sans
+    # plafond, cinquante mille lignes occupent Chromium pendant plusieurs minutes —
+    # et pendant ce temps, plus personne n'obtient de PDF.
+    plafond = get_config().max_lignes_devis
+    if len(devis.lignes) > plafond:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Un devis ne peut pas dépasser {plafond} lignes.",
+        )
+
     try:
         contenu = await pdf_module.render(devis)
     except Exception:
@@ -148,7 +188,7 @@ async def api_pdf(devis: Devis) -> Response:
     )
 
 
-@app.get("/api/entreprise")
+@app.get("/api/entreprise", dependencies=GARDE)
 async def api_entreprise(q: str = "") -> list[EntrepriseTrouvee]:
     """Retrouve une entreprise par nom, ville ou numéro, dans la base publique.
 

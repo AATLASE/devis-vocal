@@ -693,6 +693,21 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   .entreprise__actions .btn { width: 100%; }
 }
 
+/* ---- porte d'entrée ------------------------------------------------------ */
+
+.porte { min-height: 100svh; padding: 24px; display: flex; align-items: center; justify-content: center; }
+.porte__inner { width: 100%; max-width: 420px; }
+.porte__lede { margin: 18px 0 26px; font-size: 15px; color: var(--dv-muted); line-height: 1.6; }
+.porte .label { display: block; margin-bottom: 9px; }
+.porte input {
+  width: 100%; padding: 15px 16px; font: inherit; font-size: 17px;
+  font-family: var(--dv-mono); background: var(--dv-paper); color: var(--dv-ink);
+  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
+}
+.porte input:focus { outline: none; border-color: var(--dv-accent); }
+.porte__erreur { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--dv-accent-dark); }
+.porte .btn { width: 100%; margin-top: 8px; }
+
 /* ---- mouvement réduit --------------------------------------------------- */
 /* Le dévoilement de la transcription est du contenu, pas de la décoration : il
    n'est pas supprimé, il est instantané (voir `MOUVEMENT_REDUIT` dans app.js). */

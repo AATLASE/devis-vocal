@@ -146,7 +146,13 @@ def _structure_compatible_openai(
             )
         return DevisExtraction.model_validate_json(contenu)
 
-    raise StructurationError(f"Appel {fournisseur} en échec : {derniere}") from derniere
+    # Le message du fournisseur porte son URL, ses noms de modèles et parfois des
+    # détails de compte. Il a sa place dans le journal du serveur, pas dans une
+    # réponse HTTP que n'importe qui peut provoquer.
+    logger.error("Appel %s en échec : %s", fournisseur, derniere)
+    raise StructurationError(
+        "Le service de chiffrage n'a pas répondu. Réessayez dans un instant."
+    ) from derniere
 
 
 def structure(transcript: str) -> DevisExtraction:
@@ -209,7 +215,10 @@ def structure(transcript: str) -> DevisExtraction:
             output_format=DevisExtraction,
         )
     except anthropic.APIError as err:  # clé invalide, crédit épuisé, surcharge...
-        raise StructurationError(f"Appel Anthropic en échec : {err}") from err
+        logger.error("Appel Anthropic en échec : %s", err)
+        raise StructurationError(
+            "Le service de chiffrage n'a pas répondu. Réessayez dans un instant."
+        ) from err
 
     extraction = reponse.parsed_output
     if extraction is None:

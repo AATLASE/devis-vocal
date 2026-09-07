@@ -113,6 +113,45 @@ class Config(BaseSettings):
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
 
+    # Le code d'accès. Vide, tout est ouvert — c'est ce qu'on veut en développement et
+    # pendant les tests. Le renseigner arme la porte, et c'est le geste de la mise en
+    # ligne. Ce n'est pas une authentification : c'est un mot de passe unique qu'on
+    # donne de vive voix en rendez-vous, en attendant les comptes.
+    acces_code: str = ""
+
+    # Débit par adresse, sur une minute glissante. Trente laisse passer un artisan
+    # pressé qui reclique, et arrête une boucle.
+    limite_par_minute: int = 30
+
+    # Plafonds de chiffrages, tous appelants confondus. Le code protège du passant ;
+    # ceux-ci protègent du code qui a circulé et du script laissé en boucle. C'est le
+    # garde-fou du portefeuille : au-delà, plus aucun appel payant ne part.
+    #
+    # Deux échelles, parce qu'une seule ne suffit pas : un plafond journalier de 80
+    # laisse passer 2 400 devis dans le mois, ce qui n'est plus un démonstrateur mais
+    # une facture. Le mensuel attrape la fuite lente que le journalier laisse filer.
+    devis_par_jour: int = 80
+    devis_par_mois: int = 400
+
+    # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
+    # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en
+    # relançant l'application ne protège de rien.
+    #
+    # En conteneur, ce chemin DOIT être sur un volume, sinon chaque déploiement
+    # repart de zéro et on retombe exactement sur le problème qu'on voulait régler.
+    compteurs_fichier: Path = RACINE / "var" / "compteurs.json"
+
+    # Un devis qui pèse plus que ça n'est pas un devis, c'est une charge.
+    max_json_ko: int = 512
+
+    # Un devis honnête tient en quelques dizaines de lignes. Au-delà, c'est un
+    # Chromium qu'on cherche à faire ramer.
+    max_lignes_devis: int = 60
+
+    # Rendus PDF simultanés. Chaque page Chromium coûte de la mémoire, et sur un petit
+    # VPS c'est elle qui manque en premier — bien avant le processeur.
+    rendus_simultanes: int = 2
+
     @model_validator(mode="after")
     def _deduire_fournisseur(self) -> "Config":
         """Sans STRUCTURATION_PROVIDER explicite, on chiffre avec la clé qu'on a.

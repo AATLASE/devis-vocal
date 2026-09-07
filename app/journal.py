@@ -33,6 +33,7 @@ from pathlib import Path
 
 from app.config import get_config
 from app.models import DevisExtraction
+from app.transcription import EXTENSIONS_ACCEPTEES
 
 logger = logging.getLogger("devis-vocal")
 
@@ -95,7 +96,14 @@ def noter_vocal(audio: bytes, filename: str, transcription: str,
     def ecrire():
         instant = maintenant or datetime.now()
         dossier = _ouvrir(_cle(transcription), instant)
-        extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ".bin"
+        # `filename` vient du client et sert à construire un chemin. Aujourd'hui
+        # `transcribe()` a déjà refusé tout ce qui n'est pas une extension connue,
+        # donc rien de dangereux n'arrive ici — mais cette sécurité est un effet de
+        # bord, pas une intention : elle disparaîtrait au premier appel fait dans un
+        # autre ordre. On la rend explicite, sur place.
+        extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+        if extension not in EXTENSIONS_ACCEPTEES:
+            extension = ".bin"
         (dossier / f"audio{extension}").write_bytes(audio)
         (dossier / "transcription.txt").write_text(transcription, encoding="utf-8")
 

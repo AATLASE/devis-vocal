@@ -22,6 +22,7 @@ import base64
 import re
 from datetime import date
 from decimal import Decimal
+import asyncio
 from collections.abc import Sequence
 from functools import lru_cache
 from math import ceil
@@ -31,7 +32,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 from playwright.async_api import Browser, async_playwright
 
-from app.config import RACINE
+from app.config import RACINE, get_config
 from app.models import Devis, LigneDevis
 
 TEMPLATES = RACINE / "templates"
@@ -270,6 +271,12 @@ def render_html(devis: Devis) -> str:
 _playwright = None
 _navigateur: Browser | None = None
 
+# Chaque page Chromium coûte de la mémoire, et c'est elle qui manque en premier sur un
+# petit serveur — bien avant le processeur. Sans ce verrou, dix requêtes simultanées
+# ouvrent dix pages et la machine se met à ramer pour tout le monde, y compris pour
+# l'artisan qui attend son PDF. Les requêtes en trop patientent au lieu de s'écrouler.
+_places: asyncio.Semaphore | None = None
+
 
 async def demarrer() -> None:
     """Lance Chromium. Appelé une fois au démarrage de l'application."""
@@ -277,11 +284,17 @@ async def demarrer() -> None:
     if _navigateur is not None:
         return
     _playwright = await async_playwright().start()
-    _navigateur = await _playwright.chromium.launch()
+    _navigateur = await _playwright.chromium.launch(
+        # Dans un conteneur, /dev/shm fait 64 Mo par défaut : Chromium le sature en
+        # plein rendu et meurt sans rien dire. L'option le fait écrire sur le disque —
+        # un peu plus lent, mais le PDF sort. Sans effet hors conteneur.
+        args=["--disable-dev-shm-usage"],
+    )
 
 
 async def arreter() -> None:
-    global _playwright, _navigateur
+    global _playwright, _navigateur, _places
+    _places = None
     if _navigateur is not None:
         await _navigateur.close()
         _navigateur = None
@@ -292,9 +305,21 @@ async def arreter() -> None:
 
 async def render(devis: Devis) -> bytes:
     """Produit le PDF du devis."""
+    global _places
     await demarrer()  # filet : permet d'appeler render() depuis un test, hors application
     assert _navigateur is not None
 
+    # Créé ici et pas au chargement du module : un sémaphore se rattache à la boucle
+    # asyncio qui tourne, et il n'y en a aucune à l'import.
+    if _places is None:
+        _places = asyncio.Semaphore(get_config().rendus_simultanes)
+
+    async with _places:
+        return await _rendre(devis)
+
+
+async def _rendre(devis: Devis) -> bytes:
+    assert _navigateur is not None
     page = await _navigateur.new_page()
     try:
         await page.set_content(render_html(devis), wait_until="load")

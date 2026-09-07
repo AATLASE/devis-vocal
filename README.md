@@ -251,6 +251,47 @@ ensuite) :
 uv run python scripts/enregistrer_fixture.py sdb2 samples/vocal.m4a --audio
 ```
 
+## Avant de mettre en ligne
+
+Le démonstrateur tourne sur **tes** clés API. Sur une URL publique sans protection,
+n'importe qui peut faire tourner le chiffrage à tes frais — il suffit du lien, aucune
+compétence requise. Trois gestes, dans cet ordre d'importance :
+
+**1. Poser un plafond de dépense chez ton fournisseur.** Deux minutes, gratuit, et c'est
+la seule barrière qu'un bug dans ce dépôt ne peut pas contourner. Console Anthropic ou
+tableau de bord OpenAI, plafond mensuel. Le tier gratuit de Groq est déjà sûr : pas de
+carte enregistrée, donc pas de facture possible.
+
+**2. Renseigner `ACCES_CODE` dans le `.env`.** Vide, tout est ouvert — c'est le mode de
+développement. Rempli, les routes coûteuses exigent le code et la page le réclame à
+l'arrivée. Ce n'est pas une authentification, c'est un mot de passe unique donné de vive
+voix en rendez-vous, en attendant les comptes.
+
+**3. Vérifier que `DEVIS_PAR_JOUR` et `DEVIS_PAR_MOIS` te conviennent.** C'est le
+garde-fou du portefeuille : il couvre ce que le code d'accès ne couvre pas — un code qui
+a circulé, un script laissé en boucle, une fausse manœuvre. Deux échelles parce qu'une
+seule ne suffit pas : 80 par jour laisse passer 2 400 devis dans le mois.
+
+Les compteurs sont écrits dans `var/compteurs.json` et survivent à un redémarrage — un
+plafond qu'on annule en relançant l'application ne protège de rien. **En conteneur, ce
+dossier doit être un volume**, sans quoi chaque déploiement les remet à zéro. Leur état
+est lisible sur `/health`, une fois la porte franchie.
+
+Le reste est déjà en place et ne demande rien : en-têtes de sécurité et CSP stricte sur
+chaque réponse, refus des corps trop volumineux **avant** de les lire, limitation de
+débit par adresse, plafond de lignes par devis et de rendus PDF simultanés. Le détail
+des variables est dans `.env.example`, et `tests/test_securite.py` les couvre.
+
+Deux points à ne pas oublier au montage :
+
+- **HTTPS est obligatoire**, pas décoratif : le micro du navigateur ne s'ouvre pas sur
+  une page non sécurisée. Sans certificat, pas de dictée en rendez-vous.
+- Derrière un reverse proxy, lancer uvicorn avec `--proxy-headers`. Sans ça, toutes les
+  requêtes semblent venir du proxy et la limitation de débit compte une seule adresse
+  pour tout le monde. L'en-tête `X-Forwarded-For` n'est **jamais** lu directement : il
+  est écrit par le client, donc n'importe qui pourrait s'inventer une adresse neuve à
+  chaque requête.
+
 ## Déploiement
 
 ```bash

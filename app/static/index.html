@@ -322,6 +322,26 @@
   </div>
 </section>
 
+<!-- 7 ........................................................... porte -->
+<!-- Le démonstrateur tourne sur les clés API de ses auteurs. Sans cette porte,
+     quiconque trouve l'URL fait tourner le chiffrage à leurs frais. Ce n'est pas
+     une authentification — c'est un code unique donné de vive voix en rendez-vous,
+     en attendant les comptes. L'écran ne s'affiche que si le serveur en réclame un. -->
+<section class="screen porte" id="ecran-porte">
+  <div class="porte__inner">
+    <div class="wordmark">
+      <h1>Devis&nbsp;Vocal</h1>
+      <div class="rule"></div>
+    </div>
+    <p class="porte__lede">Cette démonstration est réservée. Saisissez le code qui vous a été communiqué.</p>
+    <label class="label" for="porte-code">Code d'accès</label>
+    <input type="password" id="porte-code" autocomplete="current-password"
+           autocapitalize="off" spellcheck="false" enterkeyhint="go">
+    <div class="porte__erreur" id="porte-erreur" role="alert"></div>
+    <button class="btn" id="btn-porte">Entrer</button>
+  </div>
+</section>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

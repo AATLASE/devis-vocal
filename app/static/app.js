@@ -191,15 +191,28 @@ function devoiler(texte, cible) {
 
 /* ---- appels ------------------------------------------------------------ */
 
+/* Le code d'accès accompagne chaque appel, dans un en-tête et jamais dans l'URL :
+   une URL se retrouve dans l'historique, dans les journaux du reverse proxy et dans
+   le `Referer` envoyé aux sites tiers. */
 async function poste(url, options) {
   let reponse;
   try {
-    reponse = await fetch(url, options);
+    reponse = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ...enteteAcces() },
+    });
   } catch (_) {
     // `fetch` ne rejette que sur un échec réseau — coupure, serveur arrêté, tunnel
     // tombé. Le navigateur donne « Failed to fetch », en anglais et sans sujet :
     // illisible pour un artisan, et surtout muet sur ce qu'il peut faire.
     throw new Error('La connexion au serveur a été perdue. Vérifiez le réseau, puis réessayez.');
+  }
+  if (reponse.status === 401) {
+    // Le code a changé côté serveur, ou celui gardé ici n'a jamais été le bon.
+    oublierAcces();
+    montrer('porte');
+    $('porte-erreur').textContent = "Ce code n'est plus valable. Redemandez-le.";
+    throw new Error("Code d'accès refusé.");
   }
   if (!reponse.ok) {
     let detail = `Erreur ${reponse.status}.`;
@@ -1064,7 +1077,8 @@ async function chercherEntreprise(requete) {
 
   let trouvees = [];
   try {
-    const reponse = await fetch('/api/entreprise?q=' + encodeURIComponent(q));
+    const reponse = await fetch('/api/entreprise?q=' + encodeURIComponent(q),
+                                { headers: enteteAcces() });
     if (reponse.ok) trouvees = await reponse.json();
   } catch (_) {
     // Réseau coupé : on le dit et le formulaire prend le relais.
@@ -1199,7 +1213,8 @@ $('e-siret').addEventListener('blur', async () => {
 
   const trouvees = await (async () => {
     try {
-      const r = await fetch('/api/entreprise?q=' + encodeURIComponent(siret));
+      const r = await fetch('/api/entreprise?q=' + encodeURIComponent(siret),
+                            { headers: enteteAcces() });
       return r.ok ? await r.json() : [];
     } catch (_) { return []; }
   })();
@@ -1226,21 +1241,97 @@ peindreIdentite();
 
 const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI' };
 
-fetch('/health')
-  .then((r) => r.json())
-  .then((info) => {
-    fournisseur = info.provider || 'anthropic';
-    const rejoue = info.mode === 'fixtures';
+function peindreSante(info) {
+  fournisseur = info.provider || 'anthropic';
+  const rejoue = info.mode === 'fixtures';
 
-    ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.anthropic);
+  ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.anthropic);
 
-    const secours = !rejoue && fournisseur !== 'anthropic';
-    if (!rejoue && !secours) return;
+  const secours = !rejoue && fournisseur !== 'anthropic';
+  if (!rejoue && !secours) return;
 
-    $('bandeau-fixtures').hidden = !rejoue;
-    $('bandeau-fournisseur').hidden = !secours;
-    if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
-    $('bandeau').hidden = false;
-    document.body.classList.add('a-bandeau');
-  })
-  .catch(() => { /* le bandeau reste caché : pas de quoi bloquer la page */ });
+  $('bandeau-fixtures').hidden = !rejoue;
+  $('bandeau-fournisseur').hidden = !secours;
+  if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
+  $('bandeau').hidden = false;
+  document.body.classList.add('a-bandeau');
+}
+
+/* ---- 7. porte d'entrée -------------------------------------------------- */
+/* Le démonstrateur tourne sur les clés API de ses auteurs : sans porte, quiconque
+   trouve l'URL chiffre à leurs frais. Le code est unique et donné de vive voix ;
+   ce n'est pas une authentification, c'est un verrou en attendant les comptes.
+
+   Il est gardé par le navigateur pour ne pas être redemandé à chaque devis — mais
+   c'est le serveur qui décide, à chaque appel. Ce qui est stocké ici n'est qu'une
+   commodité : le retirer ne donne accès à rien. */
+
+const CLE_ACCES = 'devis-vocal.acces';
+
+let codeAcces = '';
+try { codeAcces = localStorage.getItem(CLE_ACCES) || ''; } catch (_) { /* stockage bloqué */ }
+
+function enteteAcces() {
+  return codeAcces ? { 'X-Acces': codeAcces } : {};
+}
+
+function oublierAcces() {
+  codeAcces = '';
+  try { localStorage.removeItem(CLE_ACCES); } catch (_) { /* rien à retirer */ }
+}
+
+async function entrer() {
+  const saisi = $('porte-code').value.trim();
+  if (!saisi) return;
+
+  const bouton = $('btn-porte');
+  bouton.disabled = true;
+  $('porte-erreur').textContent = '';
+
+  codeAcces = saisi;
+  let info = null;
+  try {
+    info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
+  } catch (_) {
+    $('porte-erreur').textContent = 'Serveur injoignable. Vérifiez le réseau.';
+  }
+
+  bouton.disabled = false;
+
+  if (!info) return;
+
+  if (info.acces === 'requis') {
+    oublierAcces();
+    $('porte-erreur').textContent = 'Code incorrect.';
+    $('porte-code').select();
+    return;
+  }
+
+  try { localStorage.setItem(CLE_ACCES, saisi); } catch (_) { /* vaut pour la session */ }
+  $('porte-code').value = '';
+  peindreSante(info);
+  montrer('accueil');
+}
+
+$('btn-porte').addEventListener('click', entrer);
+$('porte-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); entrer(); }
+});
+
+/* Au chargement : le serveur dit s'il réclame un code, et le reste de ce qu'il
+   annonce — moteur, mode — n'est donné qu'une fois la porte franchie. */
+(async () => {
+  let info = null;
+  try {
+    info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
+  } catch (_) {
+    return;  // serveur muet : la page reste debout, l'erreur viendra à l'usage
+  }
+
+  if (info.acces === 'requis') {
+    montrer('porte');
+    $('porte-code').focus({ preventScroll: true });
+    return;
+  }
+  peindreSante(info);
+})();

@@ -20,6 +20,7 @@ from pathlib import Path
 from app.config import get_config
 from app.entreprise import EntrepriseSaisie
 from app.main import DemandeDevis, api_devis, health
+from tests.aide import requete
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -37,14 +38,18 @@ async def test_health_annonce_le_mode_et_le_moteur(monkeypatch):
     monkeypatch.setenv("USE_FIXTURES", "true")
     monkeypatch.setenv("STRUCTURATION_PROVIDER", "groq")
 
-    assert await health() == {"status": "ok", "mode": "fixtures", "provider": "groq"}
+    info = await health(requete())
+    assert info["status"] == "ok"
+    assert info["acces"] == "ouvert"
+    assert info["mode"] == "fixtures"
+    assert info["provider"] == "groq"
 
 
 async def test_health_distingue_le_mode_reel(monkeypatch):
     monkeypatch.setenv("USE_FIXTURES", "false")
     monkeypatch.setenv("STRUCTURATION_PROVIDER", "anthropic")
 
-    info = await health()
+    info = await health(requete())
     assert info["mode"] == "reel"
     assert info["provider"] == "anthropic"
 
