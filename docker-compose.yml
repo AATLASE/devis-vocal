@@ -2,11 +2,17 @@ services:
   devis-vocal:
     build: .
     ports:
-      # Une fois derrière un reverse proxy, remplacer par "127.0.0.1:8000:8000" :
-      # l'application n'est alors joignable que depuis la machine, et tout passe par
-      # le proxy — donc par HTTPS. Publier le port sur toutes les interfaces exposerait
-      # l'application en clair à côté de sa propre façade.
-      - "8000:8000"
+      # Boucle locale seulement, et c'est un défaut délibéré : sur un serveur, publier
+      # 8000 sur toutes les interfaces exposerait l'application en clair à côté de sa
+      # propre façade HTTPS. Il faut vouloir l'ouvrir pour l'ouvrir.
+      #
+      # Compose FUSIONNE les listes `ports` entre fichiers au lieu de les remplacer —
+      # une surcouche ne peut donc pas refermer ce qu'on aurait ouvert ici. C'est
+      # pour ça que la valeur sûre est celle par défaut.
+      #
+      # Pour atteindre le conteneur depuis un autre appareil du réseau local, lancer
+      # ponctuellement : docker compose run --service-ports -p 8000:8000 devis-vocal
+      - "127.0.0.1:8000:8000"
     env_file: .env
     restart: unless-stopped
 

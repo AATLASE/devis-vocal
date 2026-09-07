@@ -1,0 +1,42 @@
+# Façade HTTPS du démonstrateur.
+#
+# Caddy obtient et renouvelle le certificat Let's Encrypt tout seul, à la seule
+# condition que le domaine pointe vers cette machine. Aucune commande à lancer,
+# aucun cron à écrire.
+#
+# Ce n'est pas du confort : **le micro d'un navigateur ne s'ouvre pas sur une page
+# non sécurisée**. Sans certificat, pas de dictée en rendez-vous — donc pas de
+# démonstration. C'est la raison n° 1 de ce fichier ; le chiffrement en est la
+# conséquence heureuse.
+#
+# Le domaine vient du `.env` :  DOMAINE=devis.mon-domaine.fr
+
+{$DOMAINE} {
+	encode zstd gzip
+
+	# Deuxième ligne de défense sur la taille, avant même que la requête n'atteigne
+	# l'application. Doit rester alignée sur MAX_UPLOAD_MO du `.env` : Caddy coupe
+	# la connexion, l'application répond proprement — mieux vaut le second, mais le
+	# premier protège quand l'application est déjà occupée.
+	request_body {
+		max_size 25MB
+	}
+
+	# Le seul en-tête que l'application ne peut pas poser elle-même : elle ignore si
+	# elle est servie en HTTPS. Un an, et on n'y revient pas.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# `devis-vocal` est le nom du service dans docker-compose : Docker le résout sur
+	# le réseau interne. L'application n'a aucun port publié vers l'extérieur, donc
+	# c'est le seul chemin qui mène jusqu'à elle.
+	reverse_proxy devis-vocal:8000
+
+	log {
+		output file /var/log/caddy/acces.log {
+			roll_size 10MB
+			roll_keep 5
+		}
+	}
+}

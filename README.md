@@ -437,12 +437,55 @@ Deux points à ne pas oublier au montage :
 ## Déploiement
 
 ```bash
-docker compose up --build
+docker compose up --build          # local, sur 127.0.0.1:8000
 ```
 
 L'image part de l'image officielle Playwright : Chromium et ses dépendances sont déjà
-dedans. Sur Coolify, pointer sur le `Dockerfile`, exposer le port 8000, healthcheck sur
-`/health`, et renseigner les variables d'environnement du `.env`.
+dedans. Le port n'est publié que sur la boucle locale — il faut vouloir l'ouvrir pour
+l'ouvrir, et une surcouche Compose ne saurait pas le refermer ensuite.
+
+### Sur un serveur, avec HTTPS
+
+`docker-compose.prod.yml` ajoute Caddy devant. Il obtient et renouvelle le certificat
+seul, sans cron ni commande. **Ce n'est pas du confort** : le micro d'un navigateur ne
+s'ouvre pas sur une page non sécurisée, donc sans certificat il n'y a pas de dictée —
+donc pas de démonstration.
+
+```bash
+# 1. Vérifier la mémoire : Chromium demande environ 1 Go au moment du rendu.
+free -m
+
+# 2. Un domaine qui pointe vers la machine. Pas de domaine ? duckdns.org en donne
+#    un gratuitement, et Let's Encrypt le reconnaît.
+#    Puis, dans le .env :  DOMAINE=devis.mon-domaine.fr
+
+# 3. Le .env, à partir de l'exemple. Ne pas oublier ACCES_CODE : c'est le geste
+#    de la mise en ligne (voir « Avant de mettre en ligne » plus haut).
+cp .env.example .env && nano .env
+
+# 4. Lancer
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+
+# 5. Vérifier
+curl -s https://$DOMAINE/health
+docker compose logs -f caddy      # le certificat s'obtient dans les secondes qui suivent
+```
+
+Les ports 80 et 443 doivent être joignables : Let's Encrypt passe par le 80 pour
+vérifier le domaine. Si le certificat échoue, c'est presque toujours ça — ou le domaine
+qui ne pointe pas encore.
+
+Deux dossiers sont montés en volume et ne doivent pas disparaître entre deux
+déploiements : `var/` (les compteurs de dépense — un plafond qu'on annule en
+redéployant ne protège de rien) et `journal/` (les vocaux réels des rendez-vous, qui
+ne se rejouent pas).
+
+### Sur Coolify
+
+Pointer sur le `Dockerfile`, exposer le port 8000, healthcheck sur `/health`, et
+renseigner les variables d'environnement du `.env`. Coolify fournit lui-même le HTTPS :
+`docker-compose.prod.yml` et le `Caddyfile` ne servent alors à rien. Déclarer les
+volumes persistants pour `/app/var` et `/app/journal`.
 
 Pour l'authentification, Coolify injecte des variables et ne dépose pas de fichiers :
 utiliser `FIREBASE_CREDENTIALS_JSON` — le JSON du compte de service sur une ligne —
