@@ -96,6 +96,45 @@ class Config(BaseSettings):
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
 
+    # --- Authentification Firebase ---
+    # Hors du périmètre d'origine du démonstrateur (CLAUDE.md interdit « comptes /
+    # auth / multi-tenant » et « base de données »), ajouté sur décision explicite.
+    #
+    # Tout est facultatif, et c'est la règle qui compte : sans identifiants Firebase,
+    # `auth_active` est faux, l'application se comporte exactement comme avant et la
+    # suite de tests passe sans le moindre secret. C'est aussi ce qui garde le mode
+    # hors-ligne démontrable dans un sous-sol sans réseau.
+    #
+    # Le compte de service — celui qui vérifie les jetons côté serveur. Deux formes,
+    # parce que Coolify injecte des variables et ne dépose pas de fichiers :
+    firebase_credentials: Path | None = None        # chemin vers le JSON
+    firebase_credentials_json: str = ""             # le même JSON, en clair dans l'env
+
+    # La configuration publique du SDK navigateur. Ces valeurs ne sont pas des secrets :
+    # Firebase les publie dans le code de toute page qui l'utilise. Elles sont servies
+    # au front par /api/firebase.
+    firebase_api_key: str = ""
+    firebase_auth_domain: str = ""
+    firebase_project_id: str = ""
+
+    @property
+    def auth_active(self) -> bool:
+        """Vrai seulement si le serveur peut réellement vérifier un jeton.
+
+        On ne se contente pas de la config publique : servir un écran de connexion
+        sans vérification côté serveur donnerait une porte peinte sur un mur — le pire
+        des deux mondes, puisqu'on croirait l'API protégée.
+        """
+        return bool(self.firebase_credentials_json or self.firebase_credentials)
+
+    # --- Gabarits de devis ---
+    # Le HTML que l'artisan téléverse pour remplacer `templates/devis.html`.
+    max_gabarit_ko: int = 512
+
+    @property
+    def max_gabarit_octets(self) -> int:
+        return self.max_gabarit_ko * 1024
+
     entreprise_settings: EntrepriseSettings = Field(default_factory=EntrepriseSettings)
 
     @property

@@ -53,9 +53,25 @@ let fournisseur = 'anthropic';   // renseigné par /health
 
 /* ---- navigation -------------------------------------------------------- */
 
+/* Le fil de l'ossature : un mot qui dit où l'on est. Vide sur l'accueil et sur la
+   connexion, où la question ne se pose pas — l'écran est le produit lui-même. */
+const FIL = {
+  profil:     'Inscription',
+  traitement: 'Établissement',
+  relecture:  'Relecture',
+  vide:       'Devis non établi',
+  erreur:     'Interruption',
+  gabarit:    'Mon gabarit',
+};
+
 function montrer(nom) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('is-active'));
   $('ecran-' + nom).classList.add('is-active');
+
+  const fil = $('entete-fil');
+  fil.textContent = FIL[nom] || '';
+  fil.hidden = !FIL[nom];
+
   window.scrollTo(0, 0);
 }
 
@@ -74,13 +90,23 @@ function reinitialiser() {
   transcriptionCourante = null;
   dureeVocal = null;
   $('fichier').value = '';
-  $('repli').classList.remove('is-open');
-  $('depot-repli').classList.remove('is-open');
+  fermerRepli('repli', 'repli-bascule');
+  fermerRepli('depot-repli', 'depot-bascule');
   $('carte-transcription').hidden = true;
   $('transcription-directe').textContent = '';
+  viderApercu();
   peindreDictee(false);
   montrer('accueil');
 }
+
+/* Un repli et son lien vont par deux : le panneau se ferme, et le lien doit le
+   dire — `aria-expanded` est ce qui l'annonce au lecteur d'écran, et ce qui fait
+   pivoter le signe « + ». */
+function ouvrirRepli(panneau, lien, ouvert) {
+  $(panneau).classList.toggle('is-open', ouvert);
+  $(lien).setAttribute('aria-expanded', String(ouvert));
+}
+function fermerRepli(panneau, lien) { ouvrirRepli(panneau, lien, false); }
 
 function echouer(message) {
   clearInterval(chrono);
@@ -136,6 +162,16 @@ const ETAPES = [
   { titre: 'Génération du devis', detail: 'Mise en forme du document et des mentions légales' },
 ];
 
+/* Une icône du jeu défini en tête d'`index.html`. Aucun réseau, aucune image :
+   un `<use>` sur un `<symbol>`, qui hérite de la couleur du texte qui le porte. */
+function icone(nom) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#' + nom);
+  svg.append(use);
+  return svg;
+}
+
 function peindreEtapes(atteinte) {
   const conteneur = $('etapes');
   conteneur.replaceChildren();
@@ -143,8 +179,14 @@ function peindreEtapes(atteinte) {
     const faite = atteinte > i;
     const encours = atteinte === i;
 
-    const bloc = noeud('div', 'step');
-    bloc.append(noeud('div', 'step__mark', faite ? '✓' : encours ? '›' : '·'));
+    const bloc = noeud('div', 'step step--' + (faite ? 'faite' : encours ? 'encours' : 'attente'));
+
+    // La pastille : une coche quand c'est fait, le rang tant que ça ne l'est pas.
+    // Le chiffre garde sa place — sans lui, la colonne se viderait à mi-parcours.
+    const marque = noeud('div', 'step__mark');
+    if (faite) marque.append(icone('i-coche'));
+    else marque.textContent = String(i + 1);
+    bloc.append(marque);
 
     const centre = noeud('div');
     centre.append(
@@ -155,6 +197,21 @@ function peindreEtapes(atteinte) {
 
     bloc.append(noeud('div', 'step__status', faite ? 'Terminé' : encours ? 'En cours' : 'En attente'));
     conteneur.append(bloc);
+  });
+
+  peindreJauge(atteinte);
+}
+
+/* La jauge suit les mêmes étapes que la liste, mais se lit à un mètre : c'est
+   elle qu'on voit quand le téléphone est posé sur le tableau de bord. Le segment
+   en cours fait la navette — le pipeline ne rend aucune progression fine, et
+   inventer un pourcentage serait mentir. */
+function peindreJauge(atteinte) {
+  const jauge = $('jauge');
+  jauge.setAttribute('aria-valuenow', String(Math.min(atteinte, ETAPES.length)));
+  [...jauge.children].forEach((seg, i) => {
+    seg.classList.toggle('est-faite', atteinte > i);
+    seg.classList.toggle('est-encours', atteinte === i);
   });
 }
 
@@ -191,8 +248,23 @@ function devoiler(texte, cible) {
 
 /* ---- appels ------------------------------------------------------------ */
 
+/* Le jeton Firebase, quand il y en a un. `compte.js` est un module chargé après ce
+   fichier : tant qu'il n'a pas tourné — ou si Firebase n'est pas configuré — on part
+   sans en-tête, et l'API se comporte exactement comme avant. Le compte n'est jamais
+   une condition pour dicter un devis. */
+async function avecJeton(options = {}) {
+  if (!window.Compte || !window.Compte.actif) return options;
+  let jeton = null;
+  try {
+    jeton = await window.Compte.jeton();
+  } catch (_) { /* session illisible : on continue sans, le serveur retombera sur le défaut */ }
+  if (!jeton) return options;
+  return { ...options, headers: { ...(options.headers || {}), Authorization: 'Bearer ' + jeton } };
+}
+
 async function poste(url, options) {
   let reponse;
+  options = await avecJeton(options);
   try {
     reponse = await fetch(url, options);
   } catch (_) {
@@ -396,6 +468,22 @@ function peindreLecteur() {
   const part = vocalPret.secondes ? Math.min(1, ecoule / vocalPret.secondes) : 0;
   $('relu-avance').style.width = (part * 100).toFixed(1) + '%';
   $('relu-temps').textContent = mmss(Math.floor(ecoule)) + ' / ' + mmss(vocalPret.secondes);
+  // La piste s'annonce comme un curseur : elle doit donc dire où elle en est.
+  const piste = $('relu-piste');
+  piste.setAttribute('aria-valuenow', String(Math.round(part * 100)));
+  piste.setAttribute('aria-valuetext', mmss(Math.floor(ecoule)) + ' sur ' + mmss(vocalPret.secondes));
+}
+
+/* Déplacement dans l'enregistrement, à la position donnée entre 0 et 1. La durée
+   de référence est celle du chronomètre et non celle du média, qui est fausse sur
+   un webm sans index. Un tel fichier peut refuser le saut : on le laisse alors
+   continuer là où il en était plutôt que de casser la lecture. */
+function deplacerLecture(part) {
+  if (!vocalPret) return;
+  try {
+    $('relu-audio').currentTime = Math.min(1, Math.max(0, part)) * vocalPret.secondes;
+    peindreLecteur();
+  } catch (_) { /* saut refusé */ }
 }
 
 function basculerLecture() {
@@ -450,7 +538,7 @@ function refuserDictee(message) {
   fermerMicro();
   peindreDictee(false);
   $('dictee-aide').textContent = message;
-  $('depot-repli').classList.add('is-open');
+  ouvrirRepli('depot-repli', 'depot-bascule', true);
 }
 
 function raisonMicro(err) {
@@ -529,7 +617,7 @@ async function demarrerDictee() {
     if (mesure && pic < SEUIL_SILENCE) {
       $('dictee-aide').textContent =
         "Le micro n’a rien capté — vérifiez qu’il n’est pas coupé, ou déposez un fichier.";
-      $('depot-repli').classList.add('is-open');
+      ouvrirRepli('depot-repli', 'depot-bascule', true);
       return;
     }
 
@@ -614,7 +702,13 @@ async function lancer(fichier, texte, dureeSecondes) {
       setTimeout(() => montrer('vide'), 500);
     } else {
       peindreRelecture(devisCourant);
-      preparerPdf();   // fabriqué pendant la relecture, prêt avant le premier appui
+      preparerPdf();     // fabriqué pendant la relecture, prêt avant le premier appui
+      // L'aperçu part en même temps que le PDF et non après : il ne coûte pas de
+      // Chromium, il sera donc à l'image avant que l'artisan ait fini de lire son
+      // en-tête. On ne l'attend pas — la relecture ne dépend pas de lui.
+      vueRelecture = 'detail';
+      appliquerVue();
+      peindreApercu();
       setTimeout(() => montrer('relecture'), 500);
     }
   } catch (err) {
@@ -657,12 +751,22 @@ function rangDeLigne(l) {
   // alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche.
   if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Prix estimé · à valider'));
 
+  // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
+  // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
+  // plus s'il est une quantité ou un prix. C'est le CSS qui les révèle, par
+  // `content: attr(data-l)` — le balisage reste le même aux deux largeurs.
+  const cellule = (classe, texte, libelle) => {
+    const el = noeud('div', classe, texte);
+    el.dataset.l = libelle;
+    return el;
+  };
+
   rang.append(
     gauche,
-    noeud('div', 'r num', nombre(l.quantite)),
-    noeud('div', 'r unit', l.unite),
-    noeud('div', 'r num', money(l.prix_unitaire_ht)),
-    noeud('div', 'r num total', money(l.total_ht)),
+    cellule('r num', nombre(l.quantite), 'Qté'),
+    cellule('r unit', l.unite, 'Unité'),
+    cellule('r num', money(l.prix_unitaire_ht), 'P.U. HT'),
+    cellule('r num total', money(l.total_ht), 'Total HT'),
   );
   return rang;
 }
@@ -709,6 +813,146 @@ function peindreVide(d) {
   peindreObservations($('vide-observations'), $('vide-titre-observations'), d.notes);
 }
 
+/* ---- aperçu du document ------------------------------------------------ */
+/* La feuille A4 telle qu'elle partira, à côté du tableau qu'on relit. Elle sort du
+   même gabarit et de la même feuille de style que le PDF — c'est `/api/apercu`, qui
+   rend le document en HTML au lieu de le passer par Chromium. Deux conséquences
+   utiles : elle est là tout de suite, et elle se redimensionne.
+
+   Le document est rendu à sa largeur vraie — 794px, soit 210mm à 96 ppp, exactement
+   ce que Chromium donne à la feuille — puis mis à l'échelle. Le réduire en changeant
+   sa largeur, lui, changerait ses retours à la ligne : l'aperçu ne montrerait plus
+   le même document que le PDF, ce qui est précisément ce qu'on veut éviter. */
+
+const LARGEUR_A4 = 794;
+const ETROIT = window.matchMedia('(max-width: 1180px)');
+let vueRelecture = 'detail';
+
+function viderApercu() {
+  $('apercu-plan').hidden = true;
+  $('apercu-attente').hidden = false;
+  $('apercu-pages').textContent = '';
+  // `onload` en propriété et non en écouteur : vider puis remplir le cadre produit
+  // deux chargements — celui de la page blanche, puis celui du devis. Un écouteur
+  // `once` serait consommé par le premier, et le devis arriverait sans que
+  // personne n'écoute. Une propriété, elle, se remplace.
+  const cadre = $('apercu-cadre');
+  cadre.onload = null;
+  cadre.srcdoc = '';
+}
+
+async function peindreApercu() {
+  viderApercu();
+
+  let html;
+  try {
+    const r = await poste('/api/apercu', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(devisCourant),
+    });
+    // Le gabarit de l'artisan a échoué et le serveur a rejoué sur celui livré. On
+    // le sait donc **avant** le téléchargement, au moment où il regarde le
+    // document : c'est là que le dire sert à quelque chose.
+    if (r.headers.get('X-Gabarit-Repli') === '1') {
+      pdfSurGabaritDeRepli = true;
+      signalerRepliGabarit();
+    }
+    html = await r.text();
+  } catch (_) {
+    // L'aperçu est un confort ; le devis, lui, est intact et téléchargeable. Un
+    // aperçu qui rate ne doit surtout pas interrompre la relecture.
+    $('apercu-attente').hidden = true;
+    $('apercu-pages').textContent = 'Aperçu indisponible';
+    return;
+  }
+
+  const cadre = $('apercu-cadre');
+  cadre.onload = () => {
+    const doc = cadre.contentDocument;
+    // La page blanche qui précède le devis passe aussi par ici : elle n'a pas de
+    // contenu, et il n'y a rien à mesurer dessus.
+    if (!doc || !doc.body || !doc.body.firstElementChild) return;
+    let pose = false;
+    const poser = () => {
+      if (pose) return;
+      pose = true;
+      // Le gabarit livré découpe le document en `.page` ; celui d'un artisan n'y
+      // est pas tenu. Sans repère, on n'annonce pas de pagination plutôt que d'en
+      // inventer une.
+      const pages = doc.querySelectorAll('.page').length;
+      $('apercu-pages').textContent = pages ? pages + (pages > 1 ? ' pages' : ' page') : '';
+      $('apercu-attente').hidden = true;
+      $('apercu-plan').hidden = false;
+      ajusterApercu();
+    };
+    // Sans attendre les polices, la hauteur se mesure sur la police de repli et
+    // l'aperçu se coupe de quelques lignes. Elles sont déjà en cache — la page les
+    // a chargées — donc l'attente est de l'ordre de la milliseconde. Le garde-fou
+    // à 1,5 s existe parce qu'un cadre encore masqué ne demande aucune police, et
+    // que `fonts.ready` peut alors ne jamais se résoudre : mieux vaut un aperçu
+    // mesuré d'un cheveu trop court qu'un aperçu qui n'arrive jamais.
+    // `.then(poser).catch(poser)` aurait été plus court, et aurait avalé toute
+    // exception de `poser` lui-même en la rattrapant comme un échec de police —
+    // c'est exactement ce qui a masqué un aperçu resté à sa taille par défaut.
+    // Le `catch` ne couvre donc que l'attente, et rien d'autre.
+    const polices = doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve();
+    polices.catch(() => {}).then(poser);
+    setTimeout(poser, 1500);
+  };
+
+  // `srcdoc` plutôt qu'une URL : le document hérite alors de l'origine de la page,
+  // donc `/static/fonts.css` s'y charge normalement. Le bac à sable posé dans le
+  // balisage n'accorde pas `allow-scripts` — un gabarit d'artisan s'affiche, il ne
+  // s'exécute pas.
+  cadre.srcdoc = html;
+}
+
+function ajusterApercu() {
+  const plan = $('apercu-plan');
+  const cadre = $('apercu-cadre');
+  if (plan.hidden) return;
+  const doc = cadre.contentDocument;
+  if (!doc) return;
+
+  const bureau = $('apercu-bureau');
+  const style = getComputedStyle(bureau);
+  const dispo = bureau.clientWidth
+    - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  if (dispo <= 0) return;
+
+  const echelle = Math.min(1, dispo / LARGEUR_A4);
+  const hauteur = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight);
+
+  cadre.style.height = hauteur + 'px';
+  cadre.style.transform = 'scale(' + echelle.toFixed(4) + ')';
+  // Un élément mis à l'échelle occupe toujours sa taille d'origine dans la mise en
+  // page : c'est le plan qui porte la taille visible, sans quoi le bureau
+  // défilerait sur du vide.
+  plan.style.width = Math.round(LARGEUR_A4 * echelle) + 'px';
+  plan.style.height = Math.round(hauteur * echelle) + 'px';
+}
+
+/* Les deux vues de la relecture. Côte à côte dès qu'il y a la place ; en dessous,
+   elles se relaient sous le commutateur. Le `hidden` n'est posé que dans le cas
+   étroit — sur un large écran, cacher la moitié du contenu au lecteur d'écran
+   alors qu'elle est à l'image serait un mensonge. */
+function appliquerVue() {
+  const etroit = ETROIT.matches;
+  const surApercu = vueRelecture === 'apercu';
+
+  $('vue-detail').hidden = etroit && surApercu;
+  $('vue-apercu').hidden = etroit && !surApercu;
+
+  document.querySelectorAll('.bascule__onglet').forEach((onglet) => {
+    const actif = onglet.dataset.vue === vueRelecture;
+    onglet.classList.toggle('is-active', actif);
+    onglet.setAttribute('aria-selected', String(actif));
+  });
+
+  if (!etroit || surApercu) ajusterApercu();
+}
+
 /* ---- PDF --------------------------------------------------------------- */
 
 /* L'artisan ne veut pas un fichier, il veut que sa cliente l'ait. Sur un téléphone,
@@ -716,12 +960,21 @@ function peindreVide(d) {
    de partage du système, elle, mène à WhatsApp, aux messages, au courrier. Ce n'est
    pas une intégration — c'est le partage de l'OS, et il tient en un appel. */
 
+/* Vrai quand le serveur a dû rejouer le PDF sur le gabarit livré parce que celui de
+   l'artisan a échoué. Sorti du corps de `genererPdf` parce que le blob voyage seul
+   jusqu'au bouton, et que l'avertissement, lui, doit survivre au trajet. */
+let pdfSurGabaritDeRepli = false;
+
 async function genererPdf() {
   const r = await poste('/api/pdf', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(devisCourant),
   });
+  // Un devis sorti sur une autre mise en page que celle qu'on croit est exactement le
+  // genre de substitution silencieuse que ce produit refuse ailleurs — voir le bandeau
+  // du mode hors-ligne. Même principe : on le dit.
+  pdfSurGabaritDeRepli = r.headers.get('X-Gabarit-Repli') === '1';
   return await r.blob();
 }
 
@@ -766,11 +1019,14 @@ function preparerPdf() {
 
 async function envoyerPdf() {
   const bouton = $('btn-pdf');
-  const libelle = bouton.textContent;
+  // Le libellé est un élément à part, et pas le contenu du bouton : celui-ci porte
+  // aussi une icône, qu'un `textContent = …` effacerait au premier changement d'état.
+  const libelle = $('btn-pdf-libelle');
+  const dit = libelle.textContent;
   bouton.disabled = true;
   // Le libellé d'attente n'apparaît que si l'attente a lieu : le PDF est en général
   // déjà prêt, et un « Génération… » qui clignote se lit comme un défaut.
-  const attente = setTimeout(() => { bouton.textContent = 'Génération…'; }, 150);
+  const attente = setTimeout(() => { libelle.textContent = 'Génération…'; }, 150);
 
   let blob;
   try {
@@ -782,7 +1038,7 @@ async function envoyerPdf() {
   } finally {
     clearTimeout(attente);
     bouton.disabled = false;
-    bouton.textContent = libelle;
+    libelle.textContent = dit;
   }
 
   const nom = `${devisCourant.numero}.pdf`;
@@ -809,9 +1065,22 @@ async function envoyerPdf() {
     telecharger(blob, nom);
     // Sur un téléphone, un téléchargement se signale par une notification qu'on
     // rate. Le bouton, lui, est sous le doigt.
-    bouton.textContent = 'Devis enregistré';
-    setTimeout(() => { bouton.textContent = libelle; }, 2200);
+    libelle.textContent = 'Devis enregistré';
+    setTimeout(() => { libelle.textContent = dit; }, 2200);
   }
+
+  if (pdfSurGabaritDeRepli) signalerRepliGabarit();
+}
+
+/* Le gabarit de l'artisan a échoué sur ce devis-là et le serveur a rejoué sur celui
+   livré. Le document est bon — il est simplement sur l'autre mise en page. Le dire au
+   moment où l'artisan l'a en main, pas dans un log qu'il ne lira jamais. */
+function signalerRepliGabarit() {
+  const zone = $('bandeau-gabarit');
+  if (!zone) return;
+  zone.hidden = false;
+  $('bandeau').hidden = false;
+  zone.scrollIntoView({ behavior: MOUVEMENT_REDUIT ? 'auto' : 'smooth', block: 'nearest' });
 }
 
 /* ---- branchements ------------------------------------------------------ */
@@ -847,8 +1116,10 @@ $('fichier').addEventListener('change', (e) => {
   if (e.target.files.length) lancer(e.target.files[0], null);
 });
 
-$('depot-bascule').addEventListener('click', () => $('depot-repli').classList.toggle('is-open'));
-$('repli-bascule').addEventListener('click', () => $('repli').classList.toggle('is-open'));
+$('depot-bascule').addEventListener('click', () =>
+  ouvrirRepli('depot-repli', 'depot-bascule', !$('depot-repli').classList.contains('is-open')));
+$('repli-bascule').addEventListener('click', () =>
+  ouvrirRepli('repli', 'repli-bascule', !$('repli').classList.contains('is-open')));
 
 $('btn-texte').addEventListener('click', () => {
   const texte = $('texte').value.trim();
@@ -895,24 +1166,79 @@ $('relu-audio').addEventListener('ended', () => {
   peindreLecteur();
 });
 
-/* Déplacement dans l'enregistrement. La position se calcule sur la durée du
-   chronomètre, pas sur celle du média — qui est fausse. Un webm sans index peut
-   refuser le saut : dans ce cas on ne fait rien, plutôt que de casser la lecture. */
 $('relu-piste').addEventListener('click', (e) => {
+  const boite = e.currentTarget.getBoundingClientRect();
+  deplacerLecture((e.clientX - boite.left) / boite.width);
+});
+
+/* La piste porte `role="slider"` : elle doit répondre au clavier, sinon le rôle
+   promet une manipulation qui n'existe pas. Cinq secondes par flèche, les bornes
+   sur Origine et Fin — les conventions d'un curseur audio. */
+$('relu-piste').addEventListener('keydown', (e) => {
   if (!vocalPret) return;
-  const piste = e.currentTarget.getBoundingClientRect();
-  const part = Math.min(1, Math.max(0, (e.clientX - piste.left) / piste.width));
-  try {
-    $('relu-audio').currentTime = part * vocalPret.secondes;
-    peindreLecteur();
-  } catch (_) { /* saut refusé : la lecture continue là où elle en était */ }
+  const pas = 5 / vocalPret.secondes;
+  const actuelle = ($('relu-audio').currentTime || 0) / vocalPret.secondes;
+  const bonds = {
+    ArrowRight: actuelle + pas, ArrowUp: actuelle + pas,
+    ArrowLeft: actuelle - pas,  ArrowDown: actuelle - pas,
+    Home: 0, End: 1,
+  };
+  if (!(e.key in bonds)) {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); basculerLecture(); }
+    return;
+  }
+  e.preventDefault();
+  deplacerLecture(bonds[e.key]);
 });
 
 $('btn-pdf').addEventListener('click', envoyerPdf);
-if (saitPartagerUnPdf()) $('btn-pdf').textContent = 'Envoyer le devis';
+// Là où le système sait partager un fichier, le bouton ne promet plus un
+// téléchargement mais un envoi — et son icône dit la même chose que son libellé.
+if (saitPartagerUnPdf()) {
+  $('btn-pdf-libelle').textContent = 'Envoyer le devis';
+  $('icone-pdf').setAttribute('href', '#i-partage');
+}
 
 document.querySelectorAll('[data-recommencer]').forEach((b) =>
   b.addEventListener('click', reinitialiser));
+
+/* ---- ossature et relecture --------------------------------------------- */
+
+/* La marque ramène à l'accueil. En cours d'établissement, elle abandonnerait un
+   devis à mi-chemin sans le dire : on la laisse alors inerte plutôt que
+   destructrice. Ailleurs, `reinitialiser()` fait le ménage complet.
+   `compte.js` pose son propre retour depuis l'écran du gabarit. */
+$('marque').addEventListener('click', () => {
+  if ($('ecran-traitement').classList.contains('is-active')) return;
+  reinitialiser();
+});
+
+/* Le commutateur des deux vues du devis. */
+document.querySelectorAll('.bascule__onglet').forEach((onglet) =>
+  onglet.addEventListener('click', () => {
+    vueRelecture = onglet.dataset.vue;
+    appliquerVue();
+  }));
+
+/* L'échelle de l'aperçu dépend de la largeur du bureau, et cette largeur change
+   pour trois raisons : la fenêtre est redimensionnée ou pivotée, on passe d'un
+   onglet à l'autre, ou l'écran de relecture vient seulement d'être affiché.
+
+   Ce troisième cas est le plus traître, et c'est celui qui a été observé : le
+   document arrive avant l'écran qui doit le porter — les fixtures répondent en
+   quelques millisecondes, la relecture s'affiche une demi-seconde plus tard. La
+   largeur disponible valait alors zéro, et l'aperçu restait à sa taille par
+   défaut, sans que rien ne le signale.
+
+   Un observateur de redimensionnement couvre les trois d'un coup : il se
+   déclenche aussi au passage de zéro à une largeur réelle. Il remplace l'écoute
+   de `resize`, qu'il englobe — et il est déjà groupé par trame. */
+new ResizeObserver(() => ajusterApercu()).observe($('apercu-bureau'));
+
+// Franchir le seuil des deux colonnes change ce qui est affiché, pas seulement
+// la taille : les deux vues se séparent ou se rejoignent.
+ETROIT.addEventListener('change', appliquerVue);
+appliquerVue();
 
 /* Le devis n'a pas pu être établi, mais les observations, elles, valent le
    déplacement : l'artisan les recolle dans son carnet ou dans un SMS. Un bouton
@@ -953,6 +1279,5 @@ fetch('/health')
     $('bandeau-fournisseur').hidden = !secours;
     if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
     $('bandeau').hidden = false;
-    document.body.classList.add('a-bandeau');
-  })
+    })
   .catch(() => { /* le bandeau reste caché : pas de quoi bloquer la page */ });

@@ -29,3 +29,8 @@ Thumbs.db
 
 # Aperçu local du template
 apercu.html
+
+# Clé de compte de service Firebase. Un fichier commité ici donne l'administration
+# complète du projet — comptes et base — à qui lit le dépôt.
+firebase-service-account.json
+*-firebase-adminsdk-*.json

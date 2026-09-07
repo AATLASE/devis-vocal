@@ -17,6 +17,10 @@ openai>=1.55
 playwright>=1.49
 jinja2>=3.1
 
+# Authentification et gabarits par artisan — hors du périmètre d'origine du
+# démonstrateur, ajouté sur décision explicite. Voir CLAUDE.md § Périmètre.
+firebase-admin>=6.5
+
 # Tests
 pytest>=8.3
 pytest-asyncio>=0.24

@@ -1,44 +1,211 @@
-/* Devis Vocal — design tokens
-   Single source of truth. Every colour, size and font in the UI and in the
-   PDF comes from here. Do not introduce values outside this file. */
+/* Devis Vocal — les tokens du design.
+
+   Source unique. Toute couleur, toute taille, toute durée de l'interface et du
+   document A4 sort d'ici. Aucune valeur ne s'écrit ailleurs.
+
+   Ce fichier est lu deux fois : par le navigateur pour l'application, et par
+   `app/pdf.py` qui l'inline en tête du document imprimé. Une variable ajoutée ici
+   est donc visible des deux côtés — et un gabarit d'artisan peut s'en servir.
+   D'où la séparation qui suit : ce qui vaut pour les deux surfaces d'abord, ce qui
+   n'a de sens qu'à l'écran ensuite. Le papier n'a ni ombre, ni durée d'animation. */
 
 :root {
-  /* Ink & text */
-  --dv-ink:          #1b1a17;  /* titles, table rules, PDF black blocks */
-  --dv-ink-soft:     #31302b;  /* transcription body */
-  --dv-text:         #4b463e;  /* running text */
-  --dv-muted:        #6b665e;  /* secondary text */
-  --dv-faint:        #8f8a80;  /* labels, meta, page numbers */
 
-  /* Surfaces */
-  --dv-bg:           #efece5;  /* app background (warm paper grey) */
-  --dv-bg-alt:       #f7f4ee;  /* inset blocks: transcription, quiet panels */
-  --dv-paper:        #fffdfa;  /* cards and inputs in the web UI */
-  --dv-white:        #ffffff;  /* PDF sheet only */
-  --dv-desk:         #3b3833;  /* dark desk behind the PDF preview */
+  /* ==================================================================== */
+  /* Encre et texte                                                       */
+  /*                                                                      */
+  /* Cinq degrés, du titre au libellé. Contrastes mesurés sur le fond      */
+  /* de l'application (#efece5), qui est le plus sombre des deux fonds :   */
+  /* ce qui passe là passe aussi sur la feuille blanche du PDF.            */
+  /*                                                                      */
+  /*   ink       #1b1a17   17,3:1   titres, filets du tableau, aplats      */
+  /*   ink-soft  #31302b   12,0:1   corps de la transcription             */
+  /*   text      #4b463e    7,9:1   texte courant                          */
+  /*   muted     #5f5a52    5,8:1   texte secondaire                       */
+  /*   faint     #6b665e    4,8:1   libellés, méta, numéros de page        */
+  /*                                                                      */
+  /* `faint` valait #8f8a80 : 2,91:1, sous le seuil AA de 4,5:1. Il porte  */
+  /* pourtant les libellés en capitales, les indices sous les zones de     */
+  /* dépôt et la pagination du devis imprimé — soit précisément ce qu'on   */
+  /* lit sur un téléphone, dehors, au soleil. La rampe entière a donc été  */
+  /* descendue d'un cran. La discrétion se fait désormais par la taille,   */
+  /* la graisse et l'interlettrage, jamais en délavant le texte.           */
+  /* ==================================================================== */
 
-  /* Rules */
-  --dv-rule:         #ddd8cf;  /* 1px separators */
-  --dv-rule-soft:    #ece8e0;  /* PDF table rows */
-  --dv-rule-faint:   #f0ece4;  /* web table rows */
-  --dv-rule-strong:  #c3bcae;  /* dashed drop zone / signature rule */
+  --dv-ink:          #1b1a17;
+  --dv-ink-soft:     #31302b;
+  --dv-text:         #4b463e;
+  --dv-muted:        #5f5a52;
+  --dv-faint:        #6b665e;
+
+  /* ==================================================================== */
+  /* Surfaces                                                             */
+  /* ==================================================================== */
+
+  --dv-bg:           #efece5;  /* fond de l'application — gris papier chaud */
+  --dv-bg-alt:       #f7f4ee;  /* blocs en retrait : transcription, panneaux calmes */
+  --dv-paper:        #fffdfa;  /* cartes et champs de l'application */
+  --dv-white:        #ffffff;  /* la feuille du PDF, et elle seule */
+  --dv-desk:         #3b3833;  /* le bureau sombre derrière l'aperçu A4 */
+
+  /* ==================================================================== */
+  /* Filets                                                               */
+  /* ==================================================================== */
+
+  --dv-rule:         #ddd8cf;  /* séparateurs de 1px */
+  --dv-rule-soft:    #ece8e0;  /* lignes du tableau imprimé */
+  --dv-rule-faint:   #f0ece4;  /* lignes du tableau à l'écran */
+  --dv-rule-strong:  #c3bcae;  /* zone de dépôt tiretée, trait de signature */
   --dv-border-input: #d5cfc4;
 
-  /* Accent — brick. One accent only. Reserved for signals:
-     estimated prices, section labels, observation dashes, hover. */
-  --dv-accent:       #8a4b25;
+  /* ==================================================================== */
+  /* Accent — brique. Un seul.                                            */
+  /*                                                                      */
+  /* Réservé aux signaux : prix estimés, libellés de section, tirets des   */
+  /* observations, état actif. Jamais décoratif. Sur le papier il est      */
+  /* toujours doublé d'un filet, d'une graisse ou d'un symbole, pour       */
+  /* survivre à une imprimante noir et blanc.                             */
+  /* ==================================================================== */
+
+  --dv-accent:       #8a4b25;  /* 5,7:1 sur le fond de l'application */
   --dv-accent-dark:  #6d3a1c;
   --dv-accent-tint:  #f6ede2;
   --dv-accent-edge:  #e6d5bf;
 
-  /* Type */
+  /* Une seconde teinte fonctionnelle, et une seule : le rouge de ce qui a
+     échoué. L'accent brique portait jusqu'ici les avertissements comme les
+     signaux ordinaires — un prix estimé et un serveur en panne avaient la
+     même couleur. Ils n'ont pas la même urgence. Absent du document
+     imprimé, qui ne connaît aucun état d'erreur. */
+  --dv-danger:       #9a3324;  /* 6,3:1 sur le fond de l'application */
+  --dv-danger-tint:  #fbeeea;
+  --dv-danger-edge:  #eed4cc;
+
+  /* ==================================================================== */
+  /* Familles                                                             */
+  /* ==================================================================== */
+
   --dv-serif: 'Source Serif 4', Georgia, serif;
   --dv-sans:  'IBM Plex Sans', system-ui, sans-serif;
   --dv-mono:  'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Radius — deliberately almost flat. Documents are not cards. */
-  --dv-radius:      4px;
-  --dv-radius-pill: 999px;
+  /* ==================================================================== */
+  /* Barème typographique                                                 */
+  /*                                                                      */
+  /* Fluide entre le téléphone et le bureau : `clamp()` remplace les trois */
+  /* jeux de tailles que la feuille dupliquait sous requête média. La      */
+  /* borne basse est la taille du téléphone, la haute celle du design      */
+  /* livré — les valeurs de l'ancienne feuille sont donc toutes dedans.    */
+  /*                                                                      */
+  /* Le corps de texte est à 16px et pas en dessous : sous 16px, Safari    */
+  /* iOS zoome de lui-même à la mise au point d'un champ, et la mise en    */
+  /* page saute au moment précis où l'artisan tape.                        */
+  /* ==================================================================== */
 
-  /* Spacing scale (px): 4 6 8 12 14 18 22 26 30 38 56 */
+  --dv-t-display: clamp(38px, 7.5vw, 58px);   /* la marque, les grandes annonces */
+  --dv-t-h1:      clamp(27px, 4.2vw, 38px);
+  --dv-t-h2:      clamp(21px, 2.6vw, 27px);
+  --dv-t-h3:      clamp(18px, 1.8vw, 21px);
+  --dv-t-lead:    clamp(16px, 1.5vw, 18px);   /* chapeaux */
+  --dv-t-body:    16px;
+  --dv-t-sm:      14px;
+  --dv-t-xs:      13px;
+  --dv-t-label:   11px;                        /* capitales mono interlettrées */
+
+  --dv-lh-tight:  1.15;   /* titres */
+  --dv-lh-snug:   1.35;
+  --dv-lh-body:   1.6;    /* texte courant */
+  --dv-lh-loose:  1.75;   /* transcription : on la relit mot à mot */
+
+  --dv-track-label: .14em;    /* l'interlettrage des capitales */
+  --dv-track-tight: -.015em;  /* les grands titres serif se resserrent */
+
+  /* ==================================================================== */
+  /* Échelle d'espacement — 4px de pas, comme le barème du design         */
+  /*                                                                      */
+  /* Les onze valeurs étaient documentées en commentaire et recopiées à    */
+  /* la main partout. Elles sont désormais nommées.                        */
+  /* ==================================================================== */
+
+  --dv-s-1:   4px;
+  --dv-s-2:   6px;
+  --dv-s-3:   8px;
+  --dv-s-4:  12px;
+  --dv-s-5:  14px;
+  --dv-s-6:  18px;
+  --dv-s-7:  22px;
+  --dv-s-8:  26px;
+  --dv-s-9:  30px;
+  --dv-s-10: 38px;
+  --dv-s-11: 56px;
+  --dv-s-12: 76px;
+
+  /* ==================================================================== */
+  /* Rayons — délibérément presque plats. Un devis n'est pas une carte.   */
+  /* ==================================================================== */
+
+  --dv-radius:      4px;
+  --dv-radius-lg:   8px;    /* les seules grandes surfaces : dépôt, aperçu */
+  --dv-radius-pill: 999px;
+}
+
+/* ======================================================================== */
+/* Ce qui suit n'existe qu'à l'écran.                                       */
+/*                                                                          */
+/* Le PDF inline cette feuille : ces variables y sont donc présentes, mais   */
+/* `templates/pdf.css` ne les appelle que sous `@media screen`, là où il     */
+/* décrit l'aperçu affiché dans l'application. Rien de ce bloc n'atteint     */
+/* jamais la feuille imprimée : une ombre ne s'imprime pas, une durée        */
+/* d'animation encore moins.                                                */
+/* ======================================================================== */
+
+:root {
+
+  /* ---- Élévation ------------------------------------------------------ */
+  /* Trois niveaux, tous teintés de l'encre du produit plutôt que de noir    */
+  /* pur : une ombre neutre sur un fond chaud vire au bleu et fait sale.     */
+
+  --dv-ombre-1: 0 1px 2px rgba(27, 26, 23, .05);
+  --dv-ombre-2: 0 1px 2px rgba(27, 26, 23, .04), 0 6px 20px rgba(27, 26, 23, .05);
+  --dv-ombre-3: 0 2px 6px rgba(27, 26, 23, .06), 0 18px 48px rgba(27, 26, 23, .13);
+
+  /* Le voile derrière une surface qui prend la main. 52 % : assez pour que
+     le premier plan se détache, pas au point d'effacer le contexte. */
+  --dv-voile: rgba(27, 26, 23, .52);
+
+  /* ---- Mouvement ------------------------------------------------------ */
+  /* Trois durées, trois courbes. Toute transition de l'application pioche   */
+  /* ici : c'est ce qui donne au produit un rythme unique plutôt qu'un       */
+  /* réglage inventé par composant. La sortie est plus courte que l'entrée — */
+  /* une surface qui s'en va ne doit pas se faire attendre.                  */
+
+  --dv-duree-vite:  120ms;
+  --dv-duree:       220ms;
+  --dv-duree-lente: 340ms;
+
+  --dv-sortie:  cubic-bezier(.22, .61, .36, 1);    /* ce qui entre */
+  --dv-entree:  cubic-bezier(.55, .06, .68, .19);  /* ce qui part */
+  --dv-ressort: cubic-bezier(.22, 1.15, .36, 1);   /* ce qui répond au doigt */
+
+  /* ---- Mise en page --------------------------------------------------- */
+  /* Quatre mesures de lecture. Le texte courant ne dépasse jamais           */
+  /* `--dv-mesure` : au-delà, l'œil perd la ligne suivante.                  */
+
+  --dv-mesure-etroite: 480px;   /* connexion, message d'erreur */
+  --dv-mesure:         660px;   /* accueil, devis vide, gabarit */
+  --dv-mesure-large:   900px;   /* le tableau des prestations */
+  --dv-mesure-xl:     1240px;   /* relecture avec l'aperçu A4 à côté */
+
+  /* La gouttière de page grandit avec l'écran : 20px sur un téléphone,
+     48px sur un bureau. Une seule valeur, au lieu d'un `padding` réécrit
+     à chaque seuil. */
+  --dv-marge: clamp(20px, 4.5vw, 48px);
+
+  --dv-entete-h: 58px;   /* l'ossature persistante, réservée en tête de page */
+
+  /* ---- Cibles tactiles ------------------------------------------------ */
+  /* 44px est le minimum d'Apple, 48 celui de Material. On prend le plus     */
+  /* grand : la cible, ici, c'est un pouce ganté sur un chantier.            */
+
+  --dv-cible: 48px;
 }
