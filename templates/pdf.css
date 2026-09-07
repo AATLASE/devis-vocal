@@ -142,6 +142,10 @@
   letter-spacing: .14em; text-transform: uppercase; color: var(--dv-accent);
 }
 .doc-mention p { margin: 0; font-size: 10px; line-height: 1.68; color: var(--dv-text); text-align: justify; text-wrap: pretty; }
+/* Le RIB se lit chiffre par chiffre pour être recopié : chasse fixe, et pas de
+   justification qui étirerait les espaces entre les groupes. */
+.doc-mention p.iban { margin-top: 5px; text-align: left; }
+.doc-mention p.iban .num { font-family: var(--dv-mono); font-size: 9.5px; letter-spacing: .02em; color: var(--dv-ink); }
 
 /* ---- running head / foot ----------------------------------------------- */
 

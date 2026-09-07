@@ -220,6 +220,12 @@
       <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;% à la commande, soit
       {{ devis.montant_acompte | euro }}, solde à la réception des travaux. Règlement par
       virement ou par chèque à 30 jours. Aucun escompte n'est accordé pour paiement anticipé.</p>
+      {#- Le paragraphe ci-dessus demande un virement : sans coordonnées bancaires, il
+          demande au client de deviner où payer. L'IBAN n'apparaît que s'il est réellement
+          renseigné — un RIB à zéros serait pire que pas de RIB du tout. #}
+      {% if e.iban and '0000 0000 0000' not in e.iban %}
+      <p class="iban">Virement : <span class="num">{{ e.iban }}</span></p>
+      {% endif %}
     </div>
     <div class="doc-mention">
       <h4>Pénalités de retard</h4>
