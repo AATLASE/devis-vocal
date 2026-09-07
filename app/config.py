@@ -244,13 +244,21 @@ class Config(BaseSettings):
 
 @lru_cache
 def get_config() -> Config:
-    config = Config()
-    # Une ligne au démarrage : quel moteur chiffre, où part l'audio. C'est la
-    # question qu'on se pose toujours en premier quand un devis sort bizarre.
+    return Config()
+
+
+def annoncer() -> None:
+    """Une ligne au démarrage : quel moteur chiffre, où part l'audio, dans quel mode.
+
+    C'est la question qu'on se pose toujours en premier quand un devis sort bizarre.
+    Appelée par le `lifespan` de l'application et par elle seule — `get_config()` est
+    invoquée des centaines de fois par requête, et un accesseur qui journalise se
+    retrouve à parler au milieu de n'importe quoi, y compris des tests d'autrui.
+    """
+    config = get_config()
     logging.getLogger("devis-vocal").info(
         "Chiffrage : %s · transcription : %s · mode : %s",
         config.structuration_provider,
         config.transcription_url,
         "fixtures" if config.use_fixtures else "réel",
     )
-    return config

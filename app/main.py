@@ -48,7 +48,7 @@ from app import pdf as pdf_module
 from app import profils as profils_module
 from app import suivi
 from app.authentification import Utilisateur, utilisateur_optionnel, utilisateur_requis
-from app.config import get_config
+from app.config import annoncer, get_config
 from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
 from app.gabarits import GabaritRefuse
 from app import securite
@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
     # Avant Chromium : si le navigateur ne démarre pas, on veut que la raison soit
     # dans le fichier de log et pas seulement dans un terminal qu'on aura fermé.
     suivi.configurer()
+    annoncer()
 
     # Chromium est lancé une fois pour toutes : le démarrer à chaque devis coûterait
     # une seconde de plus par rendu.
