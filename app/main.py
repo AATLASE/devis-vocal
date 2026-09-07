@@ -7,6 +7,7 @@ l'aller-retour en JSON. C'est ce qui permet au navigateur d'afficher une vraie p
     POST /api/transcribe   audio          -> { transcription }
     POST /api/devis        transcription  -> Devis chiffré
     POST /api/pdf          Devis          -> application/pdf
+    GET  /api/entreprise   q              -> [ identités trouvées ]
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 from app import journal
 from app import pdf as pdf_module
 from app.config import get_config
+from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
 from app.models import Devis, to_devis
 from app.structuration import StructurationError, structure
 from app.transcription import TranscriptionError, transcribe
@@ -60,6 +62,13 @@ app = FastAPI(title="Devis Vocal", lifespan=lifespan)
 class DemandeDevis(BaseModel):
     transcription: str
     taux_tva: Decimal | None = None  # force 0.10 ou 0.20 ; sinon on suit le LLM
+
+    # L'identité de l'artisan voyage avec la demande plutôt que de vivre dans le `.env`.
+    # Sans ça, changer d'artisan entre deux rendez-vous impose d'éditer un fichier et de
+    # redémarrer le serveur — impossible à faire en montrant l'outil à quelqu'un.
+    # Le serveur ne la retient pas : elle est conservée par le navigateur, ce qui laisse
+    # intacte la règle « le serveur ne garde rien ». Absente, on retombe sur la config.
+    entreprise: EntrepriseSaisie | None = None
 
 
 @app.get("/health")
@@ -108,9 +117,15 @@ async def api_devis(demande: DemandeDevis) -> Devis:
 
     journal.noter_extraction(demande.transcription, extraction)
 
+    entreprise = (
+        demande.entreprise.fusionner(config.entreprise)
+        if demande.entreprise
+        else config.entreprise
+    )
+
     return to_devis(
         extraction,
-        entreprise=config.entreprise,
+        entreprise=entreprise,
         transcription=demande.transcription,
         validite_jours=config.validite_jours,
         acompte_pct=config.acompte_pct,
@@ -131,6 +146,22 @@ async def api_pdf(devis: Devis) -> Response:
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{devis.numero}.pdf"'},
     )
+
+
+@app.get("/api/entreprise")
+async def api_entreprise(q: str = "") -> list[EntrepriseTrouvee]:
+    """Retrouve une entreprise par nom, ville ou numéro, dans la base publique.
+
+    Le travail se fait ici et pas dans le navigateur, pour la même raison que les totaux :
+    la clé de TVA, la clé de contrôle du SIRET et la traduction des codes officiels sont
+    du calcul, et le calcul ne quitte pas Python. Le front n'a plus qu'à afficher.
+
+    Jamais d'erreur : une recherche infructueuse et un annuaire en panne donnent tous deux
+    une liste vide, et le formulaire de saisie prend le relais. Un artisan bloqué parce
+    qu'un service tiers ne répond pas, ce serait le comble pour un champ qu'on cherche
+    justement à lui épargner.
+    """
+    return await rechercher(q)
 
 
 @app.get("/")

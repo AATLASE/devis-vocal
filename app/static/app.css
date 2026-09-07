@@ -595,6 +595,104 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   body.a-bandeau .screen { min-height: calc(100svh - 52px); }
 }
 
+/* ---- identité de l'entreprise ------------------------------------------- */
+/* La ligne d'accueil et l'écran qui va avec. Le SIRET n'est pas demandé mais
+   retrouvé : la recherche prend toute la largeur, le formulaire se replie. */
+
+.identite {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; margin: 0 0 22px; padding: 13px 16px;
+  background: var(--dv-paper); border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius); cursor: pointer; text-align: left;
+  font: inherit; color: inherit; transition: border-color .18s;
+}
+
+/* Tant que l'identité manque, la ligne porte l'accent : le devis sortirait sans
+   SIRET ni assurance, et ça ne doit pas se découvrir sur le PDF. */
+.identite.est-vide { background: var(--dv-accent-tint); border-color: var(--dv-accent-edge); }
+
+.identite__texte { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.identite__label { margin: 0; }
+.identite__nom {
+  font-size: 15px; color: var(--dv-ink); font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.identite.est-vide .identite__nom { color: var(--dv-accent-dark); font-weight: 400; }
+.identite__action {
+  flex: none; font-family: var(--dv-mono); font-size: 12px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--dv-accent);
+}
+
+.entreprise { min-height: 100svh; padding: 92px 24px 80px; display: flex; justify-content: center; }
+.entreprise__inner { width: 100%; max-width: 720px; }
+.entreprise__head {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 20px; margin-bottom: 14px;
+}
+.entreprise__head h2 {
+  margin: 4px 0 0; font-family: var(--dv-serif); font-size: 27px; font-weight: 600;
+  color: var(--dv-ink);
+}
+.entreprise__lede { margin: 0 0 30px; font-size: 15px; color: var(--dv-muted); line-height: 1.6; }
+
+/* La recherche : seule chose visible au premier coup d'œil. */
+.chercher { margin-bottom: 8px; }
+.chercher .label { display: block; margin-bottom: 9px; }
+.chercher input {
+  width: 100%; padding: 15px 16px; font: inherit; font-size: 17px;
+  background: var(--dv-paper); color: var(--dv-ink);
+  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
+}
+.chercher input:focus { outline: none; border-color: var(--dv-accent); }
+.chercher__aide { margin-top: 9px; font-size: 13px; color: var(--dv-faint); min-height: 18px; }
+
+.resultats {
+  margin-top: 10px; background: var(--dv-paper);
+  border: 1px solid var(--dv-rule); border-radius: var(--dv-radius); overflow: hidden;
+}
+.resultat {
+  display: block; width: 100%; padding: 13px 16px; text-align: left;
+  font: inherit; color: inherit; background: none; cursor: pointer;
+  border: none; border-bottom: 1px solid var(--dv-rule-faint);
+}
+.resultat:last-child { border-bottom: none; }
+.resultat__nom { font-size: 15px; color: var(--dv-ink); font-weight: 500; }
+.resultat__meta { margin-top: 3px; font-size: 13px; color: var(--dv-faint); }
+.resultat__meta .num { font-size: 12.5px; }
+
+/* Formulaire replié : il existe, il ne s'impose pas. */
+#entreprise-formulaire { margin-top: 4px; }
+.groupe { margin-top: 26px; }
+.groupe .section-head { margin-bottom: 14px; }
+.groupe__note {
+  margin: -4px 0 16px; font-size: 13px; color: var(--dv-faint); line-height: 1.55;
+}
+.grille { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+.champ--large { grid-column: 1 / -1; }
+.champ label {
+  display: block; margin-bottom: 6px; font-size: 13px; color: var(--dv-muted);
+}
+.champ__note { color: var(--dv-faint); font-size: 12px; }
+.champ input {
+  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  background: var(--dv-paper); color: var(--dv-ink);
+  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
+}
+.champ input:focus { outline: none; border-color: var(--dv-accent); }
+.champ input.num { font-family: var(--dv-mono); font-size: 14px; }
+.champ__aide { margin-top: 6px; font-size: 12px; color: var(--dv-faint); min-height: 16px; }
+.champ__aide.est-faux { color: var(--dv-accent-dark); }
+
+.entreprise__actions { display: flex; gap: 12px; margin-top: 34px; }
+
+@media (max-width: 560px) {
+  .entreprise { padding: 56px 18px 60px; }
+  .entreprise__head h2 { font-size: 23px; }
+  .grille { grid-template-columns: 1fr; }
+  .entreprise__actions { flex-direction: column; }
+  .entreprise__actions .btn { width: 100%; }
+}
+
 /* ---- mouvement réduit --------------------------------------------------- */
 /* Le dévoilement de la transcription est du contenu, pas de la décoration : il
    n'est pas supprimé, il est instantané (voir `MOUVEMENT_REDUIT` dans app.js). */

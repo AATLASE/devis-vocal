@@ -13,6 +13,9 @@ anthropic>=1.0
 # Transcription — client compatible OpenAI (utilisé contre l'endpoint Groq)
 openai>=1.55
 
+# Annuaire public des entreprises (recherche-entreprises.api.gouv.fr)
+httpx>=0.27
+
 # Rendu PDF
 playwright>=1.49
 jinja2>=3.1

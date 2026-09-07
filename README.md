@@ -88,12 +88,31 @@ faire confiance à un nouveau fournisseur devant un artisan, mesure-le :
 uv run python scripts/comparer.py anthropic autre
 ```
 
-Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
-nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
-produit. Huit des dix lignes sont publiques — cherche son entreprise sur
-<https://annuaire-entreprises.data.gouv.fr> et tu as le SIRET, le code APE, l'adresse et
-de quoi former le n° de TVA. Seuls l'assurance décennale et l'IBAN doivent lui être
-demandés.
+## L'identité de l'artisan
+
+Un devis au nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur
+argument du produit. Il se renseigne **depuis la page**, pas depuis le `.env` : la
+ligne « Votre entreprise » sur l'écran d'accueil ouvre un champ de recherche.
+
+L'artisan tape le nom de sa boîte — ou son SIRET — et choisit dans la liste. Sept champs
+se remplissent d'un coup depuis l'annuaire public de l'État : raison sociale, forme
+juridique, adresse, ville, SIRET, code APE, et le numéro de TVA, qui n'est pas cherché
+mais *calculé* depuis le SIREN. Restent le téléphone, l'e-mail, l'assurance décennale et
+l'IBAN, qui ne figurent dans aucune base et n'appartiennent qu'à lui.
+
+L'identité est conservée par le navigateur et repart avec chaque demande de devis : le
+serveur n'en garde rien, et changer d'artisan entre deux rendez-vous ne demande plus
+d'éditer un fichier ni de redémarrer quoi que ce soit.
+
+Deux réserves à connaître. Une entreprise peut s'opposer à la diffusion de ses données —
+c'est fréquent chez les entrepreneurs individuels — et elle est alors introuvable : le
+formulaire de saisie reste ouvert dessous, et la clé de contrôle du SIRET attrape les
+fautes de frappe hors ligne. Et le capital social, mention obligatoire pour une société,
+n'est publié nulle part : l'écran le réclame plutôt que de l'inventer.
+
+Les variables `ENTREPRISE_*` du `.env` restent utiles comme valeurs de repli, notamment
+pour préremplir avant un rendez-vous. Ce qui est saisi dans la page les recouvre ; ce qui
+est laissé vide les laisse passer.
 
 Les identifiants légaux livrés par défaut sont à zéro, et pas remplis de valeurs
 plausibles : un devis dont l'argument est la conformité aux mentions obligatoires ne peut

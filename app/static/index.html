@@ -37,6 +37,19 @@
     </div>
     <p class="accueil__baseline">Dictez le chantier en sortant de la visite.<br>Le devis est prêt avant que vous soyez rentré.</p>
 
+    <!-- Au nom de qui sortent les devis. Deux états, et le premier n'est pas décoratif :
+         un devis sans SIRET ni assurance décennale n'est pas un devis, c'est un brouillon.
+         Le dire ici, avant la dictée, coûte une ligne ; le découvrir sur le PDF devant un
+         client coûte le rendez-vous. Ça n'empêche jamais de dicter — on peut vouloir
+         essayer l'outil avant de lui donner ses papiers. -->
+    <button class="identite" id="identite" type="button">
+      <span class="identite__texte">
+        <span class="identite__label label" id="identite-label">Votre entreprise</span>
+        <span class="identite__nom" id="identite-nom">à renseigner</span>
+      </span>
+      <span class="identite__action" id="identite-action">Renseigner</span>
+    </button>
+
     <!-- L'action principale : on parle. Le produit s'appelle « Devis Vocal » — faire
          chercher un fichier à l'artisan, ce serait le contredire dès le premier écran. -->
     <div class="dropzone dictee" id="dictee" role="button" tabindex="0"
@@ -182,6 +195,129 @@
     <div class="erreur__actions">
       <button class="btn" id="btn-reprendre" hidden></button>
       <button class="btn btn--ghost" data-recommencer>Recommencer</button>
+    </div>
+  </div>
+</section>
+
+<!-- 6 ...................................................... entreprise -->
+<!-- Le SIRET est le geste le plus coûteux du parcours : quatorze chiffres sans
+     signification, tapés sur un téléphone. On ne le demande donc pas — on le
+     retrouve. L'artisan tape le nom de sa boîte, choisit dans la liste, et sept
+     champs se remplissent. Le formulaire reste ouvert dessous pour les six qui
+     n'appartiennent qu'à lui, et pour les entreprises que la base ne diffuse pas. -->
+<section class="screen entreprise" id="ecran-entreprise">
+  <div class="entreprise__inner">
+    <div class="entreprise__head">
+      <div>
+        <div class="label">Identité</div>
+        <h2>Votre entreprise</h2>
+      </div>
+      <button class="btn btn--ghost" id="btn-entreprise-retour">Retour</button>
+    </div>
+
+    <p class="entreprise__lede">
+      Ces informations forment l'en-tête de vos devis et les mentions obligatoires du
+      bas de page. Elles sont conservées sur cet appareil et ne sont demandées qu'une fois.
+    </p>
+
+    <!-- La recherche d'abord. C'est elle qui doit attraper l'œil, pas le formulaire. -->
+    <div class="chercher">
+      <label class="label label--accent" for="entreprise-recherche">Retrouver mon entreprise</label>
+      <input type="search" id="entreprise-recherche" autocomplete="off" spellcheck="false"
+             placeholder="Nom de l'entreprise, ou numéro SIRET">
+      <div class="chercher__aide" id="entreprise-etat">
+        Trois lettres suffisent. Ajoutez la ville si le nom est courant.
+      </div>
+      <div class="resultats" id="entreprise-resultats" hidden></div>
+    </div>
+
+    <div class="paste-toggle" id="entreprise-bascule">
+      <span>+</span><span>Compléter ou corriger à la main</span>
+    </div>
+
+    <div class="paste" id="entreprise-formulaire">
+      <!-- Deux groupes, et la séparation est un argument de vente autant qu'une
+           commodité : l'artisan voit d'un coup d'œil tout ce qu'on ne lui demande pas. -->
+      <div class="groupe">
+        <div class="section-head">
+          <div class="label">Rempli depuis l'annuaire public</div>
+          <div class="rule"></div>
+        </div>
+        <div class="grille">
+          <div class="champ champ--large">
+            <label for="e-nom">Raison sociale</label>
+            <input id="e-nom" autocomplete="organization">
+          </div>
+          <div class="champ">
+            <label for="e-forme_juridique">Forme juridique</label>
+            <input id="e-forme_juridique" placeholder="SARL au capital de 10 000 €">
+            <div class="champ__aide" id="forme-aide"></div>
+          </div>
+          <div class="champ">
+            <label for="e-metier">Métier <span class="champ__note">ligne d'accent du devis</span></label>
+            <input id="e-metier" placeholder="Plomberie · Chauffage · Sanitaire">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-adresse">Adresse</label>
+            <input id="e-adresse" autocomplete="street-address">
+          </div>
+          <div class="champ">
+            <label for="e-code_postal_ville">Code postal et ville</label>
+            <input id="e-code_postal_ville">
+          </div>
+          <div class="champ">
+            <label for="e-siret">SIRET</label>
+            <input id="e-siret" inputmode="numeric" class="num">
+            <div class="champ__aide" id="siret-controle"></div>
+          </div>
+          <div class="champ">
+            <label for="e-code_ape">Code APE</label>
+            <input id="e-code_ape" class="num">
+          </div>
+          <div class="champ">
+            <label for="e-tva_intracom">N° TVA <span class="champ__note">calculé</span></label>
+            <input id="e-tva_intracom" class="num">
+          </div>
+        </div>
+      </div>
+
+      <div class="groupe">
+        <div class="section-head">
+          <div class="label">À vous de renseigner</div>
+          <div class="rule"></div>
+        </div>
+        <p class="groupe__note">
+          Ces informations ne figurent dans aucune base publique. L'assurance décennale
+          est une mention obligatoire pour les métiers du bâtiment.
+        </p>
+        <div class="grille">
+          <div class="champ">
+            <label for="e-telephone">Téléphone</label>
+            <input id="e-telephone" inputmode="tel" autocomplete="tel">
+          </div>
+          <div class="champ">
+            <label for="e-email">E-mail</label>
+            <input id="e-email" inputmode="email" autocomplete="email">
+          </div>
+          <div class="champ">
+            <label for="e-assurance">Assurance décennale</label>
+            <input id="e-assurance" placeholder="Nom de l'assureur">
+          </div>
+          <div class="champ">
+            <label for="e-assurance_police">N° de police</label>
+            <input id="e-assurance_police" class="num">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-iban">IBAN <span class="champ__note">pour l'acompte</span></label>
+            <input id="e-iban" class="num" autocomplete="off">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="entreprise__actions">
+      <button class="btn" id="btn-entreprise-enregistrer">Enregistrer</button>
+      <button class="btn btn--ghost" id="btn-entreprise-oublier">Effacer de cet appareil</button>
     </div>
   </div>
 </section>
