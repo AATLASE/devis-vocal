@@ -16,6 +16,7 @@ from pathlib import Path
 
 import anthropic
 
+from app import suivi
 from app.config import RACINE, get_config
 from app.models import DevisExtraction
 
@@ -44,6 +45,9 @@ def _depuis_fixture(transcript: str) -> DevisExtraction:
     for chemin in sorted(FIXTURES.glob("*.json")):
         txt = chemin.with_suffix(".txt")
         if txt.exists() and " ".join(txt.read_text(encoding="utf-8").split())[:60].lower() == empreinte:
+            # Sans cette ligne, rien dans le log ne distingue un devis chiffré par le
+            # modèle d'un devis rejoué depuis le disque.
+            suivi.appel("fixtures", chemin.stem)
             return DevisExtraction.model_validate_json(chemin.read_text(encoding="utf-8"))
 
     disponibles = sorted(p.stem for p in FIXTURES.glob("*.json"))
@@ -135,6 +139,14 @@ def _structure_compatible_openai(
             logger.warning("%s refuse le mode %s : %s", fournisseur, mode, str(err)[:200])
             continue
 
+        # Ce qu'a coûté l'appel, tel que le fournisseur le rapporte. Posé ici et
+        # pas après la boucle : un essai refusé n'a rien consommé, seul celui qui
+        # aboutit compte. Le mode retenu part dans la ligne suivante.
+        usage = getattr(reponse, "usage", None)
+        suivi.appel(fournisseur, model,
+                    getattr(usage, "prompt_tokens", None),
+                    getattr(usage, "completion_tokens", None))
+
         contenu = reponse.choices[0].message.content
         if not contenu:
             raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
@@ -219,6 +231,9 @@ def structure(transcript: str) -> DevisExtraction:
         raise StructurationError(
             "Le service de chiffrage n'a pas répondu. Réessayez dans un instant."
         ) from err
+
+    suivi.appel("anthropic", config.model_structuration,
+                reponse.usage.input_tokens, reponse.usage.output_tokens)
 
     extraction = reponse.parsed_output
     if extraction is None:

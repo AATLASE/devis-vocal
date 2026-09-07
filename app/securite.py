@@ -33,10 +33,18 @@ from app.config import get_config
 
 logger = logging.getLogger("devis-vocal")
 
-# Les routes qui coûtent : un appel API payant, ou un Chromium. Les autres — la page,
-# les fichiers statiques, /health — restent libres, sinon la page ne peut même pas
-# afficher le champ où saisir le code.
+# Tout `/api/` est gardé, sauf la courte liste ci-dessous. C'est fermé par défaut, et
+# c'est délibéré : une route ajoutée demain est protégée sans que personne y pense.
+# L'inverse — une liste de routes à garder — laisse tôt ou tard passer celle qu'on a
+# oublié d'inscrire, et on ne s'en aperçoit pas puisque tout fonctionne.
 PREFIXE_PROTEGE = "/api/"
+
+# Ce qui doit rester joignable sans le code, sinon la page ne peut pas le demander :
+# la configuration publique du SDK Firebase, dont le navigateur a besoin pour afficher
+# l'écran de connexion. Ce ne sont pas des secrets — Firebase les publie dans le code
+# de toute page qui l'utilise. `/health` et les fichiers statiques ne commencent pas
+# par `/api/` et ne sont donc pas concernés.
+ROUTES_LIBRES = frozenset({"/api/firebase"})
 
 # Le code voyage dans un en-tête, jamais dans l'URL : une URL se retrouve dans
 # l'historique du navigateur, dans les journaux du reverse proxy et dans le
@@ -304,6 +312,31 @@ ENTETES_SECURITE = {
     # y compris aux éventuelles iframes.
     "Permissions-Policy": "microphone=(self), camera=(), geolocation=(), payment=()",
 }
+
+
+async def garder_les_routes(request: Request, call_next):
+    """La porte et le débit, appliqués à toutes les routes coûteuses.
+
+    En middleware plutôt qu'en dépendance sur chaque route, pour une raison apprise à
+    la fusion : le second développeur a ajouté huit routes — profil, gabarit, aperçu —
+    dont une qui lance Chromium sur du HTML fourni par l'appelant. Aucune n'était
+    gardée, et rien ne le signalait. Une garde qu'il faut penser à poser est une garde
+    qu'on oublie.
+    """
+    from starlette.responses import JSONResponse
+
+    chemin = request.url.path
+    if chemin.startswith(PREFIXE_PROTEGE) and chemin not in ROUTES_LIBRES:
+        try:
+            verifier_acces(request)
+            verifier_debit(request)
+        except HTTPException as err:
+            # Levée hors du cycle des routes, l'exception ne rencontrerait aucun
+            # gestionnaire : on rend la réponse nous-mêmes, dans la forme que le
+            # front sait déjà lire.
+            return JSONResponse(status_code=err.status_code, content={"detail": err.detail})
+
+    return await call_next(request)
 
 
 async def poser_les_entetes(request: Request, call_next):

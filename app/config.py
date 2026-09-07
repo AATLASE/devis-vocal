@@ -101,6 +101,15 @@ class Config(BaseSettings):
     journal: bool = False
     journal_dir: Path = RACINE / "journal"
 
+    # --- Journalisation d'exécution ---
+    # Voir app/suivi.py. Toujours actif : un log qu'il faut penser à armer est un log
+    # qu'on n'a pas le jour où quelque chose casse devant un artisan.
+    log_dir: Path = RACINE / "logs"
+    log_retention_jours: int = 30
+    # Recopie la transcription et le JSON d'extraction dans le log. C'est ce qui rend
+    # un devis raté compréhensible après coup ; c'est aussi ce qui fait le volume.
+    log_contenu: bool = True
+
     # --- Règles de devis ---
     tva_defaut: Decimal = Decimal("0.10")  # rénovation logement > 2 ans
     validite_jours: int = 30
@@ -151,6 +160,45 @@ class Config(BaseSettings):
     # Rendus PDF simultanés. Chaque page Chromium coûte de la mémoire, et sur un petit
     # VPS c'est elle qui manque en premier — bien avant le processeur.
     rendus_simultanes: int = 2
+
+    # --- Authentification Firebase ---
+    # Hors du périmètre d'origine du démonstrateur (CLAUDE.md interdit « comptes /
+    # auth / multi-tenant » et « base de données »), ajouté sur décision explicite.
+    #
+    # Tout est facultatif, et c'est la règle qui compte : sans identifiants Firebase,
+    # `auth_active` est faux, l'application se comporte exactement comme avant et la
+    # suite de tests passe sans le moindre secret. C'est aussi ce qui garde le mode
+    # hors-ligne démontrable dans un sous-sol sans réseau.
+    #
+    # Le compte de service — celui qui vérifie les jetons côté serveur. Deux formes,
+    # parce que Coolify injecte des variables et ne dépose pas de fichiers :
+    firebase_credentials: Path | None = None        # chemin vers le JSON
+    firebase_credentials_json: str = ""             # le même JSON, en clair dans l'env
+
+    # La configuration publique du SDK navigateur. Ces valeurs ne sont pas des secrets :
+    # Firebase les publie dans le code de toute page qui l'utilise. Elles sont servies
+    # au front par /api/firebase.
+    firebase_api_key: str = ""
+    firebase_auth_domain: str = ""
+    firebase_project_id: str = ""
+
+    @property
+    def auth_active(self) -> bool:
+        """Vrai seulement si le serveur peut réellement vérifier un jeton.
+
+        On ne se contente pas de la config publique : servir un écran de connexion
+        sans vérification côté serveur donnerait une porte peinte sur un mur — le pire
+        des deux mondes, puisqu'on croirait l'API protégée.
+        """
+        return bool(self.firebase_credentials_json or self.firebase_credentials)
+
+    # --- Gabarits de devis ---
+    # Le HTML que l'artisan téléverse pour remplacer `templates/devis.html`.
+    max_gabarit_ko: int = 512
+
+    @property
+    def max_gabarit_octets(self) -> int:
+        return self.max_gabarit_ko * 1024
 
     @model_validator(mode="after")
     def _deduire_fournisseur(self) -> "Config":

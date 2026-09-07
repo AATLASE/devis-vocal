@@ -157,6 +157,73 @@ class Devis(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Le gabarit de l'artisan
+# ---------------------------------------------------------------------------
+
+
+class Gabarit(BaseModel):
+    """La mise en page A4 que l'artisan a téléversée, à la place de `templates/devis.html`.
+
+    Ajout hors périmètre d'origine (voir CLAUDE.md § Périmètre), assumé. Le modèle vit
+    ici parce qu'il traverse la frontière entre les deux moitiés du projet : la moitié
+    « données » le stocke et le valide, la moitié « rendu » le consomme dans `pdf.py`.
+
+    `mentions_manquantes` est le prix à payer de cette fonctionnalité, et on le rend
+    visible plutôt que de le taire. Le gabarit livré garantit les mentions obligatoires
+    d'un devis français ; un gabarit téléversé ne garantit rien. On vérifie donc, à
+    l'enregistrement, que les valeurs qui doivent figurer sur un devis apparaissent
+    bien dans le document rendu, et on liste celles qui manquent. Le gabarit est
+    accepté quand même — c'est le document de l'artisan — mais l'écran le dit.
+    """
+
+    proprietaire: str  # l'uid Firebase, ou « local » quand l'auth est inactive
+    nom: str  # le nom du fichier téléversé, pour que l'artisan reconnaisse le sien
+    html: str
+    modifie_le: datetime
+    mentions_manquantes: list[str] = Field(default_factory=list)
+
+    @property
+    def conforme(self) -> bool:
+        return not self.mentions_manquantes
+
+
+# ---------------------------------------------------------------------------
+# La fiche de l'artisan
+# ---------------------------------------------------------------------------
+
+
+class Profil(BaseModel):
+    """Qui est l'artisan : son nom, son entreprise, son rôle. Demandé à l'inscription.
+
+    Ajout hors périmètre d'origine, comme le gabarit, et sur la même décision explicite.
+    Une chose doit rester claire, parce qu'elle a été tranchée et qu'elle est
+    contre-intuitive : **ce profil n'entre jamais dans le devis.**
+
+    L'`Entreprise` du haut du devis porte treize champs légalement obligatoires — SIRET,
+    TVA intracommunautaire, assurance décennale, IBAN. Faire remonter ici la seule
+    raison sociale produirait un document affichant un nom d'entreprise qui ne
+    correspond plus à son SIRET : non seulement inutile, mais moins bon que de ne rien
+    faire. Le devis continue donc de sortir sur l'`Entreprise` de la configuration, et
+    ce profil ne sert qu'à savoir qui est connecté.
+
+    Le jour où le devis devra vraiment porter l'entreprise de l'artisan, c'est
+    `Entreprise` qu'il faudra collecter en entier — pas ce modèle qu'il faudra brancher.
+    """
+
+    proprietaire: str  # l'uid Firebase, ou « local » quand l'auth est inactive
+    prenom: str
+    nom: str
+    entreprise: str
+    role: str
+    modifie_le: datetime
+
+    @property
+    def identite(self) -> str:
+        """« Camille Durand », pour la barre de compte."""
+        return f"{self.prenom} {self.nom}".strip()
+
+
+# ---------------------------------------------------------------------------
 # La couture entre les deux
 # ---------------------------------------------------------------------------
 

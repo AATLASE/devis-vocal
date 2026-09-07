@@ -28,7 +28,8 @@ from functools import lru_cache
 from math import ceil
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, TemplateError, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 from markupsafe import Markup
 from playwright.async_api import Browser, async_playwright
 
@@ -223,20 +224,30 @@ def _polices_inline() -> str:
 
 
 @lru_cache
-def _feuille_de_style() -> Markup:
-    """Tokens, polices et feuille A4, dans cet ordre : les variables d'abord."""
+def _feuille_de_style(polices_inline: bool = True) -> Markup:
+    """Tokens, polices et feuille A4, dans cet ordre : les variables d'abord.
+
+    `polices_inline=False` remplace les 518 Ko de base64 par un `@import` vers
+    `/static/fonts.css`. C'est pour l'aperçu affiché dans l'application, où les
+    polices sont déjà chargées par la page : renvoyer un demi-mégaoctet à chaque
+    devis serait le payer une seconde fois, sur la 4G d'une camionnette. Le PDF,
+    lui, garde ses octets — il doit rester juste sans réseau.
+
+    L'`@import` est en tête : la règle exige qu'aucune autre ne le précède.
+    """
+    polices = _polices_inline() if polices_inline else ""
+    amont = "" if polices_inline else '@import url("/static/fonts.css");\n'
     return Markup(
-        (STATIQUE / "tokens.css").read_text(encoding="utf-8")
-        + _polices_inline()
+        amont
+        + (STATIQUE / "tokens.css").read_text(encoding="utf-8")
+        + polices
         + (TEMPLATES / "pdf.css").read_text(encoding="utf-8")
     )
 
 
-def _environnement() -> Environment:
-    env = Environment(
-        loader=FileSystemLoader(TEMPLATES),
-        autoescape=select_autoescape(["html"]),
-    )
+def _poser_les_filtres(env: Environment) -> Environment:
+    """Les filtres de formatage français. Les mêmes des deux côtés : un gabarit
+    d'artisan doit pouvoir écrire `{{ devis.total_ttc | euro }}` comme le nôtre."""
     env.filters["euro"] = f_euro
     env.filters["montant"] = f_montant
     env.filters["nombre"] = f_nombre
@@ -246,22 +257,65 @@ def _environnement() -> Environment:
     return env
 
 
-_env = _environnement()
+_env = _poser_les_filtres(
+    Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
+)
+
+# Le gabarit téléversé par un artisan est du code que nous n'avons pas écrit et que
+# nous exécutons sur notre serveur. Deux précautions, et elles ne sont pas de trop :
+#
+# - `SandboxedEnvironment` refuse l'accès aux attributs internes. Sans lui,
+#   `{{ devis.__class__.__init__.__globals__ }}` ouvre l'interpréteur — donc la
+#   configuration, donc les clés API.
+# - `loader=None` fait échouer `{% include %}` et `{% extends %}` : aucun gabarit ne
+#   lira un fichier du serveur.
+#
+# Ce qui reste possible, et qu'on assume : un gabarit peut écrire n'importe quoi dans
+# le document, y compris un devis non conforme. C'est le sujet de `mentions_manquantes`.
+_env_gabarit = _poser_les_filtres(
+    SandboxedEnvironment(loader=None, autoescape=select_autoescape(["html"]))
+)
 
 
-def render_html(devis: Devis) -> str:
-    """Le devis en HTML. Exposé à part : c'est ce qu'on ouvre dans un onglet pour
-    travailler la mise en page sans regénérer un PDF à chaque itération."""
+class GabaritError(Exception):
+    """Le gabarit ne compile pas, ou explose au rendu."""
+
+
+def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
+    """Tout ce qu'un gabarit peut lire. Documenté par `docs/gabarits.md` : c'est le
+    contrat offert à l'artisan qui écrit sa propre mise en page."""
     pages, cloture_sur_derniere, total_pages = paginer(devis.lignes, devis.notes)
-    return _env.get_template("devis.html").render(
-        devis=devis,
-        e=devis.entreprise,
-        taux_reduit=TAUX_REDUIT,
-        pages=pages,
-        cloture_sur_derniere=cloture_sur_derniere,
-        total_pages=total_pages,
-        css=_feuille_de_style(),
-    )
+    return {
+        "devis": devis,
+        "e": devis.entreprise,
+        "taux_reduit": TAUX_REDUIT,
+        "pages": pages,
+        "cloture_sur_derniere": cloture_sur_derniere,
+        "total_pages": total_pages,
+        "css": _feuille_de_style(polices_inline),
+    }
+
+
+def render_html(devis: Devis, gabarit: str | None = None, *, polices_inline: bool = True) -> str:
+    """Le devis en HTML. Exposé à part : c'est ce qu'on ouvre dans un onglet pour
+    travailler la mise en page sans regénérer un PDF à chaque itération, et c'est ce
+    que l'application affiche dans son aperçu A4.
+
+    `gabarit` remplace `templates/devis.html` par le HTML d'un artisan. Il est rendu
+    dans le bac à sable, avec exactement le même contexte — un gabarit tiers a accès
+    au devis, aux filtres et à la feuille de style, à rien d'autre.
+
+    `polices_inline=False` allège le document de ses polices en base64 ; voir
+    `_feuille_de_style`. À n'utiliser que pour un rendu affiché dans l'application,
+    jamais pour un document qui doit se suffire à lui-même.
+    """
+    ctx = contexte(devis, polices_inline=polices_inline)
+    if gabarit is None:
+        return _env.get_template("devis.html").render(**ctx)
+    try:
+        return _env_gabarit.from_string(gabarit).render(**ctx)
+    except TemplateError as err:
+        raise GabaritError(f"{type(err).__name__} : {err}") from err
 
 
 # ---------------------------------------------------------------------------
@@ -303,8 +357,8 @@ async def arreter() -> None:
         _playwright = None
 
 
-async def render(devis: Devis) -> bytes:
-    """Produit le PDF du devis."""
+async def render(devis: Devis, gabarit: str | None = None) -> bytes:
+    """Produit le PDF du devis. `gabarit` : le HTML de l'artisan, sinon celui livré."""
     global _places
     await demarrer()  # filet : permet d'appeler render() depuis un test, hors application
     assert _navigateur is not None
@@ -315,14 +369,14 @@ async def render(devis: Devis) -> bytes:
         _places = asyncio.Semaphore(get_config().rendus_simultanes)
 
     async with _places:
-        return await _rendre(devis)
+        return await _rendre(devis, gabarit)
 
 
-async def _rendre(devis: Devis) -> bytes:
+async def _rendre(devis: Devis, gabarit: str | None) -> bytes:
     assert _navigateur is not None
     page = await _navigateur.new_page()
     try:
-        await page.set_content(render_html(devis), wait_until="load")
+        await page.set_content(render_html(devis, gabarit), wait_until="load")
         # `load` ne dit rien des polices. Sans cette attente, Chromium imprime par
         # intermittence en police de repli — le document est alors juste, mais ce n'est
         # plus le design.

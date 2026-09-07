@@ -19,6 +19,7 @@ import logging
 
 from openai import OpenAI, OpenAIError
 
+from app import suivi
 from app.config import get_config
 
 logger = logging.getLogger("devis-vocal")
@@ -92,6 +93,10 @@ def transcribe(audio: bytes, filename: str) -> str:
             "Le service de transcription n'a pas répondu. Votre enregistrement est "
             "conservé — réessayez dans un instant."
         ) from err
+
+    # Groq facture la transcription à la durée d'audio, pas au token : la ligne dit
+    # quel modèle a répondu, le coût ne s'estime pas ici.
+    suivi.appel("groq", config.model_transcription)
 
     texte = (reponse.text or "").strip()
     if not texte:

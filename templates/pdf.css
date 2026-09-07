@@ -16,6 +16,29 @@
   .page { box-shadow: none; margin: 0; }
 }
 
+/* ---- l'aperçu dans l'application --------------------------------------- */
+/* Le même document, affiché à l'écran par `/api/apercu` plutôt qu'imprimé. Il
+   lui faut ce que le papier n'a pas besoin qu'on lui dise : un fond derrière la
+   feuille, et une séparation entre les pages — sans quoi trois pages blanches
+   bout à bout se lisent comme une seule.
+
+   C'est le seul endroit de cette feuille qui a le droit d'appeler les tokens
+   d'écran (ombre, espacement) ; `@media print` reste au-dessus et remet tout à
+   plat. Aucune de ces règles ne peut donc atteindre le PDF. */
+
+@media screen {
+  body {
+    margin: 0;
+    padding: 0;
+    background: var(--dv-desk);
+  }
+  .page {
+    margin: 0 auto var(--dv-s-5);
+    box-shadow: var(--dv-ombre-3);
+  }
+  .page:last-child { margin-bottom: 0; }
+}
+
 .page {
   width: 210mm;
   min-height: 297mm;

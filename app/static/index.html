@@ -2,40 +2,249 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#efece5">
+<meta name="description" content="Dictez le chantier en sortant de la visite, repartez avec un devis conforme.">
 <title>Devis Vocal</title>
 <link rel="stylesheet" href="/static/fonts.css">
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
 </head>
+<!-- `compte-inconnu` ne se pose pas ici mais dans `compte.js`, et c'est délibéré :
+     ce module importe le SDK Firebase depuis un CDN. Hors ligne, l'import échoue et
+     le module ne s'exécute jamais — un masque posé dans ce fichier ne serait alors
+     jamais retiré, et l'application entière resterait invisible. Or elle doit
+     tourner sans Firebase et sans réseau, exactement comme avant. -->
 <body>
+
+<!-- Les icônes du produit, en un seul jeu et dessinées ici. Traits de 1,5px sur une
+     grille de 24, bouts arrondis : c'est ce qui les fait tenir ensemble. Aucune
+     dépendance, aucun réseau, et elles héritent de `currentColor` — donc elles
+     suivent l'état du bouton qui les porte au lieu d'être des images figées. -->
+<svg class="jeu-icones" aria-hidden="true" focusable="false">
+  <symbol id="i-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+    <path d="M5 10.5a7 7 0 0 0 14 0M12 17.5V21M9 21h6"></path>
+  </symbol>
+  <symbol id="i-coche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m4.5 12.5 5 5 10-11"></path>
+  </symbol>
+  <symbol id="i-document" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 2.5H7a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7.5Z"></path>
+    <path d="M14 2.5v5h5M8.5 12.5h7M8.5 16.5h4.5"></path>
+  </symbol>
+  <symbol id="i-partage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15.5V3M8 6.5 12 2.5l4 4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+  <symbol id="i-telecharger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.5V15M8 11l4 4 4-4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <path d="M12 5.5v13M5.5 12h13"></path>
+  </symbol>
+  <symbol id="i-retour" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 5.5 3.5 12l6.5 6.5M3.5 12H20"></path>
+  </symbol>
+  <symbol id="i-alerte" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3.5 22 20.5H2Z"></path>
+    <path d="M12 10v4.5M12 17.5h.01"></path>
+  </symbol>
+  <symbol id="i-recommencer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"></path>
+    <path d="M3.5 3.5V10h6.5"></path>
+  </symbol>
+</svg>
+
+<!-- Le premier élément focalisable de la page : un artisan au clavier, ou sur
+     lecteur d'écran, ne doit pas traverser l'ossature à chaque écran. -->
+<a class="saut" href="#principal">Aller au contenu</a>
 
 <!-- Le chiffrage est-il calculé ou rejoué, et par quel moteur ? Sans ce bandeau, on
      peut montrer une fixture à un artisan en croyant qu'elle sort du modèle — ou lui
      montrer un chiffrage de secours en croyant voir le moteur de référence. Les deux
      variantes sont peintes depuis /health ; le bandeau reste caché sinon. -->
-<div id="bandeau" class="bandeau" hidden>
-  <div id="bandeau-fixtures" hidden>
-    <strong>Mode démonstration hors-ligne.</strong>
-    Le chiffrage n'est pas calculé, il est rejoué depuis un enregistrement.
-    Ne pas montrer tel quel à un artisan — passer <code>USE_FIXTURES=false</code>.
-  </div>
-  <div id="bandeau-fournisseur" hidden>
-    <strong>Chiffrage sur un moteur de secours (<span id="bandeau-moteur"></span>).</strong>
-    Les prix dictés sont repris fidèlement ; les prix estimés sortent nettement plus bas
-    que sur le moteur de référence. Pour une démonstration, passer
-    <code>STRUCTURATION_PROVIDER=anthropic</code>.
+<div id="bandeau" class="bandeau" role="status" hidden>
+  <div class="bandeau__inner">
+    <svg class="bandeau__icone" aria-hidden="true"><use href="#i-alerte"/></svg>
+    <div>
+      <div id="bandeau-fixtures" hidden>
+        <strong>Mode démonstration hors-ligne.</strong>
+        Le chiffrage n'est pas calculé, il est rejoué depuis un enregistrement.
+        Ne pas montrer tel quel à un artisan — passer <code>USE_FIXTURES=false</code>.
+      </div>
+      <div id="bandeau-fournisseur" hidden>
+        <strong>Chiffrage sur un moteur de secours (<span id="bandeau-moteur"></span>).</strong>
+        Les prix dictés sont repris fidèlement ; les prix estimés sortent nettement plus bas
+        que sur le moteur de référence. Pour une démonstration, passer
+        <code>STRUCTURATION_PROVIDER=anthropic</code>.
+      </div>
+      <!-- Troisième substitution silencieuse possible depuis l'ajout des gabarits : un
+           devis rendu sur la mise en page livrée alors que l'artisan croit voir la
+           sienne. Même bande, même raison que les deux au-dessus. -->
+      <div id="bandeau-gabarit" hidden>
+        <strong>Devis établi sur la mise en page livrée.</strong>
+        Votre gabarit n'a pas pu rendre ce devis-là ; le document est complet, mais il
+        n'est pas sur votre mise en page. Vérifiez-la depuis <strong>Mon gabarit</strong>.
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- 1 ......................................................... accueil -->
-<section class="screen is-active accueil" id="ecran-accueil">
-  <div class="accueil__inner">
-    <div class="wordmark">
-      <h1>Devis&nbsp;Vocal</h1>
-      <div class="rule"></div>
+<!-- ======================================================================= -->
+<!-- L'ossature persistante.                                                 -->
+<!--                                                                         -->
+<!-- Avant, chaque écran se redécouvrait : la marque était peinte deux fois   -->
+<!-- — dans l'accueil et dans la connexion — la barre de compte flottait      -->
+<!-- au-dessus sans appartenir à rien, et le gabarit ouvrait une page sans    -->
+<!-- retour visible. Une seule barre porte désormais les trois : où l'on est, -->
+<!-- qui l'on est, comment on revient. Elle ne bouge plus d'un écran à        -->
+<!-- l'autre, ce qui est tout l'intérêt.                                      -->
+<!-- ======================================================================= -->
+<header class="entete" id="entete">
+  <div class="entete__inner">
+    <!-- La marque et l'état du parcours, à gauche. Le fil dit sur quel écran on est ;
+         il disparaît sur l'accueil, où la question ne se pose pas. -->
+    <button class="marque" id="marque" type="button" aria-label="Revenir à l'accueil">
+      <span class="marque__nom">Devis&nbsp;Vocal</span>
+    </button>
+    <div class="entete__fil" id="entete-fil" hidden></div>
+
+    <div class="entete__espace"></div>
+
+    <!-- La barre de compte. Cachée tant que Firebase n'est pas configuré : sans
+         vérification côté serveur, un bouton « Se connecter » serait une porte peinte
+         sur un mur. C'est /api/firebase qui tranche, pas le front. -->
+    <div class="compte" id="compte" hidden>
+      <span class="compte__qui" id="compte-qui"></span>
+      <button class="compte__lien" id="btn-gabarit">Mon gabarit</button>
+      <button class="compte__lien" id="btn-deconnexion">Se déconnecter</button>
     </div>
-    <p class="accueil__baseline">Dictez le chantier en sortant de la visite.<br>Le devis est prêt avant que vous soyez rentré.</p>
+  </div>
+</header>
+
+<main id="principal">
+
+<!-- 0 ...................................................... connexion -->
+<section class="screen connexion" id="ecran-connexion" aria-label="Connexion">
+  <div class="connexion__inner">
+    <h1 class="connexion__titre">Retrouvez votre&nbsp;mise en page.</h1>
+    <p class="connexion__baseline">
+      Le compte ne sert qu'à ça. Vous pouvez dicter un devis sans être connecté.
+    </p>
+
+    <button class="btn btn--google" id="btn-google">
+      <span class="btn__g" aria-hidden="true">G</span> Continuer avec Google
+    </button>
+
+    <div class="connexion__ou"><span>ou</span></div>
+
+    <!-- Les champs portent une étiquette visible, pas seulement un texte de
+         substitution : celui-ci disparaît à la première frappe, et l'artisan qui
+         relève la tête ne sait plus dans quelle case il est. -->
+    <form class="connexion__form" id="form-email" novalidate>
+      <div class="champ">
+        <label class="champ__label" for="champ-email">Adresse e-mail</label>
+        <input type="email" id="champ-email" autocomplete="email"
+               inputmode="email" autocapitalize="off" spellcheck="false" required>
+      </div>
+      <div class="champ">
+        <label class="champ__label" for="champ-motdepasse">Mot de passe</label>
+        <input type="password" id="champ-motdepasse"
+               autocomplete="current-password" minlength="6" required>
+        <div class="champ__aide">Six caractères au moins.</div>
+      </div>
+      <button class="btn btn--large" type="submit" id="btn-email">Se connecter</button>
+      <!-- Un artisan rencontré en rendez-vous n'a pas de compte. Lui faire chercher
+           un lien « créer un compte » sur un autre écran, c'est perdre la démo. -->
+      <button class="btn btn--ghost btn--large" type="button" id="btn-creer">Créer un compte</button>
+    </form>
+
+    <p class="connexion__erreur" id="connexion-erreur" role="alert" hidden></p>
+  </div>
+</section>
+
+<!-- 0 bis ....................................................... profil -->
+<!-- La dernière étape de l'inscription. Elle s'affiche après que le compte existe,
+     et pour les deux chemins : création par e-mail comme première connexion Google —
+     `compte.js` la déclenche sur l'absence de fiche, pas sur la façon de s'inscrire.
+     Un compte Google arrive donc ici avec son nom déjà rempli.
+
+     Ce qui est saisi ici n'entre jamais dans le devis. L'en-tête du devis porte treize
+     mentions légales — SIRET, TVA, assurance décennale — et n'y faire remonter que la
+     raison sociale donnerait un document dont le nom ne correspond plus au SIRET.
+     Voir `Profil` dans app/models.py. -->
+<section class="screen profil" id="ecran-profil" aria-label="Votre fiche">
+  <div class="profil__inner">
+    <div class="label label--accent">Dernière étape</div>
+    <h1 class="profil__titre">Qui établit&nbsp;ces devis ?</h1>
+    <p class="profil__baseline">
+      Votre nom et votre entreprise servent à vous reconnaître dans l'application.
+      Ils n'apparaissent pas sur le devis, qui garde ses mentions légales.
+    </p>
+
+    <form class="profil__form" id="form-profil" novalidate>
+      <!-- Prénom et nom côte à côte : ce sont deux moitiés d'une même information,
+           les empiler ferait passer le formulaire pour deux fois plus long. -->
+      <div class="profil__paire">
+        <div class="champ">
+          <label class="champ__label" for="profil-prenom">Prénom</label>
+          <input type="text" id="profil-prenom" name="prenom" autocomplete="given-name"
+                 maxlength="120" autocapitalize="words" required>
+        </div>
+        <div class="champ">
+          <label class="champ__label" for="profil-nom">Nom</label>
+          <input type="text" id="profil-nom" name="nom" autocomplete="family-name"
+                 maxlength="120" autocapitalize="words" required>
+        </div>
+      </div>
+
+      <div class="champ">
+        <label class="champ__label" for="profil-entreprise">Nom de votre entreprise</label>
+        <input type="text" id="profil-entreprise" name="entreprise" autocomplete="organization"
+               maxlength="120" required>
+      </div>
+
+      <div class="champ">
+        <label class="champ__label" for="profil-role">Votre rôle dans l'entreprise</label>
+        <!-- Une liste plutôt qu'un champ libre : au pouce, sur un chantier, choisir
+             est plus rapide que taper, et ça évite les fautes de frappe. « Autre »
+             ouvre le champ libre juste en dessous — c'est ce texte qui est enregistré,
+             la liste n'enferme personne. -->
+        <select id="profil-role" name="role" autocomplete="organization-title" required>
+          <option value="" selected disabled>Choisissez…</option>
+        </select>
+      </div>
+
+      <div class="champ" id="profil-autre" hidden>
+        <label class="champ__label" for="profil-role-autre">Précisez votre rôle</label>
+        <input type="text" id="profil-role-autre" maxlength="120">
+      </div>
+
+      <button class="btn btn--large" type="submit" id="btn-profil">Terminer l'inscription</button>
+    </form>
+
+    <p class="connexion__erreur" id="profil-erreur" role="alert" hidden></p>
+  </div>
+</section>
+
+<!-- 1 ......................................................... accueil -->
+<section class="screen is-active accueil" id="ecran-accueil" aria-label="Dicter un devis">
+  <div class="accueil__inner">
+
+    <!-- La promesse tient la place que la marque occupait : elle est répétée dans
+         l'ossature, la redire ici ne dirait rien de plus. Ce que l'artisan doit lire
+         en premier, c'est ce que la machine fait pour lui. -->
+    <div class="accueil__hero">
+      <h1 class="accueil__titre">
+        Dictez le chantier<br>en sortant de la&nbsp;visite.
+      </h1>
+      <p class="accueil__baseline">
+        Le devis est prêt avant que vous soyez rentré — conforme, chiffré,
+        prêt à envoyer.
+      </p>
+    </div>
 
     <!-- Au nom de qui sortent les devis. Deux états, et le premier n'est pas décoratif :
          un devis sans SIRET ni assurance décennale n'est pas un devis, c'est un brouillon.
@@ -54,7 +263,12 @@
          chercher un fichier à l'artisan, ce serait le contredire dès le premier écran. -->
     <div class="dropzone dictee" id="dictee" role="button" tabindex="0"
          aria-label="Enregistrer une note vocale">
-      <div class="dropzone__mic"><i></i></div>
+      <div class="dropzone__mic">
+        <svg aria-hidden="true"><use href="#i-micro"/></svg>
+        <!-- Les barres de niveau. Muettes au repos, elles suivent la voix pendant
+             la dictée — voir `--dv-niveau` dans app.js. -->
+        <span class="onde" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+      </div>
       <div class="dropzone__title" id="dictee-titre">Dictez votre devis</div>
       <div class="dropzone__hint" id="dictee-aide">Touchez pour commencer à parler</div>
     </div>
@@ -71,44 +285,81 @@
            plus qu'à produire le son. -->
       <div class="lecteur" id="lecteur">
         <button class="lecteur__jouer" id="relu-jouer" aria-label="Écouter l'enregistrement"><i></i></button>
-        <div class="lecteur__piste" id="relu-piste"><div class="lecteur__avance" id="relu-avance"></div></div>
+        <div class="lecteur__piste" id="relu-piste" role="slider" tabindex="0"
+             aria-label="Position dans l'enregistrement"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="lecteur__avance" id="relu-avance"></div>
+        </div>
         <div class="lecteur__temps num" id="relu-temps">0:00</div>
       </div>
       <audio id="relu-audio" preload="metadata"></audio>
       <div class="relu__actions">
-        <button class="btn" id="btn-envoyer-dictee">Établir le devis</button>
-        <button class="btn btn--ghost" id="btn-refaire-dictee">Refaire</button>
+        <button class="btn btn--large" id="btn-envoyer-dictee">Établir le devis</button>
+        <button class="btn btn--ghost btn--large" id="btn-refaire-dictee">Refaire</button>
       </div>
     </div>
 
-    <!-- Les deux chemins de repli, dans l'affordance que le handoff leur réserve.
-         Chaque panneau suit son propre lien : ouverts tous les deux, on doit voir
-         lequel appartient à quoi. -->
-    <div class="paste-toggle" id="depot-bascule"><span>+</span><span>Déjà enregistré ? Déposer un fichier</span></div>
-    <div class="paste" id="depot-repli">
-      <div class="dropzone" id="depot" role="button" tabindex="0" aria-label="Déposer ou choisir un fichier audio">
-        <div class="dropzone__title">Déposez votre note vocale</div>
-        <div class="dropzone__hint">ou touchez pour choisir un fichier · m4a, ogg, mp3, wav</div>
-        <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
+    <!-- Les deux chemins de repli. Chaque panneau suit son propre lien : ouverts
+         tous les deux, on doit voir lequel appartient à quoi. -->
+    <div class="replis">
+      <button class="paste-toggle" id="depot-bascule" type="button"
+              aria-expanded="false" aria-controls="depot-repli">
+        <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span>Déjà enregistré ? Déposer un fichier</span>
+      </button>
+      <div class="paste" id="depot-repli">
+        <div class="dropzone dropzone--mince" id="depot" role="button" tabindex="0"
+             aria-label="Déposer ou choisir un fichier audio">
+          <div class="dropzone__title">Déposez votre note vocale</div>
+          <div class="dropzone__hint">ou touchez pour choisir un fichier · m4a, ogg, mp3, wav</div>
+          <input type="file" id="fichier" accept="audio/*,.m4a,.ogg,.opus,.mp3,.wav,.webm" hidden>
+        </div>
       </div>
-    </div>
 
-    <div class="paste-toggle" id="repli-bascule"><span>+</span><span>Pas de vocal ? Coller le texte à la place</span></div>
-    <div class="paste" id="repli">
-      <textarea id="texte" placeholder="Tapez ou collez ce que vous auriez dicté…"></textarea>
-      <button class="btn" id="btn-texte">Établir le devis</button>
+      <button class="paste-toggle" id="repli-bascule" type="button"
+              aria-expanded="false" aria-controls="repli">
+        <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span>Pas de vocal ? Coller le texte à la place</span>
+      </button>
+      <div class="paste" id="repli">
+        <div class="champ">
+          <label class="champ__label" for="texte">Ce que vous auriez dicté</label>
+          <textarea id="texte" placeholder="« Alors, salle de bain chez Madame Renard, 14 rue des Lilas… »"></textarea>
+        </div>
+        <button class="btn btn--large" id="btn-texte">Établir le devis</button>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- 2 ...................................................... traitement -->
-<section class="screen traitement" id="ecran-traitement">
+<!-- L'attente dure vingt à quarante secondes. C'est long, et c'est le moment où
+     l'artisan décide s'il fait confiance à la machine. L'écran doit donc répondre à
+     trois questions en continu : où en est-on, combien de temps encore, et est-ce
+     que la machine m'a compris. La barre répond à la première, le chronomètre à la
+     deuxième, et la transcription qui se dévoile — la seule chose qui compte
+     vraiment — à la troisième. -->
+<section class="screen traitement" id="ecran-traitement" aria-label="Établissement du devis">
   <div class="traitement__inner">
     <div class="traitement__head">
-      <h2>En cours d'établissement</h2>
-      <div class="chrono" id="chrono">0 s</div>
+      <div>
+        <div class="label label--accent">En cours</div>
+        <h2 id="traitement-titre">Établissement du devis</h2>
+      </div>
+      <div class="chrono num" id="chrono" aria-hidden="true">0 s</div>
     </div>
+
+    <!-- La progression du pipeline réel, pas une minuterie. Trois segments, un par
+         étape : celui qui tourne respire, ceux qui sont faits sont pleins. -->
+    <div class="jauge" id="jauge" role="progressbar"
+         aria-label="Progression" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0">
+      <div class="jauge__seg"><i></i></div>
+      <div class="jauge__seg"><i></i></div>
+      <div class="jauge__seg"><i></i></div>
+    </div>
+
     <div class="steps" id="etapes"></div>
+
     <div class="transcript-card" id="carte-transcription" hidden>
       <div class="label label--accent">Ce que vous avez dit</div>
       <div class="transcript-body" id="transcription-directe"></div>
@@ -117,45 +368,100 @@
 </section>
 
 <!-- 3 ....................................................... relecture -->
-<section class="screen relecture" id="ecran-relecture">
+<!-- Deux lectures du même devis, et il faut les deux. À gauche ce qu'on vérifie —
+     les lignes, les quantités, les prix, ce qui est estimé. À droite ce que la
+     cliente recevra. Sur un large écran elles sont côte à côte ; sur un téléphone
+     elles se relaient sous un commutateur, parce qu'empiler une feuille A4 sous un
+     tableau ne donne à lire ni l'une ni l'autre. -->
+<section class="screen relecture" id="ecran-relecture" aria-label="Relecture du devis">
   <div class="relecture__inner">
+
     <div class="relecture__head">
-      <div>
-        <div class="label" id="rel-numero">Devis n° —</div>
+      <div class="relecture__ident">
+        <div class="label num" id="rel-numero">Devis n° —</div>
         <h2 id="rel-objet"></h2>
         <div class="relecture__client" id="rel-client"></div>
       </div>
       <div class="relecture__actions">
-        <button class="btn" id="btn-pdf">Télécharger le PDF</button>
-        <button class="btn btn--ghost" data-recommencer>Nouveau devis</button>
+        <button class="btn btn--large" id="btn-pdf">
+          <svg aria-hidden="true"><use href="#i-telecharger" id="icone-pdf"/></svg>
+          <span id="btn-pdf-libelle">Télécharger le PDF</span>
+        </button>
+        <button class="btn btn--ghost btn--large" data-recommencer>
+          <svg aria-hidden="true"><use href="#i-recommencer"/></svg>
+          <span>Nouveau devis</span>
+        </button>
       </div>
     </div>
 
-    <details class="transcript">
-      <summary class="label label--accent" id="rel-duree">Transcription de la note vocale</summary>
-      <div id="rel-transcription"></div>
-    </details>
-
-    <div class="section-head">
-      <div class="label">Prestations</div>
-      <div class="rule"></div>
-      <div class="count" id="rel-compte"></div>
+    <!-- Le commutateur du téléphone. Masqué dès que les deux vues tiennent
+         côte à côte : un commutateur qui ne commute rien est un bouton mort. -->
+    <div class="bascule" id="bascule-vue" role="tablist" aria-label="Vue du devis">
+      <button class="bascule__onglet is-active" id="onglet-detail" type="button"
+              role="tab" aria-selected="true" aria-controls="vue-detail" data-vue="detail">Détail</button>
+      <button class="bascule__onglet" id="onglet-apercu" type="button"
+              role="tab" aria-selected="false" aria-controls="vue-apercu" data-vue="apercu">Aperçu du document</button>
     </div>
 
-    <div class="table">
-      <div class="table__row table__head">
-        <div>Désignation</div><div class="r">Qté</div><div class="r">Unité</div>
-        <div class="r">P.U. HT</div><div class="r">Total HT</div>
-      </div>
-      <div id="rel-lignes"></div>
-    </div>
+    <div class="relecture__corps">
 
-    <div class="foot">
-      <div>
-        <div class="label" id="rel-titre-observations">Observations</div>
-        <div class="observations" id="rel-observations"></div>
+      <div class="relecture__detail" id="vue-detail" role="tabpanel" aria-labelledby="onglet-detail">
+        <details class="transcript">
+          <summary class="label label--accent" id="rel-duree">Transcription de la note vocale</summary>
+          <div id="rel-transcription"></div>
+        </details>
+
+        <div class="section-head">
+          <div class="label">Prestations</div>
+          <div class="rule"></div>
+          <div class="count" id="rel-compte"></div>
+        </div>
+
+        <div class="table">
+          <div class="table__row table__head">
+            <div>Désignation</div><div class="r">Qté</div><div class="r">Unité</div>
+            <div class="r">P.U. HT</div><div class="r">Total HT</div>
+          </div>
+          <div id="rel-lignes"></div>
+        </div>
+
+        <div class="foot">
+          <div>
+            <div class="label" id="rel-titre-observations">Observations</div>
+            <div class="observations" id="rel-observations"></div>
+          </div>
+          <div class="totaux" id="rel-totaux"></div>
+        </div>
       </div>
-      <div class="totaux" id="rel-totaux"></div>
+
+      <!-- L'aperçu. La feuille A4 telle qu'elle sortira, rendue par le même gabarit
+           et la même feuille de style que le PDF — voir `/api/apercu`. Le cadre est
+           en bac à sable sans `allow-scripts` : un gabarit d'artisan est du HTML que
+           nous n'avons pas écrit, il s'affiche, il ne s'exécute pas. -->
+      <aside class="relecture__apercu" id="vue-apercu" role="tabpanel" aria-labelledby="onglet-apercu">
+        <div class="apercu">
+          <div class="apercu__barre">
+            <div class="label">Ce que recevra votre client</div>
+            <div class="apercu__pages num" id="apercu-pages"></div>
+          </div>
+          <div class="apercu__bureau" id="apercu-bureau">
+            <div class="apercu__attente" id="apercu-attente">
+              <span class="apercu__feuille"></span>
+              <span class="apercu__feuille"></span>
+            </div>
+            <!-- Le plan porte la taille visible, le cadre la taille réelle : la
+                 feuille est rendue à sa largeur vraie (794px, soit 210mm à 96 ppp)
+                 puis mise à l'échelle. Sans ce conteneur, l'élément mis à
+                 l'échelle continuerait d'occuper sa taille d'origine dans la
+                 mise en page, et le bureau défilerait dans le vide. -->
+            <div class="apercu__plan" id="apercu-plan" hidden>
+              <iframe class="apercu__cadre" id="apercu-cadre" title="Aperçu du devis"
+                      sandbox="allow-same-origin" tabindex="-1"></iframe>
+            </div>
+          </div>
+        </div>
+      </aside>
+
     </div>
   </div>
 </section>
@@ -163,7 +469,7 @@
 <!-- 4 ...................................................... devis vide -->
 <!-- Quand le vocal ne contient rien de chiffrable, le produit refuse d'établir
      un devis. La page se lit comme un compte rendu, pas comme un échec. -->
-<section class="screen vide" id="ecran-vide">
+<section class="screen vide" id="ecran-vide" aria-label="Devis non établi">
   <div class="vide__inner">
     <div class="label" id="vide-source">Note vocale</div>
     <h2>Il n'y a pas assez d'éléments pour établir un devis.</h2>
@@ -175,8 +481,11 @@
     <div class="label" id="vide-titre-observations">Observations</div>
     <div class="observations" id="vide-observations"></div>
     <div class="vide__actions">
-      <button class="btn" data-recommencer>Dicter à nouveau</button>
-      <button class="btn btn--ghost" id="btn-copier-observations">Garder ces observations</button>
+      <button class="btn btn--large" data-recommencer>
+        <svg aria-hidden="true"><use href="#i-micro"/></svg>
+        <span>Dicter à nouveau</span>
+      </button>
+      <button class="btn btn--ghost btn--large" id="btn-copier-observations">Garder ces observations</button>
     </div>
   </div>
 </section>
@@ -184,22 +493,101 @@
 <!-- 5 .......................................................... erreur -->
 <!-- Absent du handoff : l'API peut échouer, et il faut bien le dire. Même
      idiome que le devis vide. -->
-<section class="screen erreur" id="ecran-erreur">
+<section class="screen erreur" id="ecran-erreur" aria-label="Interruption">
   <div class="erreur__inner">
-    <div class="label">Interruption</div>
+    <div class="label label--danger">Interruption</div>
     <h2>Le devis n'a pas pu être établi.</h2>
-    <p class="erreur__message" id="erreur-message"></p>
+    <p class="erreur__message" id="erreur-message" role="alert"></p>
     <!-- Le vocal et la transcription ont coûté de la parole et du temps. Tant qu'on
          les a en mémoire, on ne renvoie pas l'artisan dicter : on rejoue la seule
          étape qui a raté. Libellé et visibilité posés par `echouer()`. -->
     <div class="erreur__actions">
-      <button class="btn" id="btn-reprendre" hidden></button>
-      <button class="btn btn--ghost" data-recommencer>Recommencer</button>
+      <button class="btn btn--large" id="btn-reprendre" hidden></button>
+      <button class="btn btn--ghost btn--large" data-recommencer>Recommencer</button>
     </div>
   </div>
 </section>
 
-<!-- 6 ...................................................... entreprise -->
+<!-- 6 ........................................................ gabarit -->
+<!-- La mise en page A4 de l'artisan, à la place de celle livrée. Hors périmètre
+     d'origine (CLAUDE.md § Périmètre), assumé. L'écran dit deux choses que le
+     produit ne peut pas taire : ce qui est posé, et ce qui manque au document
+     pour être un devis conforme. -->
+<section class="screen gabarit" id="ecran-gabarit" aria-label="Gabarit de devis">
+  <div class="gabarit__inner">
+    <div class="gabarit__head">
+      <div>
+        <div class="label label--accent">Mise en page</div>
+        <h2>Votre gabarit de devis</h2>
+      </div>
+      <button class="btn btn--ghost" id="btn-gabarit-retour">
+        <svg aria-hidden="true"><use href="#i-retour"/></svg>
+        <span>Retour</span>
+      </button>
+    </div>
+
+    <p class="gabarit__lede">
+      Par défaut, vos devis sortent sur la mise en page livrée avec le produit — celle
+      qui porte toutes les mentions obligatoires. Vous pouvez la remplacer par la vôtre.
+    </p>
+
+    <!-- L'état courant. Sans lui, on ne sait pas si le PDF qu'on vient de télécharger
+         est sorti sur son gabarit ou sur celui d'origine. -->
+    <div class="gabarit__etat" id="gabarit-etat">
+      <div class="label">Gabarit actif</div>
+      <div class="gabarit__nom" id="gabarit-nom">Le gabarit livré</div>
+      <div class="gabarit__meta" id="gabarit-meta"></div>
+    </div>
+
+    <!-- Le contrôle de conformité. C'est le prix de cette fonctionnalité, et il se
+         paie à l'écran plutôt qu'en silence : un gabarit tiers ne garantit plus les
+         mentions obligatoires d'un devis français. -->
+    <div class="gabarit__alerte" id="gabarit-alerte" role="alert" hidden>
+      <svg class="gabarit__alerte-icone" aria-hidden="true"><use href="#i-alerte"/></svg>
+      <div>
+        <strong>Ce gabarit n'imprime pas toutes les mentions obligatoires.</strong>
+        <p>Un devis auquel il manque ces éléments n'est pas conforme. Vérifiez sur l'aperçu :</p>
+        <ul id="gabarit-manquantes"></ul>
+      </div>
+    </div>
+
+    <div class="section-head">
+      <div class="label">Poser un gabarit</div>
+      <div class="rule"></div>
+    </div>
+
+    <div class="dropzone dropzone--mince" id="gabarit-depot" role="button" tabindex="0"
+         aria-label="Déposer ou choisir un fichier HTML">
+      <div class="dropzone__title" id="gabarit-depot-titre">Déposez votre fichier HTML</div>
+      <div class="dropzone__hint" id="gabarit-depot-aide">
+        ou touchez pour le choisir · un gabarit Jinja, 512 Ko au plus
+      </div>
+      <input type="file" id="gabarit-fichier" accept=".html,.htm,text/html" hidden>
+    </div>
+
+    <div class="gabarit__actions">
+      <button class="btn btn--ghost btn--large" id="btn-gabarit-apercu" disabled>Voir l'aperçu</button>
+      <button class="btn btn--large" id="btn-gabarit-poser" disabled>Enregistrer ce gabarit</button>
+    </div>
+
+    <p class="gabarit__message" id="gabarit-message" role="status" hidden></p>
+
+    <div class="gabarit__pied">
+      <!-- Partir d'une page blanche pour écrire un devis conforme n'a aucun sens :
+           le modèle livré passe déjà les quatorze contrôles. -->
+      <a href="/api/gabarit/modele" id="lien-modele">
+        <svg aria-hidden="true"><use href="#i-document"/></svg>
+        <span>Télécharger le gabarit livré comme point de départ</span>
+      </a>
+      <button class="compte__lien" id="btn-gabarit-retirer" hidden>Revenir au gabarit livré</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+
+<!-- 7 ...................................................... entreprise -->
 <!-- Le SIRET est le geste le plus coûteux du parcours : quatorze chiffres sans
      signification, tapés sur un téléphone. On ne le demande donc pas — on le
      retrouve. L'artisan tape le nom de sa boîte, choisit dans la liste, et sept
@@ -322,7 +710,7 @@
   </div>
 </section>
 
-<!-- 7 ........................................................... porte -->
+<!-- 8 ........................................................... porte -->
 <!-- Le démonstrateur tourne sur les clés API de ses auteurs. Sans cette porte,
      quiconque trouve l'URL fait tourner le chiffrage à leurs frais. Ce n'est pas
      une authentification — c'est un code unique donné de vive voix en rendez-vous,
@@ -343,5 +731,10 @@
 </section>
 
 <script src="/static/app.js"></script>
+<!-- Module à part, et chargé après : le SDK Firebase n'existe qu'en ESM, alors que
+     `app.js` est un script classique dont les fonctions sont des globales. Le compte
+     s'appuie dessus (`montrer`, `$`) ; l'inverse n'est jamais vrai — sans Firebase,
+     `app.js` tourne seul, exactement comme avant. -->
+<script type="module" src="/static/compte.js"></script>
 </body>
 </html>

@@ -1,603 +1,1406 @@
 /* Devis Vocal — interface artisan.
 
-   L'essentiel de ce fichier est le `app.css` du handoff, repris tel quel : ses
-   commentaires d'origine sont en anglais et le restent, pour que la comparaison avec la
-   feuille livrée soit une lecture et non une traduction. Ce qui a été ajouté est en
-   français et regroupé en fin de fichier, sous « ajouts au handoff ».
+   Refonte complète. Ce qui change par rapport à la feuille précédente, et pourquoi :
 
-   Deux surfaces du handoff ne sont pas reprises, donc leurs règles non plus :
-   le commutateur de démo (`.surfaces`) — le produit n'a qu'un chemin — et l'aperçu du
-   PDF sur bureau (`.desk`) — le bouton télécharge le fichier.
+   - Toutes les valeurs viennent de `tokens.css`. La feuille d'avant recopiait ses
+     tailles à la main et les redéclarait sous trois requêtes média ; le barème est
+     désormais fluide (`clamp`), donc écrit une fois.
+   - Une ossature persistante remplace six écrans qui se redécouvraient chacun.
+   - Le texte a été assombri d'un cran : le gris des libellés donnait 2,91:1 sur le
+     fond papier, sous le seuil AA. La hiérarchie se fait maintenant par la taille,
+     la graisse et l'interlettrage — pas en délavant.
+   - Chaque surface touchable fait 48px au moins, et chaque élément focalisable a
+     un anneau visible. Rien de tout cela n'existait.
 
-   `100vh` a été remplacé par `100svh` : sur un téléphone, la première mesure compte la
-   barre d'adresse et fait déborder chaque écran.
-
-   Chargé après tokens.css et fonts.css. Le document A4 vit dans templates/pdf.css. */
+   Chargée après tokens.css et fonts.css. Le document A4 vit dans templates/pdf.css.
+   Ordre de lecture : socle, ossature, atomes, écrans, adaptation, mouvement. */
 
 
-* { box-sizing: border-box; }
+/* ======================================================================== */
+/* Socle                                                                    */
+/* ======================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* L'ossature est collante : tout défilement provoqué par le navigateur — un champ
+     qui prend le focus, le lien d'évitement, une ancre — amènerait sa cible sous la
+     barre. Observé sur le formulaire d'inscription, où le titre passait dessous.
+     Une marge de défilement de la hauteur de la barre, et la cible arrive dessous. */
+  scroll-padding-top: calc(var(--dv-entete-h) + var(--dv-s-4));
+}
+
+/* `hidden` doit cacher, sans exception.
+
+   Le navigateur applique `[hidden] { display: none }` depuis sa propre feuille,
+   qui perd contre n'importe quelle règle d'auteur. Or ce produit pilote sa moitié
+   de l'interface par cet attribut — barre de compte, alerte du gabarit, bouton de
+   reprise, attente de l'aperçu — et chacune de ces surfaces porte par ailleurs un
+   `display: flex`. Sans cette ligne, toutes restaient visibles en permanence :
+   l'attente de l'aperçu poussait la feuille A4 à mille pixels sous le cadre, et
+   la barre de compte s'affichait sans que personne soit connecté. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
   background: var(--dv-bg);
   color: var(--dv-ink);
   font-family: var(--dv-sans);
-  font-size: 15px;
+  font-size: var(--dv-t-body);
+  line-height: var(--dv-lh-body);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* Les chiffres du produit sont tabulaires partout : un total qui change de
+     largeur en changeant de valeur fait sauter la colonne. */
+  font-variant-numeric: tabular-nums;
 }
 
-a { color: var(--dv-accent); }
+/* L'ossature occupe sa hauteur ; le reste de la fenêtre revient aux écrans, qui
+   s'y centrent. Un `calc(100svh - ...)` par écran, comme avant, obligeait à
+   soustraire aussi le bandeau — donc à connaître sa hauteur en CSS. */
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
-/* Corrigé du handoff. Il écrivait :
-       .screen { display: none; }
-       .screen.is-active { display: block; }
-   Deux ennuis, tous deux de cascade. `.accueil { display: flex }`, plus bas dans la
-   feuille et de même spécificité, l'emportait sur `.screen { display: none }` : les
-   six surfaces s'affichaient les unes sous les autres. Et `.screen.is-active`, plus
-   spécifique que `.accueil`, imposait `block` à l'écran actif — le centrage vertical
-   de l'accueil, annoncé par le handoff, ne s'appliquait donc jamais.
-   Une seule règle règle les deux : on masque ce qui n'est pas actif, et on laisse
-   chaque écran choisir son mode d'affichage. */
+h1, h2, h3 { margin: 0; font-family: var(--dv-serif); font-weight: 600; }
+p { margin: 0; }
+
+a { color: var(--dv-accent); text-underline-offset: .18em; }
+a:hover { color: var(--dv-accent-dark); }
+
+img, svg, iframe { display: block; max-width: 100%; }
+
+/* Le jeu de symboles n'est pas un élément de page : il définit, il n'affiche pas. */
+.jeu-icones { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* Toute icône du produit fait 20px et suit la couleur de son texte. Une seule
+   taille par défaut : les écarts sont déclarés là où ils ont une raison. */
+svg use { color: inherit; }
+.btn svg, .compte__lien svg, .gabarit__pied svg, .paste-toggle svg {
+  width: 20px; height: 20px; flex: none;
+}
+
+/* ---- accessibilité du clavier ------------------------------------------ */
+/* La feuille précédente n'avait aucun état de focalisation hors du formulaire de
+   connexion : au clavier, on traversait le produit à l'aveugle. Un seul anneau,
+   posé une fois, sur tout ce qui se focalise. `:focus-visible` et non `:focus` :
+   le doigt ne doit pas laisser d'anneau derrière lui. */
+
+:focus-visible {
+  outline: 2px solid var(--dv-accent);
+  outline-offset: 2px;
+  border-radius: var(--dv-radius);
+}
+
+/* Le saut vers le contenu. Hors écran tant qu'on ne l'atteint pas au clavier. */
+.saut {
+  position: fixed; top: var(--dv-s-3); left: var(--dv-s-3); z-index: 100;
+  transform: translateY(calc(-100% - var(--dv-s-11)));
+  padding: var(--dv-s-4) var(--dv-s-6);
+  background: var(--dv-ink); color: var(--dv-paper);
+  font-size: var(--dv-t-sm); font-weight: 500;
+  border-radius: var(--dv-radius);
+  text-decoration: none;
+  transition: transform var(--dv-duree) var(--dv-sortie);
+}
+.saut:focus { transform: translateY(0); color: var(--dv-paper); }
+
+/* Seul l'écran actif existe. On masque ce qui ne l'est pas et on laisse chaque
+   écran choisir son mode d'affichage — sans quoi `.accueil { display: flex }`
+   l'emporterait sur un `display: none` de même spécificité. */
 .screen:not(.is-active) { display: none; }
 
-/* ---- shared atoms ------------------------------------------------------ */
+/* L'écran actif prend la place restante et s'y centre. Le padding vertical est
+   celui de la gouttière, doublé : un écran collé sous l'ossature paraît tombé. */
+.screen {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: clamp(var(--dv-s-9), 6vh, var(--dv-s-12)) var(--dv-marge) var(--dv-s-12);
+  /* L'entrée d'écran. Deux propriétés seulement, toutes deux composées par le GPU :
+     une opacité et une translation. Animer une hauteur ferait ramer un téléphone. */
+  animation: entree-ecran var(--dv-duree-lente) var(--dv-sortie) both;
+}
+@keyframes entree-ecran {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
 
-.label {                       /* small uppercase mono label */
+/* Le temps de savoir qui est connecté, on ne sait pas quel écran est le bon.
+   `visibility` plutôt que `display` : la page garde sa hauteur, donc rien ne
+   saute au moment où elle réapparaît. */
+body.compte-inconnu .screen { visibility: hidden; }
+
+
+/* ======================================================================== */
+/* Ossature                                                                 */
+/* ======================================================================== */
+
+/* ---- bandeau des substitutions silencieuses ---------------------------- */
+/* Trois façons de montrer autre chose que ce qu'on croit montrer : un chiffrage
+   rejoué depuis une fixture, un moteur de secours, un devis sorti sur la mise en
+   page livrée. Toutes les trois se disent ici, dans la teinte d'accent — la seule
+   surface du produit qui a le droit d'être un aplat. */
+
+.bandeau {
+  background: var(--dv-accent-tint);
+  border-bottom: 1px solid var(--dv-accent-edge);
+  color: var(--dv-accent);
+}
+.bandeau__inner {
+  max-width: var(--dv-mesure-xl);
+  margin: 0 auto;
+  padding: var(--dv-s-4) var(--dv-marge);
+  display: flex; align-items: flex-start; gap: var(--dv-s-4);
   font-family: var(--dv-mono);
-  font-size: 10px;
-  letter-spacing: .14em;
+  font-size: var(--dv-t-xs);
+  line-height: var(--dv-lh-body);
+}
+.bandeau__icone { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+.bandeau strong { font-weight: 500; }
+.bandeau code { font-family: var(--dv-mono); background: rgba(138, 75, 37, .09); padding: 1px 5px; border-radius: 3px; }
+
+/* ---- la barre persistante ---------------------------------------------- */
+/* Collante, et volontairement peu dense : elle doit se laisser oublier pendant
+   qu'on relit un devis, et se retrouver sans chercher quand on veut revenir. */
+
+.entete {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--dv-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--dv-rule);
+}
+.entete__inner {
+  max-width: var(--dv-mesure-xl);
+  margin: 0 auto;
+  min-height: var(--dv-entete-h);
+  padding: 0 var(--dv-marge);
+  display: flex; align-items: center; gap: var(--dv-s-4);
+}
+.entete__espace { flex: 1; }
+
+.marque {
+  display: flex; align-items: center;
+  min-height: var(--dv-cible);
+  padding: 0 var(--dv-s-2) 0 0;
+  margin-left: calc(var(--dv-s-2) * -1);
+  padding-left: var(--dv-s-2);
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-h3);
+  font-weight: 600;
+  letter-spacing: var(--dv-track-tight);
+  color: var(--dv-ink);
+  transition: color var(--dv-duree-vite) var(--dv-sortie);
+}
+.marque:hover { color: var(--dv-accent); }
+
+/* Le fil : où l'on se trouve, quand ce n'est pas l'accueil. Un mot, pas une
+   arborescence — le produit n'a qu'un niveau. */
+.entete__fil {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+  letter-spacing: var(--dv-track-label);
   text-transform: uppercase;
   color: var(--dv-faint);
+  padding-left: var(--dv-s-4);
+  border-left: 1px solid var(--dv-rule);
+  white-space: nowrap;
+}
+
+/* ---- le compte --------------------------------------------------------- */
+/* Discret par construction : le sujet de cette page est le devis. */
+
+.compte { display: flex; align-items: center; gap: var(--dv-s-4); }
+.compte__qui {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+  color: var(--dv-faint);
+  max-width: 22ch;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.compte__lien {
+  display: inline-flex; align-items: center; gap: var(--dv-s-2);
+  min-height: var(--dv-cible);
+  padding: 0 var(--dv-s-2);
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-muted);
+  transition: color var(--dv-duree-vite) var(--dv-sortie);
+}
+.compte__lien:hover { color: var(--dv-accent); }
+
+
+/* ======================================================================== */
+/* Atomes                                                                   */
+/* ======================================================================== */
+
+/* Le libellé en capitales mono. Il ne se distingue plus par sa pâleur — il est
+   lisible — mais par sa taille, son interlettrage et sa graisse. */
+.label {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+  font-weight: 500;
+  letter-spacing: var(--dv-track-label);
+  text-transform: uppercase;
+  color: var(--dv-faint);
+  line-height: 1.4;
 }
 .label--accent { color: var(--dv-accent); }
+.label--danger { color: var(--dv-danger); }
 
-.num { font-family: var(--dv-mono); }   /* every figure is mono, always */
+.num { font-family: var(--dv-mono); }   /* tout chiffre est en mono, toujours */
+
+/* ---- boutons ------------------------------------------------------------ */
+/* Une seule fabrique. La hauteur minimale est la cible tactile, pas une valeur
+   d'esthétique : c'est un pouce, sur un chantier, éventuellement ganté.
+   L'enfoncement se joue sur `transform` — donc sans déplacer ce qui est autour. */
 
 .btn {
-  font-family: var(--dv-sans);
-  font-size: 15px;
-  font-weight: 500;
-  padding: 13px 24px;
-  border: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: var(--dv-s-3);
+  min-height: var(--dv-cible);
+  padding: var(--dv-s-4) var(--dv-s-7);
+  border: 1px solid transparent;
   border-radius: var(--dv-radius);
   background: var(--dv-ink);
   color: var(--dv-paper);
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-body);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
   cursor: pointer;
-  transition: background .15s;
+  touch-action: manipulation;   /* supprime le délai de 300 ms sur mobile */
+  transition:
+    background var(--dv-duree-vite) var(--dv-sortie),
+    border-color var(--dv-duree-vite) var(--dv-sortie),
+    color var(--dv-duree-vite) var(--dv-sortie),
+    transform var(--dv-duree-vite) var(--dv-ressort),
+    box-shadow var(--dv-duree-vite) var(--dv-sortie);
 }
+.btn--large { padding: var(--dv-s-4) var(--dv-s-8); }
+
+.btn:hover { background: #2a2823; }
+.btn:active { transform: scale(.985); }
 
 .btn--ghost {
   background: var(--dv-paper);
   color: var(--dv-text);
-  border: 1px solid var(--dv-border-input);
+  border-color: var(--dv-border-input);
+  box-shadow: var(--dv-ombre-1);
+}
+.btn--ghost:hover { background: #fff; border-color: var(--dv-rule-strong); color: var(--dv-ink); }
+
+/* L'état désactivé se lit à trois choses à la fois, jamais à la seule opacité :
+   il pâlit, il perd le curseur de main, et il ne répond plus au doigt. */
+.btn:disabled {
+  opacity: .42;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: none;
 }
 
-/* ---- 1. accueil -------------------------------------------------------- */
-
-.accueil {
-  min-height: 100svh;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  padding: 100px 24px 60px;
+.btn--google {
+  background: var(--dv-paper);
+  color: var(--dv-ink);
+  border-color: var(--dv-border-input);
+  box-shadow: var(--dv-ombre-1);
+  width: 100%;
 }
-.accueil__inner { width: 100%; max-width: 640px; }
-
-.wordmark { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
-.wordmark h1 {
-  margin: 0;
+.btn--google:hover { border-color: var(--dv-rule-strong); background: #fff; }
+.btn__g {
   font-family: var(--dv-serif);
-  font-size: 34px; font-weight: 600; letter-spacing: -.01em;
+  font-size: 17px; font-weight: 700;
+  color: var(--dv-accent);
 }
-.wordmark .rule { height: 1px; flex: 1; background: var(--dv-rule); }
 
-.accueil__baseline {
-  font-size: 17px; line-height: 1.5; color: var(--dv-muted);
-  margin-bottom: 38px;
+/* ---- champs ------------------------------------------------------------- */
+/* Étiquette visible au-dessus, aide persistante en dessous. Le texte de
+   substitution ne sert plus d'étiquette nulle part : il s'efface à la frappe. */
+
+.champ { display: flex; flex-direction: column; gap: var(--dv-s-2); }
+.champ__label {
+  font-size: var(--dv-t-sm);
+  font-weight: 500;
+  color: var(--dv-text);
 }
+.champ__aide {
+  font-size: var(--dv-t-xs);
+  color: var(--dv-faint);
+}
+.champ input,
+.champ select,
+.champ textarea {
+  width: 100%;
+  min-height: var(--dv-cible);
+  padding: var(--dv-s-4) var(--dv-s-5);
+  border: 1px solid var(--dv-border-input);
+  border-radius: var(--dv-radius);
+  background: var(--dv-paper);
+  color: var(--dv-ink);
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-body);   /* 16px : en dessous, iOS zoome à la mise au point */
+  line-height: var(--dv-lh-body);
+  transition: border-color var(--dv-duree-vite) var(--dv-sortie),
+              box-shadow var(--dv-duree-vite) var(--dv-sortie);
+}
+.champ textarea { min-height: 140px; resize: vertical; }
+.champ input::placeholder,
+.champ textarea::placeholder { color: var(--dv-faint); }
+.champ input:focus,
+.champ select:focus,
+.champ textarea:focus {
+  outline: none;
+  border-color: var(--dv-accent);
+  box-shadow: 0 0 0 3px var(--dv-accent-tint);
+}
+
+/* Le `select`. Le chevron du système est dessiné différemment sur chaque
+   plateforme et ne suit aucune de nos couleurs : on le remplace par le même
+   trait que le reste, en SVG inline — donc sans fichier ni requête. */
+.champ select {
+  appearance: none;
+  padding-right: var(--dv-s-11);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%235f5a52' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 8 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--dv-s-5) center;
+}
+/* Tant que rien n'est choisi, l'invite se lit comme un texte de substitution et
+   non comme une réponse déjà donnée. */
+.champ select:has(option[value=""]:checked) { color: var(--dv-faint); }
+
+/* ---- zones de dépôt ------------------------------------------------------ */
 
 .dropzone {
   border: 1.5px dashed var(--dv-rule-strong);
-  border-radius: 6px;
+  border-radius: var(--dv-radius-lg);
   background: var(--dv-paper);
-  padding: 56px 32px;
+  padding: var(--dv-s-11) var(--dv-s-9);
   text-align: center;
   cursor: pointer;
-  transition: border-color .15s, background .15s;
+  touch-action: manipulation;
+  transition: border-color var(--dv-duree) var(--dv-sortie),
+              background var(--dv-duree) var(--dv-sortie),
+              box-shadow var(--dv-duree) var(--dv-sortie),
+              transform var(--dv-duree-vite) var(--dv-ressort);
 }
-.dropzone.is-over { border-color: var(--dv-accent); background: #fff; }
+.dropzone--mince { padding: var(--dv-s-9) var(--dv-s-7); }
+.dropzone.is-over {
+  border-color: var(--dv-accent);
+  border-style: solid;
+  background: #fff;
+  box-shadow: var(--dv-ombre-2);
+}
+.dropzone__title {
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-h3);
+  font-weight: 600;
+  line-height: var(--dv-lh-snug);
+  margin-bottom: var(--dv-s-2);
+}
+.dropzone__hint { font-size: var(--dv-t-sm); color: var(--dv-muted); }
+
+/* ---- en-tête de section -------------------------------------------------- */
+
+.section-head {
+  display: flex; align-items: center; gap: var(--dv-s-4);
+  margin-bottom: var(--dv-s-1);
+}
+.section-head .rule { height: 1px; flex: 1; background: var(--dv-rule); }
+.section-head .count { font-size: var(--dv-t-xs); color: var(--dv-muted); }
+
+
+/* ======================================================================== */
+/* 0. Connexion                                                             */
+/* ======================================================================== */
+
+.connexion { align-items: center; }
+.connexion__inner { width: 100%; max-width: var(--dv-mesure-etroite); }
+
+.connexion__titre {
+  font-size: var(--dv-t-h1);
+  line-height: var(--dv-lh-tight);
+  letter-spacing: var(--dv-track-tight);
+  text-wrap: balance;
+}
+.connexion__baseline {
+  font-size: var(--dv-t-lead);
+  color: var(--dv-muted);
+  margin: var(--dv-s-4) 0 var(--dv-s-10);
+  text-wrap: pretty;
+}
+
+.connexion__ou {
+  display: flex; align-items: center; gap: var(--dv-s-4);
+  margin: var(--dv-s-7) 0;
+  font-size: var(--dv-t-xs);
+  color: var(--dv-faint);
+}
+.connexion__ou::before, .connexion__ou::after {
+  content: ""; height: 1px; flex: 1; background: var(--dv-rule);
+}
+
+.connexion__form { display: flex; flex-direction: column; gap: var(--dv-s-5); }
+.connexion__form .btn { width: 100%; }
+.connexion__form .btn--ghost { margin-top: calc(var(--dv-s-2) * -1); }
+
+.connexion__erreur {
+  margin-top: var(--dv-s-6);
+  padding: var(--dv-s-4) var(--dv-s-5);
+  background: var(--dv-danger-tint);
+  border: 1px solid var(--dv-danger-edge);
+  border-radius: var(--dv-radius);
+  color: var(--dv-danger);
+  font-size: var(--dv-t-sm);
+}
+
+
+/* ======================================================================== */
+/* 0 bis. Profil                                                            */
+/*                                                                          */
+/* La dernière étape de l'inscription. Même mesure et même construction que */
+/* la connexion, à laquelle elle succède : l'artisan doit sentir qu'il finit */
+/* quelque chose, pas qu'il recommence ailleurs.                            */
+/* ======================================================================== */
+
+.profil { align-items: center; }
+.profil__inner { width: 100%; max-width: var(--dv-mesure-etroite); }
+
+.profil__titre {
+  margin-top: var(--dv-s-4);
+  font-size: var(--dv-t-h1);
+  line-height: var(--dv-lh-tight);
+  letter-spacing: var(--dv-track-tight);
+  text-wrap: balance;
+}
+.profil__baseline {
+  font-size: var(--dv-t-lead);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+  margin: var(--dv-s-5) 0 var(--dv-s-10);
+  text-wrap: pretty;
+}
+
+.profil__form { display: flex; flex-direction: column; gap: var(--dv-s-5); }
+.profil__form .btn { width: 100%; margin-top: var(--dv-s-3); }
+
+/* Prénom et nom sur une ligne. Ils passent l'un sous l'autre sur les écrans
+   étroits, où deux champs côte à côte ne laissent plus lire ce qu'on tape. */
+.profil__paire { display: grid; grid-template-columns: 1fr 1fr; gap: var(--dv-s-4); }
+@media (max-width: 420px) {
+  .profil__paire { grid-template-columns: 1fr; }
+}
+
+/* Le champ signalé en erreur. La couleur ne porte pas seule l'information : le
+   message sous le formulaire dit lequel manque, et le focus y est déplacé. */
+.champ input[aria-invalid="true"],
+.champ select[aria-invalid="true"] {
+  border-color: var(--dv-danger);
+  box-shadow: 0 0 0 3px var(--dv-danger-tint);
+}
+
+
+/* ======================================================================== */
+/* 1. Accueil                                                               */
+/* ======================================================================== */
+
+.accueil { align-items: center; }
+.accueil__inner { width: 100%; max-width: var(--dv-mesure); }
+
+.accueil__hero { margin-bottom: var(--dv-s-10); }
+.accueil__titre {
+  font-size: var(--dv-t-h1);
+  line-height: var(--dv-lh-tight);
+  letter-spacing: var(--dv-track-tight);
+  text-wrap: balance;
+}
+.accueil__baseline {
+  font-size: var(--dv-t-lead);
+  color: var(--dv-muted);
+  margin-top: var(--dv-s-5);
+  max-width: 46ch;
+  text-wrap: pretty;
+}
+
+/* ---- la carte de dictée -------------------------------------------------- */
+/* L'action principale du produit. Elle porte la boîte de `.dropzone` — même
+   bordure, même respiration — et n'ajoute que ses trois états : au repos, en
+   enregistrement, en réécoute. */
+
+.dictee { user-select: none; position: relative; }
+.dictee:hover { border-color: var(--dv-accent); box-shadow: var(--dv-ombre-2); }
+.dictee:active { transform: scale(.995); }
 
 .dropzone__mic {
-  width: 52px; height: 52px; margin: 0 auto 20px;
-  border: 1.5px solid var(--dv-accent); border-radius: 50%;
+  position: relative;
+  width: 68px; height: 68px;
+  margin: 0 auto var(--dv-s-7);
+  border: 1.5px solid var(--dv-accent);
+  border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-}
-.dropzone__mic i { width: 12px; height: 22px; border-radius: 6px; background: var(--dv-accent); display: block; }
-
-.dropzone__title {
-  font-family: var(--dv-serif); font-size: 23px; font-weight: 600;
-  margin-bottom: 8px;
-}
-.dropzone__hint { font-size: 14px; color: var(--dv-faint); }
-
-.paste-toggle {
-  margin-top: 22px;
-  display: flex; align-items: center; gap: 9px;
-  font-size: 14px; color: var(--dv-muted); cursor: pointer;
-}
-.paste-toggle span:first-child { font-family: var(--dv-mono); font-size: 13px; }
-
-.paste { margin-top: 14px; display: none; }
-.paste.is-open { display: block; }
-.paste textarea {
-  width: 100%; min-height: 130px;
-  padding: 14px 16px;
-  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
-  background: var(--dv-paper);
-  font-family: var(--dv-sans); font-size: 15px; line-height: 1.6; color: var(--dv-ink);
-  resize: vertical;
-}
-.paste .btn { margin-top: 12px; }
-
-/* ---- 2. traitement ----------------------------------------------------- */
-
-.traitement { min-height: 100svh; padding: 110px 24px 80px; display: flex; justify-content: center; }
-.traitement__inner { width: 100%; max-width: 760px; }
-.traitement__head {
-  display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 34px;
-}
-.traitement__head h2 { margin: 0; font-family: var(--dv-serif); font-size: 26px; font-weight: 600; }
-.chrono { font-family: var(--dv-mono); font-size: 13px; color: var(--dv-faint); }
-
-.steps { display: flex; flex-direction: column; gap: 2px; margin-bottom: 38px; }
-.step {
-  display: grid; grid-template-columns: 26px 1fr auto; gap: 16px; align-items: center;
-  padding: 18px 20px;
-  background: var(--dv-paper); border: 1px solid var(--dv-rule-soft);
-}
-.step__mark { font-family: var(--dv-mono); font-size: 13px; color: var(--dv-accent); }
-.step__title { font-size: 16px; font-weight: 500; }
-.step__detail { font-size: 13px; color: var(--dv-faint); margin-top: 3px; }
-.step__status {
-  font-family: var(--dv-mono); font-size: 11px; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--dv-faint);
-}
-
-.transcript-card { background: var(--dv-paper); border: 1px solid var(--dv-rule-soft); padding: 28px 30px; }
-.transcript-card .label { margin-bottom: 14px; }
-.transcript-body {
-  font-family: var(--dv-serif); font-size: 18px; line-height: 1.72;
-  color: var(--dv-ink-soft); text-wrap: pretty;
-}
-
-/* ---- 3. relecture ------------------------------------------------------ */
-
-.relecture { min-height: 100svh; padding: 104px 24px 90px; display: flex; justify-content: center; }
-.relecture__inner { width: 100%; max-width: 880px; }
-
-.relecture__head {
-  display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px;
-}
-.relecture__head h2 {
-  margin: 0; font-family: var(--dv-serif); font-size: 30px; font-weight: 600; letter-spacing: -.01em;
-}
-.relecture__client { font-size: 15px; color: var(--dv-muted); margin-top: 6px; }
-
-details.transcript {
-  background: var(--dv-bg-alt); border: 1px solid var(--dv-rule-soft);
-  padding: 16px 20px; margin-bottom: 34px;
-}
-details.transcript summary { cursor: pointer; list-style: none; }
-details.transcript summary::-webkit-details-marker { display: none; }
-details.transcript > div {
-  font-family: var(--dv-serif); font-size: 16px; line-height: 1.7;
-  color: var(--dv-text); margin-top: 14px; text-wrap: pretty;
-}
-
-.section-head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
-.section-head .rule { height: 1px; flex: 1; background: var(--dv-rule); }
-.section-head .count { font-size: 13px; color: var(--dv-faint); }
-
-.table {
-  background: var(--dv-paper);
-  border: 1px solid var(--dv-rule-soft);
-  border-top: 2px solid var(--dv-ink);
-  padding: 0 24px 8px;
-}
-.table__row {
-  display: grid;
-  grid-template-columns: 1fr 62px 58px 104px 112px;
-  gap: 14px;
-}
-.table__head {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--dv-rule-soft);
-  font-family: var(--dv-mono); font-size: 10px; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--dv-faint);
-}
-.table__line {
-  padding: 15px 0;
-  border-bottom: 1px solid var(--dv-rule-faint);
-  align-items: baseline;
-  font-size: 15px;
-}
-.table__line:last-child { border-bottom: none; }
-.table .r { text-align: right; }
-.table .r.num { font-size: 14px; color: var(--dv-text); }
-.table .unit { font-size: 13px; color: var(--dv-faint); }
-.table .total { color: var(--dv-ink); }
-.table__desc { line-height: 1.45; }
-
-/* The honesty signal. Quiet on purpose: it is information, not an alarm. */
-.tag-estime {
-  display: inline-flex; align-items: center; gap: 7px; margin-top: 7px;
-  font-family: var(--dv-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--dv-accent);
-  background: var(--dv-accent-tint);
-  border: 1px solid var(--dv-accent-edge);
-  padding: 3px 8px; border-radius: 2px;
+  transition: background var(--dv-duree) var(--dv-sortie),
+              border-color var(--dv-duree) var(--dv-sortie),
+              transform var(--dv-duree) var(--dv-ressort);
+}
+.dropzone__mic svg { width: 26px; height: 26px; transition: opacity var(--dv-duree) var(--dv-sortie); }
+
+/* Le halo de la dictée. Il bat sur l'horloge tant que le niveau du micro n'est
+   pas mesurable, et sur la voix dès qu'il l'est — voir `--dv-niveau`. */
+.dictee.enregistre .dropzone__mic {
+  background: var(--dv-accent);
+  color: var(--dv-paper);
+}
+.dictee.enregistre .dropzone__mic::after {
+  content: "";
+  position: absolute; inset: -8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--dv-accent);
+  opacity: .35;
+  animation: halo 1.8s ease-out infinite;
+}
+@keyframes halo {
+  0%   { transform: scale(.94); opacity: .38; }
+  70%  { transform: scale(1.22); opacity: 0; }
+  100% { transform: scale(1.22); opacity: 0; }
 }
 
-.foot { display: grid; grid-template-columns: 1fr 320px; gap: 36px; margin-top: 30px; align-items: start; }
-
-.observations { display: flex; flex-direction: column; gap: 11px; }
-.observation {
-  display: grid; grid-template-columns: 14px 1fr; gap: 10px;
-  font-size: 14px; line-height: 1.6; color: var(--dv-text);
+/* Les barres de niveau. Au repos elles n'existent pas ; pendant la dictée elles
+   remplacent le micro et suivent la voix. Cinq barres, décalées, pour que le
+   mouvement se lise comme un son et non comme un chargement. */
+.onde {
+  position: absolute; inset: 0;
+  display: none; align-items: center; justify-content: center;
+  gap: 3px;
 }
-.observation em { font-family: var(--dv-mono); color: var(--dv-accent); font-style: normal; }
-.observation p { margin: 0; text-wrap: pretty; }
-
-.totaux { background: var(--dv-paper); border: 1px solid var(--dv-rule-soft); padding: 22px 24px; }
-.totaux__row { display: flex; justify-content: space-between; font-size: 15px; padding: 7px 0; color: var(--dv-text); }
-.totaux__ttc {
-  display: flex; justify-content: space-between;
-  font-family: var(--dv-serif); font-size: 18px; font-weight: 600;
-  padding: 12px 0; margin-top: 6px; border-top: 1px solid var(--dv-ink); color: var(--dv-ink);
+.dictee.enregistre .onde { display: flex; }
+.dictee.enregistre .dropzone__mic svg { opacity: 0; }
+.onde i {
+  display: block;
+  width: 3px;
+  border-radius: var(--dv-radius-pill);
+  background: currentColor;
+  /* `--dv-niveau` vaut 0 à 1, posé image par image depuis l'analyseur. Sans
+     analyseur il reste nul et les barres respirent sur `dvpulse`. */
+  height: calc(6px + 20px * var(--dv-niveau, 0));
+  transition: height 90ms linear;
 }
-.totaux__acompte {
-  display: flex; justify-content: space-between; font-size: 14px;
-  padding: 9px 0 0; margin-top: 8px; border-top: 1px dashed var(--dv-rule); color: var(--dv-accent);
-}
-.totaux__note { font-size: 12px; color: var(--dv-faint); margin-top: 14px; line-height: 1.55; }
-
-/* ---- 5. devis vide ----------------------------------------------------- */
-
-.vide { min-height: 100svh; padding: 110px 24px 80px; display: flex; justify-content: center; }
-.vide__inner { width: 100%; max-width: 660px; }
-.vide h2 {
-  margin: 12px 0 14px;
-  font-family: var(--dv-serif); font-size: 28px; font-weight: 600;
-  line-height: 1.3; letter-spacing: -.01em; text-wrap: pretty;
-}
-.vide__lede { font-size: 16px; line-height: 1.65; color: var(--dv-muted); margin-bottom: 34px; text-wrap: pretty; }
-.vide__quote { background: var(--dv-bg-alt); border: 1px solid var(--dv-rule-soft); padding: 20px 24px; margin-bottom: 30px; }
-.vide__quote p { margin: 12px 0 0; font-family: var(--dv-serif); font-size: 17px; line-height: 1.7; color: var(--dv-text); }
-.vide .observations { margin-bottom: 38px; }
-.vide .observation { font-size: 15px; }
-.vide__actions { display: flex; gap: 12px; flex-wrap: wrap; }
-
-
-/* ---- survols ----------------------------------------------------------- */
-/* Les cinq règles de survol du handoff, regroupées ici sous `hover: hover`. Sur un
-   écran tactile, un `:hover` reste collé après l'appui : la zone de dépôt garderait sa
-   bordure brique et le bouton son fond accent une fois le doigt parti. Le `.is-over`
-   du glisser-déposer, lui, reste inconditionnel. */
-
-@media (hover: hover) {
-  a:hover { color: var(--dv-accent-dark); }
-  .btn:hover { background: var(--dv-accent); }
-  .btn--ghost:hover { background: var(--dv-paper); border-color: var(--dv-accent); color: var(--dv-accent); }
-  .dropzone:hover { border-color: var(--dv-accent); background: #fff; }
-  .paste-toggle:hover { color: var(--dv-accent); }
+.dictee.enregistre:not(.a-niveau) .onde i { animation: dvpulse 1.1s ease-in-out infinite; }
+.onde i:nth-child(1) { animation-delay: 0s;    height: calc(5px + 12px * var(--dv-niveau, 0)); }
+.onde i:nth-child(2) { animation-delay: .12s;  height: calc(6px + 19px * var(--dv-niveau, 0)); }
+.onde i:nth-child(3) { animation-delay: .24s;  height: calc(7px + 24px * var(--dv-niveau, 0)); }
+.onde i:nth-child(4) { animation-delay: .36s;  height: calc(6px + 19px * var(--dv-niveau, 0)); }
+.onde i:nth-child(5) { animation-delay: .48s;  height: calc(5px + 12px * var(--dv-niveau, 0)); }
+@keyframes dvpulse {
+  0%, 100% { height: 7px; }
+  50%      { height: 22px; }
 }
 
-/* ======================================================================== */
-/* ajouts au handoff                                                        */
-/*                                                                          */
-/* Trois choses que la feuille livrée ne couvrait pas : le bandeau du mode   */
-/* hors-ligne, l'écran d'erreur, et le responsive — le handoff n'a aucune    */
-/* requête média hors impression. Tout est construit sur les tokens ; les    */
-/* seules valeurs nouvelles sont les tailles réduites du barème mobile,      */
-/* dérivées des tailles du design.                                          */
-/* ======================================================================== */
-
-/* ---- bandeau du mode hors-ligne ---------------------------------------- */
-/* Absent du design, et pourtant nécessaire : sans lui on peut montrer à un
-   artisan un chiffrage rejoué depuis une fixture en croyant qu'il vient d'être
-   calculé. Bande statique en tête de page, dans la teinte d'accent — la seule
-   surface du produit qui a le droit d'être un aplat. */
-
-.bandeau {
-  padding: 10px 24px;
-  background: var(--dv-accent-tint);
-  border-bottom: 1px solid var(--dv-accent-edge);
-  font-family: var(--dv-mono);
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--dv-accent);
-}
-.bandeau strong { font-weight: 500; }
-.bandeau code { font-family: var(--dv-mono); }
-
-/* Les écrans se centrent sur la hauteur de fenêtre : le bandeau la réduit d'autant. */
-body.a-bandeau .screen { min-height: calc(100svh - 39px); }
-
-/* ---- zone de dictée ---------------------------------------------------- */
-/* Le handoff n'a que le dépôt de fichier. Mais le produit s'appelle « Devis
-   Vocal » : l'action principale doit être de parler, et le fichier devient le
-   repli. La zone porte la classe `.dropzone` du handoff, donc elle en hérite la
-   boîte au pixel près — même bordure tiretée, même fond, même respiration — et
-   n'ajoute ici que ses deux états. */
-
-.dictee { user-select: none; }
-
-/* Enregistrement en cours. La bordure passe en trait plein et en brique : le
-   même vocabulaire que le survol, poussé d'un cran. La pastille du micro devient
-   un carré — le signe d'arrêt se lit sans légende — et le titre laisse la place
-   au chronomètre, en mono comme tous les chiffres du produit. */
 .dictee.enregistre { border-style: solid; border-color: var(--dv-accent); background: #fff; }
-.dictee.enregistre .dropzone__mic i { width: 14px; height: 14px; border-radius: 1px; }
 
 /* Le chronomètre pendant, la durée après : dans les deux cas un nombre, donc du
-   mono, comme partout ailleurs dans le produit. */
+   mono, et à la taille d'un titre — c'est ce qu'on regarde. */
 .dictee.enregistre .dropzone__title,
 .dictee.relu .dropzone__title {
-  font-family: var(--dv-mono); font-size: 26px; font-weight: 400; letter-spacing: .02em;
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-h2);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Le point qui bat. `dvpulse` est la seule animation que le prototype du
-   designer ait définie ; elle n'y servait nulle part. Elle sert ici à dire la
-   seule chose que l'écran ne peut pas dire autrement : le micro est ouvert. */
-@keyframes dvpulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+/* Le point qui bat, dans la ligne d'aide. */
 .dictee__point {
-  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--dv-accent); margin-right: 8px;
-  animation: dvpulse 1.4s ease-in-out infinite;
+  display: inline-block;
+  width: 7px; height: 7px;
+  margin-right: var(--dv-s-3);
+  border-radius: 50%;
+  background: var(--dv-accent);
+  animation: battement 1.4s ease-in-out infinite;
 }
-@media (prefers-reduced-motion: reduce) { .dictee__point { animation: none; } }
+@keyframes battement { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 
-/* Le même point, mais battant sur la voix plutôt que sur une horloge. `--dv-niveau`
-   est écrite à chaque trame par `app.js` ; `dvpulse` n'est plus qu'un repli pour les
-   navigateurs sans AudioContext. Un chronomètre dit que l'enregistrement tourne, il
-   ne dit pas que le micro entend — et un micro coupé ne se découvre autrement qu'au
-   retour de la transcription, quatre-vingt-dix secondes trop tard.
-   Effet heureux : sous mouvement réduit, l'oscillation décorative disparaît et il ne
-   reste que le signal utile. La règle améliore le résultat au lieu de l'appauvrir. */
-.dictee.a-niveau .dictee__point {
-  animation: none;
-  opacity: calc(.25 + .75 * var(--dv-niveau, 0));
-}
-
-/* ---- réécoute avant envoi ---------------------------------------------- */
+/* ---- réécoute avant envoi ------------------------------------------------ */
 /* La carte cesse d'être un bouton : ce sont le lecteur et les deux actions qui
-   commandent. D'où la bordure neutre — plus de brique, l'enregistrement est fini —
-   et l'annulation du survol, que `.dropzone:hover` appliquerait sinon. */
+   décident. Elle garde la durée, et perd son affordance. */
 
 .dictee.relu {
   cursor: default;
   border-style: solid;
-  border-color: var(--dv-rule-strong);
-  background: var(--dv-paper);
+  border-color: var(--dv-rule);
+  background: var(--dv-bg-alt);
+  padding: var(--dv-s-9) var(--dv-s-7);
+  box-shadow: none;
 }
+.dictee.relu:hover { border-color: var(--dv-rule); }
+.dictee.relu .dropzone__mic { width: 52px; height: 52px; margin-bottom: var(--dv-s-5); }
 
-.relu { margin-top: 14px; }
-.relu__actions { display: flex; gap: 12px; margin-top: 14px; }
-
-/* Le lecteur. Il a d'abord été natif — plus court à écrire, et accessible sans
-   effort. Mais un webm sorti de MediaRecorder n'a pas de durée dans son en-tête, et
-   le lecteur natif d'Android affichait « 32:04 » pour treize secondes : une donnée
-   fausse, bien lisible, au milieu d'un produit dont tout l'argument est qu'on peut
-   se fier à ce qu'il montre. Celui-ci lit la durée du chronomètre de la dictée.
-   Le bouton reste un vrai <button>, donc au clavier et au lecteur d'écran. */
-
+.relu { margin-top: var(--dv-s-5); }
+.relu__actions { display: flex; gap: var(--dv-s-4); margin-top: var(--dv-s-5); }
+.relu__actions .btn { flex: 1; }
 .relu audio { display: none; }
 
+/* Le lecteur. Maison, parce qu'un webm sorti de MediaRecorder n'a pas de durée
+   dans son en-tête et que le lecteur natif en invente une — « 32:04 » pour treize
+   secondes de dictée. Ici la durée vient du chronomètre, qui ne ment pas. */
 .lecteur {
-  display: flex; align-items: center; gap: 14px;
-  padding: 11px 14px;
-  background: var(--dv-bg-alt);
-  border: 1px solid var(--dv-rule-soft);
-  border-radius: var(--dv-radius);
+  display: flex; align-items: center; gap: var(--dv-s-5);
+  padding: var(--dv-s-3) var(--dv-s-5) var(--dv-s-3) var(--dv-s-3);
+  background: var(--dv-paper);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius-pill);
+  box-shadow: var(--dv-ombre-1);
 }
-
 .lecteur__jouer {
-  width: 34px; height: 34px; flex: none; padding: 0;
-  border: 1.5px solid var(--dv-accent); border-radius: 50%;
-  background: var(--dv-paper); cursor: pointer;
+  width: 44px; height: 44px; flex: none;
   display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%;
+  background: var(--dv-ink);
+  cursor: pointer;
+  transition: background var(--dv-duree-vite) var(--dv-sortie),
+              transform var(--dv-duree-vite) var(--dv-ressort);
 }
-/* Triangle de lecture en bordures, comme la pastille du micro : aucune image. */
+.lecteur__jouer:hover { background: var(--dv-accent); }
+.lecteur__jouer:active { transform: scale(.94); }
+
+/* Triangle de lecture en bordures : aucune image, aucun élément de plus. */
 .lecteur__jouer i {
-  display: block; width: 0; height: 0; margin-left: 3px;
-  border-left: 9px solid var(--dv-accent);
-  border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+  width: 0; height: 0;
+  margin-left: 3px;
+  border-left: 11px solid var(--dv-paper);
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
 }
-/* Deux barres pour la pause, dessinées d'un dégradé : toujours pas d'élément en plus. */
+/* Deux barres pour la pause, dessinées d'un dégradé — toujours pas d'élément. */
 .lecteur.joue .lecteur__jouer i {
-  width: 9px; height: 11px; margin-left: 0; border: none;
+  width: 11px; height: 13px;
+  margin-left: 0;
+  border: none;
   background: linear-gradient(to right,
-    var(--dv-accent) 0 3px, transparent 3px 6px, var(--dv-accent) 6px 9px);
+    var(--dv-paper) 0 4px, transparent 4px 7px, var(--dv-paper) 7px 11px);
 }
 
 .lecteur__piste {
-  flex: 1; height: 3px; border-radius: 2px;
-  background: var(--dv-rule); cursor: pointer;
+  flex: 1;
+  height: 6px;
+  border-radius: var(--dv-radius-pill);
+  background: var(--dv-rule);
+  cursor: pointer;
+  overflow: hidden;
 }
 .lecteur__avance {
-  height: 100%; width: 0; border-radius: 2px;
+  height: 100%; width: 0;
+  border-radius: var(--dv-radius-pill);
   background: var(--dv-accent);
+  transition: width 100ms linear;
 }
-
-.lecteur__temps {
-  flex: none; min-width: 74px; text-align: right;
-  font-size: 12px; color: var(--dv-faint);
-}
+.lecteur__temps { font-size: var(--dv-t-xs); color: var(--dv-muted); flex: none; }
 
 /* Pendant la réécoute, les deux chemins de repli disparaissent : proposer trois
-   entrées à la fois quand l'artisan vient d'en emprunter une, c'est du bruit. */
-.accueil.a-relu .paste-toggle,
-.accueil.a-relu .paste { display: none; }
+   façons d'envoyer un vocal qu'on vient d'enregistrer n'aide personne. */
+.accueil.a-relu .replis { display: none; }
 
-/* Devenue secondaire, la zone de dépôt respire moins et perd son micro : deux
-   cercles brique sur le même écran diraient deux fois la même chose. */
-#depot-repli .dropzone { padding: 32px 20px; }
+/* ---- les deux replis ----------------------------------------------------- */
 
-/* ---- actions de la relecture ------------------------------------------- */
-/* Le handoff ne proposait que « Télécharger le PDF », et donc aucun moyen de revenir
-   en arrière : après un devis, il fallait recharger la page. En rendez-vous on en
-   fait deux ou trois d'affilée. On reprend le couple plein + contour que le handoff
-   utilise déjà sur l'écran du devis vide. */
+.replis { margin-top: var(--dv-s-8); }
 
-.relecture__actions { display: flex; gap: 12px; flex-shrink: 0; }
+.paste-toggle {
+  display: flex; align-items: center; gap: var(--dv-s-3);
+  width: 100%;
+  min-height: var(--dv-cible);
+  padding: 0;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-muted);
+  text-align: left;
+  transition: color var(--dv-duree-vite) var(--dv-sortie);
+}
+.paste-toggle:hover { color: var(--dv-accent); }
+.paste-toggle__signe {
+  color: var(--dv-accent);
+  transition: transform var(--dv-duree) var(--dv-ressort);
+}
+.paste-toggle[aria-expanded="true"] .paste-toggle__signe { transform: rotate(45deg); }
 
-/* ---- détail d'une ligne ------------------------------------------------ */
-/* `LigneDevis.detail` : « fourniture client », une marque, une finition. Le handoff
-   n'avait pas ce champ ; le modèle l'a, donc il s'affiche, sous la désignation et
-   au-dessus de la pastille d'estimation. */
+.paste { display: none; padding-bottom: var(--dv-s-6); }
+.paste.is-open { display: block; animation: entree-repli var(--dv-duree) var(--dv-sortie) both; }
+.paste .btn { margin-top: var(--dv-s-4); width: 100%; }
+@keyframes entree-repli {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
 
-.table__detail { margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--dv-faint); }
 
-/* ---- écran d'erreur ---------------------------------------------------- */
-/* Même idiome que le devis vide : le produit dit ce qui s'est passé, en noir sur
-   fond papier. Pas de rouge, pas d'icône — une API en échec n'est pas une faute
-   de l'artisan. */
+/* ======================================================================== */
+/* 2. Traitement                                                            */
+/* ======================================================================== */
 
-.erreur { min-height: 100svh; padding: 110px 24px 80px; display: flex; justify-content: center; }
-.erreur__inner { width: 100%; max-width: 560px; }
+.traitement { align-items: flex-start; }
+.traitement__inner { width: 100%; max-width: 720px; margin: 0 auto; }
+
+.traitement__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--dv-s-6);
+  margin-bottom: var(--dv-s-7);
+}
+.traitement__head h2 {
+  margin-top: var(--dv-s-2);
+  font-size: var(--dv-t-h2);
+  line-height: var(--dv-lh-snug);
+}
+.chrono {
+  font-size: var(--dv-t-sm);
+  color: var(--dv-faint);
+  padding: var(--dv-s-2) var(--dv-s-4);
+  background: var(--dv-bg-alt);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius-pill);
+  white-space: nowrap;
+}
+
+/* ---- la jauge ------------------------------------------------------------ */
+/* Trois segments, un par étape du pipeline. Celui qui tourne se remplit d'une
+   navette continue — il ne prétend pas connaître une progression qu'on n'a pas ;
+   ceux qui sont faits sont pleins. La différence entre « ça avance » et « ça a
+   fini » se voit d'un coup d'œil, à un mètre. */
+
+.jauge { display: flex; gap: var(--dv-s-2); margin-bottom: var(--dv-s-9); }
+.jauge__seg {
+  flex: 1; height: 4px;
+  border-radius: var(--dv-radius-pill);
+  background: var(--dv-rule);
+  overflow: hidden;
+}
+.jauge__seg i { display: block; height: 100%; width: 0; background: var(--dv-accent); }
+.jauge__seg.est-faite i {
+  width: 100%;
+  transition: width var(--dv-duree-lente) var(--dv-sortie);
+}
+.jauge__seg.est-encours i {
+  width: 40%;
+  animation: navette 1.5s var(--dv-sortie) infinite;
+}
+@keyframes navette {
+  0%   { transform: translateX(-105%); }
+  100% { transform: translateX(255%); }
+}
+
+/* ---- les étapes ---------------------------------------------------------- */
+
+.steps { display: flex; flex-direction: column; margin-bottom: var(--dv-s-9); }
+.step {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: start;
+  gap: var(--dv-s-4);
+  padding: var(--dv-s-5) 0;
+  border-bottom: 1px solid var(--dv-rule-faint);
+  transition: opacity var(--dv-duree) var(--dv-sortie);
+}
+.step:last-child { border-bottom: none; }
+.step--attente { opacity: .48; }
+
+.step__mark {
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  border: 1.5px solid var(--dv-rule-strong);
+  color: var(--dv-accent);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+}
+.step__mark svg { width: 13px; height: 13px; }
+.step--faite .step__mark { border-color: var(--dv-accent); background: var(--dv-accent); color: var(--dv-paper); }
+.step--encours .step__mark { border-color: var(--dv-accent); animation: battement 1.4s ease-in-out infinite; }
+
+.step__title { font-size: var(--dv-t-body); font-weight: 500; line-height: var(--dv-lh-snug); }
+.step__detail { font-size: var(--dv-t-sm); color: var(--dv-muted); margin-top: var(--dv-s-1); }
+.step__status {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+  letter-spacing: var(--dv-track-label);
+  text-transform: uppercase;
+  color: var(--dv-faint);
+  padding-top: 3px;
+  white-space: nowrap;
+}
+.step--encours .step__status { color: var(--dv-accent); }
+
+/* ---- la transcription qui se dévoile ------------------------------------- */
+/* C'est le vrai contenu de cet écran : le moment où l'artisan voit que la machine
+   l'a compris. Elle est donc composée pour être lue, pas pour meubler. */
+
+.transcript-card {
+  background: var(--dv-paper);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius);
+  padding: var(--dv-s-8) var(--dv-s-9);
+  box-shadow: var(--dv-ombre-1);
+  animation: entree-repli var(--dv-duree-lente) var(--dv-sortie) both;
+}
+.transcript-card .label { margin-bottom: var(--dv-s-5); }
+.transcript-body {
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-lead);
+  line-height: var(--dv-lh-loose);
+  color: var(--dv-ink-soft);
+  text-wrap: pretty;
+}
+
+
+/* ======================================================================== */
+/* 3. Relecture                                                             */
+/* ======================================================================== */
+
+.relecture { align-items: flex-start; }
+.relecture__inner { width: 100%; max-width: var(--dv-mesure-xl); margin: 0 auto; }
+
+.relecture__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--dv-s-8);
+  margin-bottom: var(--dv-s-8);
+}
+.relecture__ident { min-width: 0; }
+.relecture__head h2 {
+  margin-top: var(--dv-s-2);
+  font-size: var(--dv-t-h2);
+  line-height: var(--dv-lh-snug);
+  letter-spacing: var(--dv-track-tight);
+  text-wrap: balance;
+}
+.relecture__client { font-size: var(--dv-t-sm); color: var(--dv-muted); margin-top: var(--dv-s-2); }
+.relecture__actions { display: flex; gap: var(--dv-s-4); flex-shrink: 0; }
+
+/* ---- le commutateur des deux vues ---------------------------------------- */
+/* Visible seulement là où les deux vues ne tiennent pas côte à côte. */
+
+.bascule {
+  display: none;
+  gap: var(--dv-s-1);
+  padding: var(--dv-s-1);
+  margin-bottom: var(--dv-s-7);
+  background: var(--dv-bg-alt);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius-pill);
+}
+.bascule__onglet {
+  flex: 1;
+  /* 44px et pas un de moins : c'est le minimum tactile d'Apple, et le
+     rembourrage de 4px du conteneur ramène l'ensemble à la cible de 48. */
+  min-height: 44px;
+  border: none; background: none;
+  border-radius: var(--dv-radius-pill);
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-sm);
+  font-weight: 500;
+  color: var(--dv-muted);
+  cursor: pointer;
+  transition: background var(--dv-duree) var(--dv-sortie),
+              color var(--dv-duree) var(--dv-sortie),
+              box-shadow var(--dv-duree) var(--dv-sortie);
+}
+.bascule__onglet.is-active {
+  background: var(--dv-paper);
+  color: var(--dv-ink);
+  box-shadow: var(--dv-ombre-1);
+}
+
+.relecture__corps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: var(--dv-s-11);
+  align-items: start;
+}
+.relecture__detail { min-width: 0; }
+
+/* ---- transcription repliée ------------------------------------------------ */
+
+.transcript {
+  margin-bottom: var(--dv-s-9);
+  padding-bottom: var(--dv-s-6);
+  border-bottom: 1px solid var(--dv-rule);
+}
+.transcript summary {
+  display: flex; align-items: center; gap: var(--dv-s-3);
+  min-height: 40px;
+  cursor: pointer;
+  list-style: none;
+}
+.transcript summary::-webkit-details-marker { display: none; }
+.transcript summary::after {
+  content: "";
+  width: 7px; height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform var(--dv-duree) var(--dv-sortie);
+}
+.transcript[open] summary::after { transform: rotate(225deg) translateY(-2px); }
+.transcript > div {
+  margin-top: var(--dv-s-5);
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-body);
+  line-height: var(--dv-lh-loose);
+  color: var(--dv-ink-soft);
+  text-wrap: pretty;
+}
+
+/* ---- le tableau des prestations ------------------------------------------ */
+
+.table { margin-top: var(--dv-s-4); }
+.table__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 68px 104px 112px;
+  gap: var(--dv-s-4);
+  align-items: baseline;
+}
+.table__head {
+  padding-bottom: var(--dv-s-3);
+  border-bottom: 1.5px solid var(--dv-ink);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-label);
+  font-weight: 500;
+  letter-spacing: var(--dv-track-label);
+  text-transform: uppercase;
+  color: var(--dv-faint);
+}
+.table__line {
+  padding: var(--dv-s-5) 0;
+  border-bottom: 1px solid var(--dv-rule-faint);
+  font-size: var(--dv-t-sm);
+}
+.table__line:last-child { border-bottom: none; }
+.table .r { text-align: right; }
+.table .r.num { color: var(--dv-text); }
+.table .unit { font-size: var(--dv-t-xs); color: var(--dv-muted); }
+.table .total { color: var(--dv-ink); font-weight: 500; }
+.table__desc { font-size: var(--dv-t-body); line-height: var(--dv-lh-snug); color: var(--dv-ink); }
+.table__detail { margin-top: var(--dv-s-1); font-size: var(--dv-t-xs); line-height: var(--dv-lh-snug); color: var(--dv-muted); }
+
+/* Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
+   alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche. */
+.tag-estime {
+  display: inline-flex; align-items: center; gap: var(--dv-s-2);
+  margin-top: var(--dv-s-2);
+  padding: 2px var(--dv-s-3);
+  border-radius: var(--dv-radius-pill);
+  background: var(--dv-accent-tint);
+  border: 1px solid var(--dv-accent-edge);
+  font-family: var(--dv-mono);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--dv-accent);
+}
+
+/* ---- observations et totaux ---------------------------------------------- */
+
+.foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--dv-s-10);
+  margin-top: var(--dv-s-9);
+  align-items: start;
+}
+.observations { display: flex; flex-direction: column; gap: var(--dv-s-4); margin-top: var(--dv-s-5); }
+.observation {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: var(--dv-s-2);
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-text);
+}
+.observation em { font-family: var(--dv-mono); color: var(--dv-accent); font-style: normal; }
+.observation p { text-wrap: pretty; }
+
+.totaux {
+  background: var(--dv-paper);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius);
+  padding: var(--dv-s-7) var(--dv-s-7) var(--dv-s-5);
+  box-shadow: var(--dv-ombre-1);
+}
+.totaux__row {
+  display: flex; justify-content: space-between; gap: var(--dv-s-4);
+  padding: var(--dv-s-2) 0;
+  font-size: var(--dv-t-sm);
+  color: var(--dv-text);
+}
+/* Le total TTC est le seul aplat d'encre de l'écran. C'est le chiffre que
+   l'artisan cherche des yeux, et le seul que sa cliente retiendra. */
+.totaux__ttc {
+  display: flex; justify-content: space-between; align-items: baseline; gap: var(--dv-s-4);
+  margin: var(--dv-s-4) calc(var(--dv-s-7) * -1) var(--dv-s-4);
+  padding: var(--dv-s-4) var(--dv-s-7);
+  background: var(--dv-ink);
+  color: var(--dv-paper);
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-h3);
+  font-weight: 600;
+}
+.totaux__ttc span:last-child { font-variant-numeric: tabular-nums; }
+.totaux__acompte {
+  display: flex; justify-content: space-between; gap: var(--dv-s-4);
+  padding: var(--dv-s-3) 0;
+  font-size: var(--dv-t-sm);
+  font-weight: 500;
+  color: var(--dv-accent);
+}
+.totaux__note {
+  margin-top: var(--dv-s-4);
+  padding-top: var(--dv-s-4);
+  border-top: 1px solid var(--dv-rule-faint);
+  font-size: var(--dv-t-xs);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+}
+
+/* ---- l'aperçu A4 ---------------------------------------------------------- */
+/* La feuille telle qu'elle partira. Elle est collante sur un large écran : on
+   descend dans le tableau, le document reste sous les yeux. */
+
+.relecture__apercu { position: sticky; top: calc(var(--dv-entete-h) + var(--dv-s-6)); }
+
+.apercu {
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius);
+  overflow: hidden;
+  background: var(--dv-desk);
+  box-shadow: var(--dv-ombre-2);
+}
+.apercu__barre {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--dv-s-4);
+  padding: var(--dv-s-4) var(--dv-s-5);
+  background: var(--dv-paper);
+  border-bottom: 1px solid var(--dv-rule);
+}
+.apercu__pages { font-size: var(--dv-t-label); color: var(--dv-faint); }
+
+/* Le bureau sombre derrière la feuille. Hauteur bornée pour que le document se
+   parcoure sans emporter la page entière. */
+.apercu__bureau {
+  position: relative;
+  height: min(62vh, 620px);
+  overflow: auto;
+  overscroll-behavior: contain;   /* le défilement du document ne déborde pas sur la page */
+  padding: var(--dv-s-5);
+  background: var(--dv-desk);
+}
+/* Le plan occupe la place que la feuille prend une fois réduite ; le cadre garde
+   sa largeur vraie et se met à l'échelle. Les deux tailles sont posées en JS —
+   voir `ajusterApercu()`. */
+.apercu__plan { position: relative; margin: 0 auto; }
+.apercu__cadre {
+  position: absolute; top: 0; left: 0;
+  width: 794px;                    /* 210 mm à 96 ppp — la largeur réelle du A4 */
+  /* Le `max-width: 100%` du socle vaut pour toute image ou tout cadre de la page,
+     et il a raison partout ailleurs. Ici il rognerait la feuille à la largeur du
+     bureau : le document se recomposerait, ses lignes se replieraient autrement,
+     et l'aperçu cesserait de montrer le devis qui sort en PDF. C'est la mise à
+     l'échelle qui réduit, jamais la largeur. */
+  max-width: none;
+  border: none;
+  background: var(--dv-white);
+  transform-origin: top left;
+}
+
+/* L'attente. Deux feuilles fantômes plutôt qu'un tourniquet : on annonce la
+   forme de ce qui arrive, pas seulement le fait qu'on attend. */
+.apercu__attente { display: flex; flex-direction: column; gap: var(--dv-s-5); }
+.apercu__feuille {
+  display: block;
+  width: 100%;
+  aspect-ratio: 210 / 297;
+  border-radius: 2px;
+  background: linear-gradient(100deg,
+    rgba(255, 253, 250, .10) 30%,
+    rgba(255, 253, 250, .20) 48%,
+    rgba(255, 253, 250, .10) 66%);
+  background-size: 300% 100%;
+  animation: miroitement 1.6s ease-in-out infinite;
+}
+.apercu__feuille:nth-child(2) { animation-delay: .2s; opacity: .55; }
+@keyframes miroitement {
+  0%   { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+
+
+/* ======================================================================== */
+/* 4. Devis vide                                                            */
+/* ======================================================================== */
+
+.vide { align-items: center; }
+.vide__inner { width: 100%; max-width: var(--dv-mesure); }
+.vide h2 {
+  margin-top: var(--dv-s-4);
+  font-size: var(--dv-t-h2);
+  line-height: var(--dv-lh-snug);
+  letter-spacing: var(--dv-track-tight);
+  text-wrap: balance;
+}
+.vide__lede {
+  font-size: var(--dv-t-lead);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+  margin: var(--dv-s-5) 0 var(--dv-s-9);
+  text-wrap: pretty;
+}
+.vide__quote {
+  background: var(--dv-bg-alt);
+  border-left: 2px solid var(--dv-accent);
+  border-radius: 0 var(--dv-radius) var(--dv-radius) 0;
+  padding: var(--dv-s-7) var(--dv-s-8);
+  margin-bottom: var(--dv-s-9);
+}
+.vide__quote p {
+  margin-top: var(--dv-s-4);
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-lead);
+  line-height: var(--dv-lh-loose);
+  color: var(--dv-text);
+  text-wrap: pretty;
+}
+.vide .observations { margin-bottom: var(--dv-s-10); }
+.vide .observation { font-size: var(--dv-t-body); }
+.vide__actions { display: flex; gap: var(--dv-s-4); flex-wrap: wrap; }
+
+
+/* ======================================================================== */
+/* 5. Erreur                                                                */
+/* ======================================================================== */
+/* Même idiome que le devis vide : le produit dit ce qui s'est passé, en clair,
+   et propose la reprise la moins coûteuse. Le rouge est réservé à ça. */
+
+.erreur { align-items: center; }
+.erreur__inner { width: 100%; max-width: var(--dv-mesure-etroite); }
 .erreur h2 {
-  margin: 12px 0 14px;
-  font-family: var(--dv-serif); font-size: 28px; font-weight: 600;
-  line-height: 1.3; letter-spacing: -.01em; text-wrap: pretty;
+  margin-top: var(--dv-s-4);
+  font-size: var(--dv-t-h2);
+  line-height: var(--dv-lh-snug);
+  text-wrap: balance;
 }
 .erreur__message {
-  font-size: 16px; line-height: 1.65; color: var(--dv-muted);
-  margin-bottom: 30px; text-wrap: pretty;
+  margin: var(--dv-s-5) 0 var(--dv-s-9);
+  padding: var(--dv-s-5) var(--dv-s-6);
+  background: var(--dv-danger-tint);
+  border: 1px solid var(--dv-danger-edge);
+  border-radius: var(--dv-radius);
+  font-size: var(--dv-t-body);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-danger);
+  text-wrap: pretty;
 }
-.erreur__actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.erreur__actions { display: flex; gap: var(--dv-s-4); flex-wrap: wrap; }
+
 
 /* ======================================================================== */
-/* responsive                                                               */
+/* 6. Gabarit                                                               */
+/* ======================================================================== */
+/* Hors périmètre d'origine (CLAUDE.md § Périmètre), assumé. */
+
+.gabarit { align-items: flex-start; }
+.gabarit__inner { width: 100%; max-width: var(--dv-mesure); margin: 0 auto; }
+
+.gabarit__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dv-s-8);
+  margin-bottom: var(--dv-s-6);
+}
+.gabarit__head h2 {
+  margin-top: var(--dv-s-2);
+  font-size: var(--dv-t-h2);
+  line-height: var(--dv-lh-snug);
+}
+.gabarit__lede {
+  font-size: var(--dv-t-body);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-text);
+  margin-bottom: var(--dv-s-9);
+  max-width: 58ch;
+  text-wrap: pretty;
+}
+
+.gabarit__etat {
+  background: var(--dv-paper);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius);
+  padding: var(--dv-s-7) var(--dv-s-8);
+  margin-bottom: var(--dv-s-7);
+  box-shadow: var(--dv-ombre-1);
+}
+.gabarit__nom {
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-h3);
+  font-weight: 600;
+  margin-top: var(--dv-s-3);
+}
+.gabarit__meta { font-size: var(--dv-t-xs); color: var(--dv-muted); margin-top: var(--dv-s-2); }
+
+/* Le contrôle des mentions obligatoires. C'est le prix de cette fonctionnalité,
+   et il se paie à l'écran plutôt qu'en silence. Rouge et non brique : ce n'est
+   pas un signal parmi d'autres, c'est un document qui n'est plus conforme. */
+.gabarit__alerte {
+  display: flex; gap: var(--dv-s-5);
+  background: var(--dv-danger-tint);
+  border: 1px solid var(--dv-danger-edge);
+  border-radius: var(--dv-radius);
+  padding: var(--dv-s-7);
+  margin-bottom: var(--dv-s-8);
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-danger);
+}
+.gabarit__alerte-icone { width: 20px; height: 20px; flex: none; margin-top: 2px; }
+.gabarit__alerte strong { font-weight: 600; }
+.gabarit__alerte p { margin: var(--dv-s-2) 0 var(--dv-s-4); }
+.gabarit__alerte ul { margin: 0; padding-left: var(--dv-s-6); }
+.gabarit__alerte li { margin-bottom: var(--dv-s-1); }
+
+.gabarit .dropzone { margin-top: var(--dv-s-5); }
+.gabarit__actions { display: flex; gap: var(--dv-s-4); margin-top: var(--dv-s-6); }
+
+.gabarit__message {
+  margin-top: var(--dv-s-6);
+  padding: var(--dv-s-4) var(--dv-s-5);
+  border-radius: var(--dv-radius);
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+  background: var(--dv-bg-alt);
+  border: 1px solid var(--dv-rule);
+}
+.gabarit__message--alerte {
+  color: var(--dv-danger);
+  background: var(--dv-danger-tint);
+  border-color: var(--dv-danger-edge);
+}
+.gabarit__message--ok {
+  color: var(--dv-accent);
+  background: var(--dv-accent-tint);
+  border-color: var(--dv-accent-edge);
+}
+
+.gabarit__pied {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: var(--dv-s-5);
+  margin-top: var(--dv-s-10);
+  padding-top: var(--dv-s-7);
+  border-top: 1px solid var(--dv-rule);
+  font-size: var(--dv-t-sm);
+}
+.gabarit__pied a {
+  display: inline-flex; align-items: center; gap: var(--dv-s-3);
+  min-height: var(--dv-cible);
+}
+
+
+/* ======================================================================== */
+/* Adaptation                                                               */
 /*                                                                          */
-/* Le handoff est dessiné pour un écran large et n'a aucune requête média.   */
-/* Or la cible est un artisan sur son téléphone, en sortant d'une visite.    */
-/* Trois seuils, et rien au-dessus du plus large : le desktop reste          */
-/* exactement la feuille livrée.                                            */
+/* Le barème typographique étant fluide, il ne reste ici que ce qui change   */
+/* réellement de forme : le nombre de colonnes, et le tableau qui s'empile.  */
 /*                                                                          */
-/*   820px  la mise en page se déplie en une colonne                        */
-/*   700px  le tableau des prestations s'empile                             */
-/*   560px  barème typographique du téléphone                               */
+/*   1180px  l'aperçu A4 passe sous le commutateur, les deux vues alternent  */
+/*    820px  observations et totaux repassent en une colonne                 */
+/*    640px  le tableau s'empile, les actions prennent toute la largeur      */
 /* ======================================================================== */
 
-/* ---- 820px : une seule colonne ----------------------------------------- */
+/* ---- 1180px : les deux vues de la relecture alternent -------------------- */
+@media (max-width: 1180px) {
+  .bascule { display: flex; }
+  .relecture__corps { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .relecture__inner { max-width: var(--dv-mesure-large); }
 
+  /* Une seule vue à la fois. `hidden` sur les sections gérées par le
+     commutateur : le lecteur d'écran ne doit pas lire la vue cachée. */
+  .relecture__corps > [hidden] { display: none; }
+  .relecture__apercu { position: static; }
+  .apercu__bureau { height: min(70vh, 760px); }
+}
+
+/* ---- 820px : observations et totaux en une colonne ---------------------- */
 @media (max-width: 820px) {
-  .traitement { padding-top: 72px; }
-  .relecture  { padding-top: 72px; }
-  .vide       { padding-top: 72px; }
-  .erreur     { padding-top: 72px; }
+  .foot { grid-template-columns: minmax(0, 1fr); gap: var(--dv-s-8); }
+  .totaux { order: -1; }        /* le chiffre d'abord, les remarques ensuite */
 
-  .relecture__head { flex-direction: column; align-items: stretch; gap: 18px; }
+  .relecture__head { flex-direction: column; gap: var(--dv-s-6); }
   .relecture__actions { width: 100%; }
   .relecture__actions .btn { flex: 1; }
 
-  .section-head { flex-wrap: wrap; }
-  .section-head .count { flex-basis: 100%; }
-
-  /* Les totaux passent devant les observations : c'est le chiffre que l'artisan
-     vérifie en premier, et sa note « dont X de prix estimés » renvoie au tableau
-     qui se trouve juste au-dessus. */
-  .foot { grid-template-columns: 1fr; gap: 30px; }
-  .totaux { order: -1; }
+  .gabarit__head { flex-direction: column; gap: var(--dv-s-5); }
 }
 
-/* ---- 700px : le tableau s'empile --------------------------------------- */
-/* La grille du handoff réserve 392px aux colonnes de chiffres ; sous cette
-   largeur, la désignation n'a plus de place. Le DOM ne change pas — seule la
-   grille se replie, en deux rangs : la désignation, puis la ligne de calcul.
-   Elle se lit « 12 m² × 48,00   576,00 », et la colonne des totaux reste alignée
-   sur le bord droit, qui est le seul alignement qui compte. */
+/* ---- 640px : le tableau s'empile ---------------------------------------- */
+/* La grille réserve 340px aux colonnes de chiffres ; sous cette largeur, la
+   désignation n'a plus de place pour être lue. Chaque ligne devient donc un
+   bloc, et les quatre chiffres passent dessous avec leur libellé — porté par
+   `data-l`, posé en JS (voir `rangDeLigne`). */
 
-@media (max-width: 700px) {
-  .table { padding: 0 18px 4px; }
+@media (max-width: 640px) {
   .table__head { display: none; }
-
-  .table__row.table__line {
-    grid-template-columns: auto auto 1fr auto;
-    grid-template-areas:
-      "desc  desc  desc desc"
-      "qte   unite pu   total";
-    column-gap: 14px;   /* la gouttière du handoff : sépare le P.U. du total */
-    row-gap: 9px;
-    padding: 16px 0;
+  .table {
+    border-top: 1.5px solid var(--dv-ink);
+    margin-top: var(--dv-s-5);
   }
-  .table__line > :nth-child(1) { grid-area: desc; }
-  .table__line > :nth-child(2) { grid-area: qte;   text-align: left; }
-  .table__line > :nth-child(3) { grid-area: unite; text-align: left; }
-  .table__line > :nth-child(4) { grid-area: pu; }
-  .table__line > :nth-child(5) { grid-area: total; }
+  .table__line {
+    display: block;
+    padding: var(--dv-s-6) 0;
+  }
+  .table__line > div:first-child { margin-bottom: var(--dv-s-4); }
+  .table__line .r {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--dv-s-2);
+    margin-right: var(--dv-s-6);
+    text-align: left;
+    font-size: var(--dv-t-sm);
+  }
+  .table__line .r::before {
+    content: attr(data-l);
+    font-family: var(--dv-mono);
+    font-size: var(--dv-t-label);
+    letter-spacing: var(--dv-track-label);
+    text-transform: uppercase;
+    color: var(--dv-faint);
+  }
+  .table__line .total { margin-right: 0; }
 
-  /* Le signe de multiplication rétablit la lecture d'une ligne de devis sans
-     ajouter de nœud au DOM : la même ligne sert aux deux mises en page. */
-  .table__line > :nth-child(4)::before { content: "\00D7 "; color: var(--dv-faint); }
-}
-
-/* ---- 560px : barème du téléphone --------------------------------------- */
-
-@media (max-width: 560px) {
-  .accueil { padding: 56px 18px 40px; justify-content: flex-start; }
-  .wordmark { gap: 12px; }
-  .wordmark h1 { font-size: 27px; }
-  .accueil__baseline { font-size: 16px; margin-bottom: 30px; }
-
-  .dropzone { padding: 40px 20px; }
-  .dropzone__mic { width: 46px; height: 46px; margin-bottom: 16px; }
-  .dropzone__mic i { width: 11px; height: 19px; }
-  .dropzone__title { font-size: 20px; }
-
-  /* 44px : la cible tactile la plus petite qu'on atteint sans regarder. */
-  .paste-toggle { min-height: 44px; margin-top: 14px; }
-  .paste .btn { width: 100%; }
+  .relecture__actions,
+  .vide__actions, .erreur__actions, .gabarit__actions { flex-direction: column; }
+  .relecture__actions .btn,
+  .vide__actions .btn, .erreur__actions .btn, .gabarit__actions .btn { width: 100%; }
 
   .relu__actions { flex-direction: column; }
-  .relu__actions .btn { width: 100%; }
 
-  .traitement { padding: 56px 18px 60px; }
-  .traitement__head { margin-bottom: 26px; }
-  .traitement__head h2 { font-size: 21px; }
+  .compte__qui { display: none; }   /* l'adresse e-mail mangerait toute la barre */
+  .entete__fil { display: none; }
 
-  /* Le statut passe sous le titre : sur trois colonnes, « EN ATTENTE » écrasait
-     le libellé de l'étape. */
-  .step { grid-template-columns: 22px 1fr; gap: 4px 12px; padding: 14px 16px; }
-  .step__mark { grid-row: 1; align-self: start; }
-  .step__title { font-size: 15px; }
-  .step__status { grid-column: 2; justify-self: start; margin-top: 6px; }
+  .traitement__head { flex-direction: column-reverse; align-items: flex-start; gap: var(--dv-s-4); }
+  .step { grid-template-columns: 26px 1fr; }
+  .step__status { display: none; }   /* redit ce que la pastille et la jauge disent déjà */
 
-  .transcript-card { padding: 20px 18px; }
-  .transcript-body { font-size: 17px; line-height: 1.7; }
-
-  .relecture { padding: 56px 18px 60px; }
-  .relecture__head h2 { font-size: 24px; }
-  .relecture__actions { flex-direction: column; }
-  details.transcript { padding: 14px 16px; margin-bottom: 26px; }
-  details.transcript > div { font-size: 15px; }
-
-  .table { padding: 0 16px 4px; }
-  .totaux { padding: 18px; }
-  .totaux__ttc { font-size: 17px; }
-
-  .vide, .erreur { padding: 56px 18px 60px; }
-  .vide h2, .erreur h2 { font-size: 23px; }
-  .vide__lede, .erreur__message { font-size: 15px; }
-  .vide__quote { padding: 16px 18px; }
-  .vide__actions,   .erreur__actions   { flex-direction: column; }
-  .vide__actions .btn, .erreur__actions .btn { width: 100%; }
-
-  .bandeau { padding: 9px 18px; font-size: 10.5px; }
-  body.a-bandeau .screen { min-height: calc(100svh - 52px); }
+  .transcript-card { padding: var(--dv-s-7) var(--dv-s-6); }
+  .totaux { padding: var(--dv-s-6) var(--dv-s-6) var(--dv-s-4); }
+  .totaux__ttc { margin-left: calc(var(--dv-s-6) * -1); margin-right: calc(var(--dv-s-6) * -1); padding: var(--dv-s-4) var(--dv-s-6); }
 }
 
-/* ---- identité de l'entreprise ------------------------------------------- */
-/* La ligne d'accueil et l'écran qui va avec. Le SIRET n'est pas demandé mais
-   retrouvé : la recherche prend toute la largeur, le formulaire se replie. */
+/* ========================================================================== */
+/* Identité de l'entreprise                                                   */
+/*                                                                            */
+/* La ligne d'accueil et l'écran qui va avec. Le SIRET n'est pas              */
+/* demandé mais retrouvé : la recherche prend toute la largeur, le            */
+/* formulaire se replie dessous.                                              */
+/* ========================================================================== */
 
 .identite {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -693,7 +1496,13 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
   .entreprise__actions .btn { width: 100%; }
 }
 
-/* ---- porte d'entrée ------------------------------------------------------ */
+/* ========================================================================== */
+/* Porte d'entrée                                                             */
+/*                                                                            */
+/* Le code d'accès, demandé avant tout le reste quand le serveur en           */
+/* réclame un. Distinct de l'écran de connexion : celui-ci dit qui            */
+/* vous êtes, celui-là que vous avez le droit d'être ici.                     */
+/* ========================================================================== */
 
 .porte { min-height: 100svh; padding: 24px; display: flex; align-items: center; justify-content: center; }
 .porte__inner { width: 100%; max-width: 420px; }
@@ -708,10 +1517,20 @@ body.a-bandeau .screen { min-height: calc(100svh - 39px); }
 .porte__erreur { min-height: 20px; margin-top: 10px; font-size: 13px; color: var(--dv-accent-dark); }
 .porte .btn { width: 100%; margin-top: 8px; }
 
-/* ---- mouvement réduit --------------------------------------------------- */
-/* Le dévoilement de la transcription est du contenu, pas de la décoration : il
-   n'est pas supprimé, il est instantané (voir `MOUVEMENT_REDUIT` dans app.js). */
+
+/* ======================================================================== */
+/* Mouvement réduit                                                         */
+/*                                                                          */
+/* Le dévoilement de la transcription n'est pas supprimé, il est instantané  */
+/* (voir `MOUVEMENT_REDUIT` dans app.js) : c'est du contenu, pas de la       */
+/* décoration. Tout le reste s'arrête.                                       */
+/* ======================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 0s !important; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
