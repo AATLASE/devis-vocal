@@ -28,10 +28,12 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 	}
 
-	# `devis-vocal` est le nom du service dans docker-compose : Docker le résout sur
-	# le réseau interne. L'application n'a aucun port publié vers l'extérieur, donc
-	# c'est le seul chemin qui mène jusqu'à elle.
-	reverse_proxy devis-vocal:8000
+	# Où joindre l'application. Par défaut la boucle locale : c'est le cas quand elle
+	# tourne en service systemd, directement sur la machine. En conteneur, Compose
+	# pose AMONT=devis-vocal:8000 et Docker résout ce nom sur son réseau interne.
+	#
+	# Dans les deux cas, l'application n'est joignable que par ici.
+	reverse_proxy {$AMONT:127.0.0.1:8000}
 
 	log {
 		output file /var/log/caddy/acces.log {

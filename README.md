@@ -436,49 +436,97 @@ Deux points à ne pas oublier au montage :
 
 ## Déploiement
 
+Deux chemins. **Le premier ne demande pas Docker** — c'est celui qu'on recommande, parce
+que le seul obstacle qu'il résolvait, les dépendances système de Chromium, est levé par
+une commande Playwright.
+
+Dans les deux cas, **HTTPS n'est pas une finition** : le micro d'un navigateur ne
+s'ouvre pas sur une page non sécurisée. Sans certificat, pas de dictée en rendez-vous,
+donc pas de démonstration.
+
+### Sur un serveur, sans Docker
+
+Il te faut un domaine qui pointe vers la machine. Pas de domaine ? `duckdns.org` en
+donne un gratuitement et Let's Encrypt le reconnaît.
+
 ```bash
-docker compose up --build          # local, sur 127.0.0.1:8000
+# 1. La mémoire. Chromium demande environ 1 Go au moment du rendu.
+free -m
+
+# 2. Python et les outils. Ubuntu 24.04 fournit déjà Python 3.12 ; sur 22.04,
+#    ajouter le PPA deadsnakes.
+sudo apt update && sudo apt install -y python3.12 python3.12-venv git
+
+# 3. Un utilisateur dédié — surtout pas root : l'application rend du HTML tiers
+#    dans Chromium.
+sudo useradd --system --create-home --home-dir /opt/devis-vocal devis
+sudo -u devis git clone <URL_DU_DEPOT> /opt/devis-vocal
+cd /opt/devis-vocal
+
+# 4. Les dépendances
+sudo -u devis python3.12 -m venv .venv
+sudo -u devis .venv/bin/pip install -r requirements.txt
+
+# 5. Chromium ET ses bibliothèques système, en une commande. C'est elle qui rend
+#    Docker facultatif.
+sudo .venv/bin/playwright install-deps chromium
+sudo -u devis .venv/bin/playwright install chromium
+
+# 6. La configuration. Ne pas oublier ACCES_CODE : c'est le geste de la mise en
+#    ligne (voir « Avant de mettre en ligne » plus haut).
+sudo -u devis cp .env.example .env && sudo -u devis nano .env
+sudo chmod 600 .env
+
+# 7. Le service
+sudo cp deploiement/devis-vocal.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now devis-vocal
+curl -s localhost:8000/health        # doit répondre
+
+# 8. Caddy, pour le HTTPS
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key   | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt   | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+
+sudo cp Caddyfile /etc/caddy/Caddyfile
+sudo nano /etc/caddy/Caddyfile      # remplacer {$DOMAINE} par ton domaine
+sudo systemctl reload caddy
+
+# 9. Vérifier
+curl -s https://ton-domaine/health
+journalctl -u caddy -n 30           # le certificat s'obtient en quelques secondes
+```
+
+Les ports **80 et 443** doivent être joignables : Let's Encrypt passe par le 80 pour
+vérifier le domaine. Si le certificat échoue, c'est presque toujours ça — ou le domaine
+qui ne pointe pas encore.
+
+Une précision sur le `.env` : systemd le lit ligne par ligne, sans interpréter. Pour
+Firebase, préférer donc `FIREBASE_CREDENTIALS` — un chemin vers le fichier JSON — plutôt
+que `FIREBASE_CREDENTIALS_JSON`, dont les accolades et les guillemets sur une seule ligne
+demanderaient un échappement délicat. La forme JSON existe pour les hébergeurs qui
+injectent des variables sans pouvoir déposer de fichier.
+
+Pour mettre à jour : `sudo -u devis git pull && sudo systemctl restart devis-vocal`.
+
+Deux dossiers ne doivent pas être effacés : `var/` (les compteurs de dépense — un
+plafond qu'on annule en redéployant ne protège de rien) et `journal/` (les vocaux réels
+des rendez-vous, qui ne se rejouent pas).
+
+Un seul processus uvicorn, volontairement : chaque worker lance son propre Chromium, et
+c'est la mémoire qui manque en premier sur un petit serveur.
+
+### Avec Docker
+
+```bash
+docker compose up --build                                            # local, sur 127.0.0.1:8000
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build   # serveur, avec Caddy
 ```
 
 L'image part de l'image officielle Playwright : Chromium et ses dépendances sont déjà
 dedans. Le port n'est publié que sur la boucle locale — il faut vouloir l'ouvrir pour
-l'ouvrir, et une surcouche Compose ne saurait pas le refermer ensuite.
-
-### Sur un serveur, avec HTTPS
-
-`docker-compose.prod.yml` ajoute Caddy devant. Il obtient et renouvelle le certificat
-seul, sans cron ni commande. **Ce n'est pas du confort** : le micro d'un navigateur ne
-s'ouvre pas sur une page non sécurisée, donc sans certificat il n'y a pas de dictée —
-donc pas de démonstration.
-
-```bash
-# 1. Vérifier la mémoire : Chromium demande environ 1 Go au moment du rendu.
-free -m
-
-# 2. Un domaine qui pointe vers la machine. Pas de domaine ? duckdns.org en donne
-#    un gratuitement, et Let's Encrypt le reconnaît.
-#    Puis, dans le .env :  DOMAINE=devis.mon-domaine.fr
-
-# 3. Le .env, à partir de l'exemple. Ne pas oublier ACCES_CODE : c'est le geste
-#    de la mise en ligne (voir « Avant de mettre en ligne » plus haut).
-cp .env.example .env && nano .env
-
-# 4. Lancer
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-
-# 5. Vérifier
-curl -s https://$DOMAINE/health
-docker compose logs -f caddy      # le certificat s'obtient dans les secondes qui suivent
-```
-
-Les ports 80 et 443 doivent être joignables : Let's Encrypt passe par le 80 pour
-vérifier le domaine. Si le certificat échoue, c'est presque toujours ça — ou le domaine
-qui ne pointe pas encore.
-
-Deux dossiers sont montés en volume et ne doivent pas disparaître entre deux
-déploiements : `var/` (les compteurs de dépense — un plafond qu'on annule en
-redéployant ne protège de rien) et `journal/` (les vocaux réels des rendez-vous, qui
-ne se rejouent pas).
+l'ouvrir, et Compose *fusionnant* les listes `ports`, une surcouche ne saurait pas le
+refermer ensuite.
 
 ### Sur Coolify
 

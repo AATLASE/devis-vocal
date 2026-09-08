@@ -36,6 +36,11 @@ services:
       - "443:443"
       - "443:443/udp"
     env_file: .env  # y lit DOMAINE
+    environment:
+      # Le Caddyfile vise la boucle locale par défaut, pour le montage systemd. En
+      # conteneur, 127.0.0.1 désignerait Caddy lui-même : on lui donne le nom du
+      # service, que Docker résout sur son réseau interne.
+      AMONT: "devis-vocal:8000"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Les certificats. Sans ce volume, Caddy en redemande à chaque déploiement et
