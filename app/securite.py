@@ -286,34 +286,6 @@ async def limiter_la_taille(request: Request, call_next):
     return await call_next(request)
 
 
-# Ce que le navigateur doit refuser de faire avec cette page. Aucune ressource n'est
-# chargée depuis l'extérieur : polices, styles et script sont servis par l'application
-# elle-même, donc `'self'` suffit partout et il n'y a aucun `unsafe-inline` à concéder.
-CSP = "; ".join([
-    "default-src 'self'",
-    "img-src 'self' data:",
-    "media-src 'self' blob:",   # la relecture du vocal passe par un blob:
-    "font-src 'self'",
-    "style-src 'self'",
-    "script-src 'self'",
-    "connect-src 'self'",
-    "object-src 'none'",
-    "base-uri 'none'",
-    "frame-ancestors 'none'",   # la page ne s'intègre dans aucune iframe
-    "form-action 'none'",
-])
-
-ENTETES_SECURITE = {
-    "Content-Security-Policy": CSP,
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "X-Frame-Options": "DENY",
-    # Le micro est le seul matériel dont la page a besoin ; tout le reste est refusé,
-    # y compris aux éventuelles iframes.
-    "Permissions-Policy": "microphone=(self), camera=(), geolocation=(), payment=()",
-}
-
-
 async def garder_les_routes(request: Request, call_next):
     """La porte et le débit, appliqués à toutes les routes coûteuses.
 
@@ -339,8 +311,70 @@ async def garder_les_routes(request: Request, call_next):
     return await call_next(request)
 
 
+# Ce que le navigateur doit refuser de faire avec cette page. Le socle n'autorise que
+# l'application elle-même : polices, styles et scripts sont servis par elle, donc
+# `'self'` suffit et il n'y a aucun `unsafe-inline` à concéder.
+#
+# Les origines Firebase ne s'y ajoutent QUE lorsque l'authentification est armée. Une
+# CSP qui les autoriserait en permanence élargirait la surface d'un démonstrateur qui,
+# la plupart du temps, tourne sans comptes.
+SOCLE = {
+    "default-src": ["'self'"],
+    "img-src": ["'self'", "data:"],
+    "media-src": ["'self'", "blob:"],   # la relecture du vocal passe par un blob:
+    "font-src": ["'self'"],
+    "style-src": ["'self'"],
+    "script-src": ["'self'"],
+    "connect-src": ["'self'"],
+    "object-src": ["'none'"],
+    "base-uri": ["'none'"],
+    "frame-ancestors": ["'none'"],      # la page ne s'intègre dans aucune iframe
+    "form-action": ["'none'"],
+}
+
+# Le SDK Firebase pour navigateur n'existe qu'en ESM, servi depuis gstatic. Le module
+# `compte.js` l'importe de là : sans cette origine, il ne se charge pas, `window.Compte`
+# reste indéfini et il n'y a pas d'écran de connexion — en silence, puisqu'une CSP
+# refuse sans rien casser d'autre. C'est précisément ce qui est arrivé.
+SDK_FIREBASE = "https://www.gstatic.com"
+
+# Les points d'entrée que le SDK appelle : vérification des identifiants, puis
+# rafraîchissement du jeton toutes les heures.
+API_FIREBASE = [
+    "https://identitytoolkit.googleapis.com",
+    "https://securetoken.googleapis.com",
+]
+
+
+def politique() -> str:
+    """Construit la CSP selon ce qui est réellement armé."""
+    directives = {nom: list(valeurs) for nom, valeurs in SOCLE.items()}
+
+    config = get_config()
+    if config.auth_active:
+        directives["script-src"].append(SDK_FIREBASE)
+        directives["connect-src"].extend(API_FIREBASE)
+        # La connexion Google passe par une page d'aide hébergée sur le domaine
+        # d'authentification du projet.
+        if config.firebase_auth_domain:
+            directives["frame-src"] = ["'self'", f"https://{config.firebase_auth_domain}"]
+
+    return "; ".join(f"{nom} {' '.join(valeurs)}" for nom, valeurs in directives.items())
+
+
+ENTETES_SECURITE = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+    # Le micro est le seul matériel dont la page a besoin ; tout le reste est refusé,
+    # y compris aux éventuelles iframes.
+    "Permissions-Policy": "microphone=(self), camera=(), geolocation=(), payment=()",
+}
+
+
 async def poser_les_entetes(request: Request, call_next):
     reponse = await call_next(request)
     for nom, valeur in ENTETES_SECURITE.items():
         reponse.headers.setdefault(nom, valeur)
+    reponse.headers.setdefault("Content-Security-Policy", politique())
     return reponse

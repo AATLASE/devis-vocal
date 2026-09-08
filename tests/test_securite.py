@@ -257,6 +257,40 @@ def test_les_entetes_de_securite_sont_poses(client):
     assert entetes["referrer-policy"] == "no-referrer"
 
 
+def test_la_csp_reste_fermee_sans_firebase():
+    """Par défaut, rien d'extérieur. Un démonstrateur sans comptes n'a aucune raison
+    d'ouvrir sa politique à des origines tierces."""
+    csp = securite.politique()
+    assert "script-src 'self';" in csp + ";"
+    assert "gstatic" not in csp
+    assert "googleapis" not in csp
+
+
+def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_path):
+    """La régression qui a coûté le plus cher à trouver.
+
+    `compte.js` importe le SDK Firebase depuis gstatic. Avec `script-src 'self'`, le
+    module ne se charge pas, `window.Compte` reste indéfini et il n'y a pas d'écran de
+    connexion — sans la moindre erreur visible, puisqu'une CSP refuse en silence. Le
+    défaut n'apparaît que le jour où l'on arme Firebase, c'est-à-dire au pire moment.
+    """
+    faux = tmp_path / "compte-de-service.json"
+    faux.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("FIREBASE_CREDENTIALS", str(faux))
+    monkeypatch.setenv("FIREBASE_AUTH_DOMAIN", "mon-projet.firebaseapp.com")
+    get_config.cache_clear()
+
+    csp = securite.politique()
+    assert "https://www.gstatic.com" in csp                      # le SDK
+    assert "https://identitytoolkit.googleapis.com" in csp       # la connexion
+    assert "https://securetoken.googleapis.com" in csp           # le rafraîchissement
+    assert "https://mon-projet.firebaseapp.com" in csp           # la fenêtre Google
+
+    # Ce qui ne doit pas s'ouvrir au passage.
+    assert "'unsafe-inline'" not in csp
+    assert "frame-ancestors 'none'" in csp
+
+
 def test_le_micro_reste_autorise():
     """Une Permissions-Policy trop zélée couperait la dictée — la fonction centrale
     du produit — sans le moindre message d'erreur."""
