@@ -55,6 +55,13 @@
     <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"></path>
     <path d="M3.5 3.5V10h6.5"></path>
   </symbol>
+  <symbol id="i-crayon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15.5 4.5 19.5 8.5 8.5 19.5H4.5V15.5Z"></path>
+    <path d="m13 7 4 4"></path>
+  </symbol>
+  <symbol id="i-croix" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+    <path d="m6.5 6.5 11 11M17.5 6.5l-11 11"></path>
+  </symbol>
 </svg>
 
 <!-- Le premier élément focalisable de la page : un artisan au clavier, ou sur
@@ -387,6 +394,10 @@
           <svg aria-hidden="true"><use href="#i-telecharger" id="icone-pdf"/></svg>
           <span id="btn-pdf-libelle">Télécharger le PDF</span>
         </button>
+        <button class="btn btn--ghost btn--large" id="btn-modifier">
+          <svg aria-hidden="true"><use href="#i-crayon"/></svg>
+          <span>Modifier</span>
+        </button>
         <button class="btn btn--ghost btn--large" data-recommencer>
           <svg aria-hidden="true"><use href="#i-recommencer"/></svg>
           <span>Nouveau devis</span>
@@ -411,27 +422,126 @@
           <div id="rel-transcription"></div>
         </details>
 
-        <div class="section-head">
-          <div class="label">Prestations</div>
-          <div class="rule"></div>
-          <div class="count" id="rel-compte"></div>
+        <div id="rel-lecture">
+          <div class="section-head">
+            <div class="label">Prestations</div>
+            <div class="rule"></div>
+            <div class="count" id="rel-compte"></div>
+          </div>
+
+          <div class="table">
+            <div class="table__row table__head">
+              <div>Désignation</div><div class="r">Qté</div><div class="r">Unité</div>
+              <div class="r">P.U. HT</div><div class="r">Total HT</div>
+            </div>
+            <div id="rel-lignes"></div>
+          </div>
+
+          <div class="foot">
+            <div>
+              <div class="label" id="rel-titre-observations">Observations</div>
+              <div class="observations" id="rel-observations"></div>
+            </div>
+            <div class="totaux" id="rel-totaux"></div>
+          </div>
         </div>
 
-        <div class="table">
-          <div class="table__row table__head">
-            <div>Désignation</div><div class="r">Qté</div><div class="r">Unité</div>
-            <div class="r">P.U. HT</div><div class="r">Total HT</div>
+        <!-- L'édition. Hors périmètre d'origine, ajoutée sur décision explicite —
+             voir CLAUDE.md § Périmètre. Elle ne calcule rien : aucun total n'est
+             affiché pendant la saisie, et c'est le serveur qui les refait à la
+             validation. Un total calculé ici serait un second calcul à garder juste. -->
+        <form class="edition" id="rel-edition" hidden novalidate>
+          <div class="section-head">
+            <div class="label">Client</div>
+            <div class="rule"></div>
           </div>
-          <div id="rel-lignes"></div>
-        </div>
+          <div class="grille">
+            <div class="champ champ--large">
+              <label for="ed-client-nom">Nom</label>
+              <input id="ed-client-nom" autocomplete="off" placeholder="Mme Durand">
+            </div>
+            <div class="champ champ--large champ--suggestions">
+              <label for="ed-client-adresse">Adresse</label>
+              <input id="ed-client-adresse" autocomplete="off" spellcheck="false"
+                     placeholder="Commencez à taper : 12 rue des Lilas…"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false"
+                     aria-controls="ed-adresse-resultats">
+              <div class="resultats" id="ed-adresse-resultats" role="listbox" hidden></div>
+            </div>
+            <div class="champ">
+              <label for="ed-client-telephone">Téléphone</label>
+              <input id="ed-client-telephone" type="tel" autocomplete="off">
+            </div>
+          </div>
 
-        <div class="foot">
-          <div>
-            <div class="label" id="rel-titre-observations">Observations</div>
-            <div class="observations" id="rel-observations"></div>
+          <!-- Un client professionnel est dans l'annuaire, comme l'artisan lui-même.
+               Un particulier n'y est pas, et ne doit pas y être. -->
+          <button class="paste-toggle" id="ed-pro-bascule" type="button"
+                  aria-expanded="false" aria-controls="ed-pro">
+            <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
+            <span>Client professionnel ? Le retrouver dans l'annuaire</span>
+          </button>
+          <div class="paste" id="ed-pro">
+            <div class="chercher">
+              <input type="search" id="ed-pro-recherche" autocomplete="off" spellcheck="false"
+                     aria-label="Rechercher le client dans l'annuaire des entreprises"
+                     placeholder="Syndic, SCI, commerce : nom ou SIRET">
+              <div class="chercher__aide" id="ed-pro-etat"></div>
+              <div class="resultats" id="ed-pro-resultats" hidden></div>
+            </div>
           </div>
-          <div class="totaux" id="rel-totaux"></div>
-        </div>
+
+          <div class="section-head">
+            <div class="label">Chantier</div>
+            <div class="rule"></div>
+          </div>
+          <div class="grille">
+            <div class="champ champ--large">
+              <label for="ed-objet">Objet des travaux</label>
+              <input id="ed-objet" autocomplete="off">
+            </div>
+            <div class="champ">
+              <label for="ed-duree">Durée annoncée</label>
+              <input id="ed-duree" autocomplete="off" placeholder="2 jours">
+            </div>
+            <div class="champ">
+              <label for="ed-tva">TVA</label>
+              <select id="ed-tva">
+                <option value="0.10">10 % — rénovation d'un logement</option>
+                <option value="0.20">20 % — neuf, local professionnel</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <div class="label">Prestations</div>
+            <div class="rule"></div>
+            <div class="count">Prix HT · totaux recalculés à la validation</div>
+          </div>
+          <div class="edition__lignes" id="ed-lignes"></div>
+          <button type="button" class="btn btn--ghost edition__ajout" id="ed-ajouter">
+            <svg aria-hidden="true"><use href="#i-plus"/></svg>
+            <span>Ajouter une ligne</span>
+          </button>
+
+          <div class="section-head">
+            <div class="label">Observations</div>
+            <div class="rule"></div>
+          </div>
+          <div class="champ">
+            <label for="ed-notes">Une observation par ligne. Elles sont imprimées sur le devis.</label>
+            <textarea id="ed-notes" rows="4"></textarea>
+          </div>
+
+          <div class="edition__erreur" id="ed-erreur" role="alert"></div>
+          <div class="edition__actions">
+            <button type="submit" class="btn btn--large" id="ed-valider">
+              <svg aria-hidden="true"><use href="#i-coche"/></svg>
+              <span>Valider les modifications</span>
+            </button>
+            <button type="button" class="btn btn--ghost btn--large" id="ed-annuler">Annuler</button>
+          </div>
+        </form>
       </div>
 
       <!-- L'aperçu. La feuille A4 telle qu'elle sortira, rendue par le même gabarit

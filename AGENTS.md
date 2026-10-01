@@ -20,9 +20,8 @@ Dans le scope :
 **Hors scope — ne pas construire :**
 
 bibliothèque de prix par artisan · apprentissage des devis passés · intégration WhatsApp
-Business API · édition en ligne du devis · envoi par email · signature électronique ·
-facturation · paiement · CRM · file d'attente · cache · gestion d'erreurs exhaustive ·
-design poussé du front
+Business API · envoi par email · signature électronique · facturation · paiement · CRM ·
+file d'attente · cache · gestion d'erreurs exhaustive · design poussé du front
 
 **Si une demande déborde de ce périmètre, le signaler au lieu de l'implémenter.**
 
@@ -50,13 +49,39 @@ Le coût est réel et documenté : un gabarit téléversé ne garantit plus les 
 obligatoires. `app/gabarits.py` le mesure à l'enregistrement — quatorze contrôles sur
 le document rendu — et l'écran affiche ce qui manque. Voir `docs/gabarits.md`.
 
+### Exception assumée : correction du devis à l'écran
+
+« édition en ligne du devis » figurait dans la liste ci-dessus. Elle en a été retirée
+sur décision explicite, parce que c'est la première question d'un artisan devant la
+démonstration : « et si c'est faux, je corrige comment ? ». Ce qui existe désormais, à
+l'écran de relecture : corriger les lignes (désignation, quantité, unité, prix, ajout,
+retrait), confirmer un prix estimé, et corriger le client, l'objet, la durée, la TVA et
+les observations.
+
+Elle tient par les règles du reste du projet, pas par des règles à elle :
+
+- **Le navigateur ne calcule pas.** Il renvoie le devis d'origine et les corrections à
+  `POST /api/devis/corriger`, et `app/edition.py` les repasse par `to_devis()`. Un seul
+  chemin de calcul ; les totaux envoyés par le navigateur sont ignorés.
+- **Le serveur ne garde rien.** Pas d'historique, pas de brouillon enregistré.
+- **`models.py` n'a pas bougé.** Les corrections ont leur modèle dans `edition.py`.
+
+S'y rattache la saisie du client : l'adresse s'autocomplète depuis la Base Adresse
+Nationale (`app/adresse.py`, via la Géoplateforme), et un client professionnel se
+retrouve dans l'annuaire des entreprises déjà branché. Il n'existe pas d'annuaire des
+particuliers, et il ne faut pas en chercher un.
+
+Cette exception ne couvre pas la **bibliothèque de prix par artisan**, toujours hors
+scope : à la place, `app/prompts/structuration.md` porte une grille de fourchettes de
+référence pour les prix estimés, commune à tous. C'est du prompt, donc dans le périmètre.
+
 Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être impeccable.
 
 ## Stack
 
 - **Backend** : Python 3.12, FastAPI
-- **Transcription** : Groq (whisper-large-v3-turbo), derrière `transcribe(audio, filename) -> str`
-- **Structuration** : API Anthropic, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
+- **Transcription** : API OpenAI (gpt-4o-transcribe), derrière `transcribe(audio, filename) -> str`
+- **Structuration** : API OpenAI, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
 - **PDF** : Playwright (Chromium headless) rendant `templates/devis.html`
 - **Front** : une page HTML servie par FastAPI, JS vanilla, pas de framework
 - **Comptes** : Firebase Auth, jetons vérifiés par `firebase-admin`, derrière les deux

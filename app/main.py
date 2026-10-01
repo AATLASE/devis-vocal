@@ -12,6 +12,12 @@ l'aller-retour en JSON. C'est ce qui permet au navigateur d'afficher une vraie p
 S'y ajoute `POST /api/apercu`, qui rend le même document que `/api/pdf` mais en HTML,
 pour l'aperçu A4 affiché pendant la relecture.
 
+Depuis l'ajout de l'édition — hors périmètre d'origine, voir CLAUDE.md § Périmètre —
+l'artisan corrige son devis à l'écran de relecture, et le serveur le recalcule :
+
+    POST /api/devis/corriger   Devis + corrections -> Devis recalculé
+    GET  /api/adresse          q                   -> [ adresses trouvées ]
+
 Depuis l'ajout des comptes — hors périmètre d'origine, voir CLAUDE.md § Périmètre —
 s'y ajoutent les routes de la fiche et du gabarit personnels de l'artisan :
 
@@ -42,13 +48,16 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app import adresse as adresse_module
 from app import gabarits as gabarits_module
 from app import journal
 from app import pdf as pdf_module
 from app import profils as profils_module
 from app import suivi
 from app.authentification import Utilisateur, utilisateur_optionnel, utilisateur_requis
+from app.adresse import AdresseTrouvee
 from app.config import annoncer, get_config
+from app.edition import Corrections, EditionRefusee, recalculer
 from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
 from app.gabarits import GabaritRefuse
 from app import securite
@@ -203,6 +212,33 @@ async def api_devis(demande: DemandeDevis) -> Devis:
         "acompte=%s dont_estime=%s",
         devis.numero, len(devis.lignes), devis.taux_tva, devis.total_ht,
         devis.montant_tva, devis.total_ttc, devis.montant_acompte, devis.total_ht_estime,
+    )
+    return devis
+
+
+class DemandeCorrection(BaseModel):
+    devis: Devis  # le devis tel qu'il a été établi — numéro, date, entreprise, conditions
+    corrections: Corrections
+
+
+@app.post("/api/devis/corriger")
+async def api_devis_corriger(demande: DemandeCorrection) -> Devis:
+    """Le devis corrigé par l'artisan, recalculé de bout en bout.
+
+    Aucun appel au modèle, donc rien qui coûte : la route ne consomme pas le plafond
+    de devis du jour. Le débit, lui, s'applique comme partout sous `/api/`.
+    """
+    try:
+        devis = recalculer(
+            demande.devis, demande.corrections, max_lignes=get_config().max_lignes_devis
+        )
+    except EditionRefusee as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+    logger.info(
+        "  correction numero=%s lignes=%d tva=%s total_ht=%s total_ttc=%s dont_estime=%s",
+        devis.numero, len(devis.lignes), devis.taux_tva, devis.total_ht,
+        devis.total_ttc, devis.total_ht_estime,
     )
     return devis
 
@@ -535,6 +571,16 @@ async def api_entreprise(q: str = "") -> list[EntrepriseTrouvee]:
     justement à lui épargner.
     """
     return await rechercher(q)
+
+
+@app.get("/api/adresse")
+async def api_adresse(q: str = "") -> list[AdresseTrouvee]:
+    """Autocomplète l'adresse du client depuis la Base Adresse Nationale.
+
+    Même contrat que la recherche d'entreprise : jamais d'erreur, une liste vide quand
+    rien ne colle ou que la base ne répond pas, et l'artisan tape l'adresse en entier.
+    """
+    return await adresse_module.rechercher(q)
 
 
 @app.get("/")

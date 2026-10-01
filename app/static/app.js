@@ -84,6 +84,7 @@ function reinitialiser() {
   // « Recommencer » lancerait un devis au lieu d'en effacer un.
   arreterDictee(true);
   fermerRelu();
+  fermerEdition();
   devisCourant = null;
   pdfPret = null;
   vocalCourant = null;
@@ -829,6 +830,384 @@ function peindreTotaux(d) {
       `Dont ${euro(d.total_ht_estime)} de prix estimés. Relisez ces lignes avant l'envoi.`));
   }
 }
+
+/* ---- 3 bis. édition ---------------------------------------------------- */
+/* Hors périmètre d'origine, ajoutée sur décision explicite — voir CLAUDE.md
+   § Périmètre. C'est la réponse à « et si c'est faux ? », la première question
+   d'un artisan devant la démonstration.
+
+   Le navigateur ne calcule rien, ici moins qu'ailleurs : il relit ce que
+   l'artisan a saisi, l'envoie avec le devis d'origine, et c'est le serveur qui
+   renvoie le devis recalculé. Aucun total n'est affiché pendant la saisie — un
+   total calculé ici serait une seconde arithmétique à garder juste. */
+
+const UNITES = ['m²', 'ml', 'm³', 'u', 'forfait', 'h', 'j'];
+let numeroChampEdition = 0;
+
+/* « 1 200,50 » comme « 1200.5 » : ce que l'artisan tape, rendu lisible par le
+   serveur. Rendu en chaîne et pas en nombre : le Decimal se construit de l'autre
+   côté, sans passer par la virgule flottante. `null` quand c'est illisible. */
+function lireNombre(texte) {
+  const brut = String(texte).replace(/[\s  ]/g, '').replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(brut) ? brut : null;
+}
+
+function champEdition(classe, libelle, el) {
+  const champ = noeud('div', 'champ' + (classe ? ' ' + classe : ''));
+  el.id = 'ed-champ-' + (++numeroChampEdition);
+  const etiquette = noeud('label', null, libelle);
+  etiquette.htmlFor = el.id;
+  champ.append(etiquette, el);
+  return champ;
+}
+
+function editeurDeLigne(l) {
+  const rang = noeud('div', 'ligne-ed');
+
+  const saisie = (cle, valeur, classe) => {
+    const el = noeud('input', classe);
+    el.dataset.cle = cle;
+    el.autocomplete = 'off';
+    el.value = valeur;
+    return el;
+  };
+
+  const designation = saisie('designation', l.designation || '');
+  const quantite = saisie('quantite', l.quantite != null ? nombre(l.quantite) : '', 'num');
+  const prix = saisie('prix', l.prix_unitaire_ht != null ? nombre(l.prix_unitaire_ht) : '', 'num');
+  const detail = saisie('detail', l.detail || '');
+  quantite.inputMode = prix.inputMode = 'decimal';
+  detail.placeholder = 'Fourniture client, marque, finition…';
+
+  const unite = noeud('select');
+  unite.dataset.cle = 'unite';
+  UNITES.forEach((u) => {
+    const option = noeud('option', null, u);
+    option.value = u;
+    unite.append(option);
+  });
+  unite.value = UNITES.includes(l.unite) ? l.unite : 'u';
+
+  const retirer = noeud('button', 'ligne-ed__retirer');
+  retirer.type = 'button';
+  retirer.setAttribute('aria-label', 'Retirer cette ligne');
+  retirer.append(icone('i-croix'));
+  retirer.addEventListener('click', () => rang.remove());
+
+  rang.append(
+    champEdition('champ--designation', 'Désignation', designation),
+    champEdition(null, 'Qté', quantite),
+    champEdition(null, 'Unité', unite),
+    champEdition(null, 'P.U. HT (€)', prix),
+    retirer,
+    champEdition('champ--detail', 'Détail (facultatif)', detail),
+  );
+
+  // Un prix estimé le reste tant que l'artisan ne l'a pas pris à son compte. Taper
+  // un prix, c'est le prendre : la case se coche d'elle-même. La laisser vide,
+  // c'est garder la mention « estimé » sur le PDF — elle ne disparaît jamais seule.
+  if (l.a_valider) {
+    rang.classList.add('est-estimee');
+    const verifie = noeud('input');
+    verifie.type = 'checkbox';
+    verifie.dataset.cle = 'verifie';
+    const etiquette = noeud('label', 'ligne-ed__prix');
+    etiquette.append(verifie, document.createTextNode('Prix estimé · cocher une fois vérifié'));
+    rang.append(etiquette);
+    prix.addEventListener('input', () => { verifie.checked = true; });
+  }
+  return rang;
+}
+
+/* Relit les lignes de l'écran. Les erreurs de lecture — un « 12,5,3 » dans la
+   quantité — sont dites ici, au champ près ; les règles du devis, elles, sont
+   tenues par le serveur, qui renvoie le numéro de la ligne fautive. */
+function lireLignes() {
+  const erreurs = [];
+  const lignes = [...$('ed-lignes').children].map((rang, i) => {
+    const champ = (cle) => rang.querySelector(`[data-cle="${cle}"]`);
+    const quantite = lireNombre(champ('quantite').value);
+    const prix = lireNombre(champ('prix').value);
+    const designation = champ('designation').value.trim();
+
+    champ('designation').setAttribute('aria-invalid', String(!designation));
+    champ('quantite').setAttribute('aria-invalid', String(quantite === null));
+    champ('prix').setAttribute('aria-invalid', String(prix === null));
+    const motif = (el) => (el.value.trim() ? 'est illisible' : 'est vide');
+    if (!designation) erreurs.push(`Ligne ${i + 1} : la désignation est vide.`);
+    if (quantite === null) erreurs.push(`Ligne ${i + 1} : la quantité ${motif(champ('quantite'))}.`);
+    if (prix === null) erreurs.push(`Ligne ${i + 1} : le prix unitaire ${motif(champ('prix'))}.`);
+
+    const verifie = champ('verifie');
+    return {
+      designation,
+      detail: champ('detail').value.trim() || null,
+      quantite,
+      unite: champ('unite').value,
+      prix_unitaire_ht: prix,
+      a_valider: verifie ? !verifie.checked : false,
+    };
+  });
+  return { lignes, erreurs };
+}
+
+function basculerEdition(actif) {
+  $('rel-lecture').hidden = actif;
+  $('rel-edition').hidden = !actif;
+  $('ecran-relecture').classList.toggle('en-edition', actif);
+  // Sur un téléphone, l'édition vit dans la vue « Détail » : si l'artisan était
+  // sur l'aperçu, on l'y ramène plutôt que de lui ouvrir un formulaire invisible.
+  if (actif && vueRelecture !== 'detail') {
+    vueRelecture = 'detail';
+    appliquerVue();
+  }
+}
+
+function ouvrirEdition() {
+  const d = devisCourant;
+  if (!d) return;
+  $('ed-client-nom').value = d.client.nom || '';
+  $('ed-client-adresse').value = d.client.adresse || '';
+  $('ed-client-telephone').value = d.client.telephone || '';
+  $('ed-objet').value = d.type_travaux || '';
+  $('ed-duree').value = d.duree_estimee || '';
+  $('ed-tva').value = Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
+  $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
+  $('ed-notes').value = d.notes.join('\n');
+  $('ed-erreur').textContent = '';
+  $('ed-pro-recherche').value = '';
+  $('ed-pro-etat').textContent = '';
+  $('ed-pro-resultats').hidden = true;
+  fermerRepli('ed-pro', 'ed-pro-bascule');
+  viderSuggestionsAdresse();
+  basculerEdition(true);
+  $('rel-edition').scrollIntoView({ behavior: MOUVEMENT_REDUIT ? 'auto' : 'smooth', block: 'start' });
+}
+
+function fermerEdition() {
+  viderSuggestionsAdresse();
+  basculerEdition(false);
+}
+
+async function validerEdition(e) {
+  e.preventDefault();
+  const { lignes, erreurs } = lireLignes();
+  if (!lignes.length) erreurs.push('Un devis doit compter au moins une ligne.');
+  if (erreurs.length) {
+    $('ed-erreur').textContent = erreurs[0];
+    return;
+  }
+
+  const corrections = {
+    client: {
+      nom: $('ed-client-nom').value,
+      adresse: $('ed-client-adresse').value,
+      telephone: $('ed-client-telephone').value,
+    },
+    type_travaux: $('ed-objet').value,
+    duree_estimee: $('ed-duree').value,
+    taux_tva: $('ed-tva').value,
+    lignes,
+    notes: $('ed-notes').value.split('\n').map((n) => n.trim()).filter(Boolean),
+  };
+
+  const bouton = $('ed-valider');
+  bouton.disabled = true;
+  $('ed-erreur').textContent = '';
+  try {
+    const r = await poste('/api/devis/corriger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ devis: devisCourant, corrections }),
+    });
+    devisCourant = await r.json();
+  } catch (err) {
+    // Le formulaire reste tel quel : l'artisan corrige la ligne citée et revalide,
+    // sans rien perdre de ce qu'il a déjà saisi.
+    $('ed-erreur').textContent = err.message;
+    return;
+  } finally {
+    bouton.disabled = false;
+  }
+
+  fermerEdition();
+  peindreRelecture(devisCourant);
+  // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
+  preparerPdf();
+  peindreApercu();
+  window.scrollTo(0, 0);
+}
+
+/* ---- l'adresse du client ----------------------------------------------- */
+/* Autocomplétée depuis la Base Adresse Nationale, par le serveur. Il n'existe pas
+   d'annuaire des particuliers, et c'est très bien ainsi : on complète l'adresse
+   qu'on tape, on ne la devine pas à partir d'un nom. */
+
+let minuterieAdresse = null;
+let numeroAdresse = 0;
+let suggestionsAdresse = [];
+let indexAdresse = -1;
+
+function viderSuggestionsAdresse() {
+  clearTimeout(minuterieAdresse);
+  numeroAdresse++;   // une réponse encore en route ne rouvrira pas la liste
+  suggestionsAdresse = [];
+  indexAdresse = -1;
+  $('ed-adresse-resultats').replaceChildren();
+  $('ed-adresse-resultats').hidden = true;
+  $('ed-client-adresse').setAttribute('aria-expanded', 'false');
+  $('ed-client-adresse').removeAttribute('aria-activedescendant');
+}
+
+function choisirAdresse(adresse) {
+  $('ed-client-adresse').value = adresse.libelle;
+  viderSuggestionsAdresse();
+}
+
+async function chercherAdresse(requete) {
+  const q = requete.trim();
+  if (q.length < 5) { viderSuggestionsAdresse(); return; }
+
+  const moi = ++numeroAdresse;
+  let trouvees = [];
+  try {
+    const r = await fetch('/api/adresse?q=' + encodeURIComponent(q), { headers: enteteAcces() });
+    if (r.ok) trouvees = await r.json();
+  } catch (_) { /* hors réseau : l'artisan tape l'adresse en entier */ }
+  if (moi !== numeroAdresse) return;
+
+  suggestionsAdresse = trouvees;
+  indexAdresse = -1;
+  const boite = $('ed-adresse-resultats');
+  boite.replaceChildren(...trouvees.map((a, i) => {
+    const option = noeud('button', 'resultat');
+    option.type = 'button';
+    option.id = 'ed-adresse-' + i;
+    option.setAttribute('role', 'option');
+    option.append(noeud('div', 'resultat__nom', a.libelle));
+    if (a.contexte) option.append(noeud('div', 'resultat__meta', a.contexte));
+    option.addEventListener('click', () => choisirAdresse(a));
+    return option;
+  }));
+  boite.hidden = trouvees.length === 0;
+  $('ed-client-adresse').setAttribute('aria-expanded', String(trouvees.length > 0));
+}
+
+function surlignerAdresse(index) {
+  indexAdresse = index;
+  [...$('ed-adresse-resultats').children].forEach((option, i) =>
+    option.setAttribute('aria-selected', String(i === index)));
+  $('ed-client-adresse').setAttribute('aria-activedescendant', 'ed-adresse-' + index);
+}
+
+/* ---- le client professionnel ------------------------------------------- */
+/* Un syndic, une SCI, un commerce : ceux-là sont dans l'annuaire des entreprises,
+   le même que pour l'identité de l'artisan. Le nom et l'adresse s'y retrouvent ;
+   le téléphone reste à saisir, la base ne le connaît pas. */
+
+let minuteriePro = null;
+let numeroPro = 0;
+
+async function chercherClientPro(requete) {
+  const q = requete.trim();
+  const boite = $('ed-pro-resultats');
+  if (q.length < 3) {
+    boite.hidden = true;
+    $('ed-pro-etat').textContent = '';
+    return;
+  }
+
+  const moi = ++numeroPro;
+  $('ed-pro-etat').textContent = 'Recherche…';
+  let trouvees = [];
+  try {
+    const r = await fetch('/api/entreprise?q=' + encodeURIComponent(q), { headers: enteteAcces() });
+    if (r.ok) trouvees = await r.json();
+  } catch (_) { /* annuaire injoignable : la saisie à la main reste ouverte */ }
+  if (moi !== numeroPro) return;
+
+  boite.replaceChildren(...trouvees.map((e) => {
+    const bouton = noeud('button', 'resultat');
+    bouton.type = 'button';
+    bouton.append(
+      noeud('div', 'resultat__nom', e.nom),
+      noeud('div', 'resultat__meta', [e.adresse, e.code_postal_ville].filter(Boolean).join(', ')),
+    );
+    bouton.addEventListener('click', () => choisirClientPro(e));
+    return bouton;
+  }));
+  boite.hidden = trouvees.length === 0;
+  $('ed-pro-etat').textContent = trouvees.length
+    ? ''
+    : 'Aucune entreprise trouvée. Complétez le nom et l’adresse à la main.';
+}
+
+function choisirClientPro(e) {
+  $('ed-client-nom').value = e.nom;
+  $('ed-client-adresse').value = [e.adresse, e.code_postal_ville].filter(Boolean).join(', ');
+  $('ed-pro-recherche').value = '';
+  $('ed-pro-resultats').hidden = true;
+  $('ed-pro-etat').textContent = 'Rempli depuis l’annuaire. Ajoutez le téléphone si vous l’avez.';
+  $('ed-client-telephone').focus({ preventScroll: true });
+}
+
+/* ---- branchements de l'édition ----------------------------------------- */
+
+$('btn-modifier').addEventListener('click', ouvrirEdition);
+$('ed-annuler').addEventListener('click', fermerEdition);
+$('rel-edition').addEventListener('submit', validerEdition);
+
+$('ed-ajouter').addEventListener('click', () => {
+  const rang = editeurDeLigne({ quantite: 1, unite: 'u' });
+  $('ed-lignes').append(rang);
+  rang.querySelector('[data-cle="designation"]').focus();
+});
+
+$('ed-pro-bascule').addEventListener('click', () => {
+  const ouvert = !$('ed-pro').classList.contains('is-open');
+  ouvrirRepli('ed-pro', 'ed-pro-bascule', ouvert);
+  if (ouvert) $('ed-pro-recherche').focus({ preventScroll: true });
+});
+
+$('ed-pro-recherche').addEventListener('input', (e) => {
+  clearTimeout(minuteriePro);
+  const valeur = e.target.value;
+  minuteriePro = setTimeout(() => chercherClientPro(valeur), 320);
+});
+// Entrée lance la recherche, et surtout pas la validation du formulaire entier.
+$('ed-pro-recherche').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(minuteriePro);
+  chercherClientPro(e.target.value);
+});
+
+/* Le débit autorisé est partagé par toutes les routes : on attend une vraie pause
+   dans la frappe avant de consommer une requête. */
+$('ed-client-adresse').addEventListener('input', (e) => {
+  clearTimeout(minuterieAdresse);
+  const valeur = e.target.value;
+  minuterieAdresse = setTimeout(() => chercherAdresse(valeur), 350);
+});
+
+$('ed-client-adresse').addEventListener('keydown', (e) => {
+  const n = suggestionsAdresse.length;
+  if (!n || $('ed-adresse-resultats').hidden) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); surlignerAdresse((indexAdresse + 1) % n); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); surlignerAdresse((indexAdresse - 1 + n) % n); }
+  else if (e.key === 'Escape') { e.preventDefault(); viderSuggestionsAdresse(); }
+  else if (e.key === 'Enter' && indexAdresse >= 0) {
+    e.preventDefault();
+    choisirAdresse(suggestionsAdresse[indexAdresse]);
+  }
+});
+
+/* La liste se ferme quand on quitte le champ — mais après coup : un clic sur une
+   suggestion fait d'abord perdre le focus au champ, et fermer tout de suite
+   retirerait la suggestion sous le doigt avant que le clic n'arrive. */
+$('ed-client-adresse').addEventListener('blur', () => {
+  setTimeout(viderSuggestionsAdresse, 180);
+});
 
 /* ---- 4. devis vide ----------------------------------------------------- */
 

@@ -1518,6 +1518,104 @@ body.compte-inconnu .screen { visibility: hidden; }
 .porte .btn { width: 100%; margin-top: 8px; }
 
 
+/* ========================================================================== */
+/* Édition du devis                                                           */
+/*                                                                            */
+/* Hors périmètre d'origine, ajoutée sur décision explicite. Elle reprend les */
+/* champs et les listes de l'écran « Votre entreprise » : un artisan qui a    */
+/* renseigné son identité reconnaît le geste.                                 */
+/* ========================================================================== */
+
+/* Ouvert par `scrollIntoView` : sans marge, son haut passerait sous l'en-tête fixe. */
+.edition { scroll-margin-top: calc(var(--dv-entete-h) + var(--dv-s-6)); }
+.edition .section-head { margin: 34px 0 14px; }
+.edition > .section-head:first-child { margin-top: 0; }
+.edition .paste-toggle { margin-top: 10px; }
+
+/* Les suggestions d'adresse se posent sur ce qui suit au lieu de le pousser. */
+.champ--suggestions { position: relative; }
+.champ--suggestions .resultats {
+  position: absolute; z-index: 5; top: 100%; left: 0; right: 0;
+  margin-top: 4px; box-shadow: var(--dv-ombre-2);
+}
+.resultat[aria-selected="true"] { background: var(--dv-bg-alt); }
+
+.edition__lignes { display: flex; flex-direction: column; gap: 12px; }
+
+/* Une ligne : la désignation et les trois chiffres sur un rang, le détail et le
+   statut du prix dessous. Pas de total — il n'existe qu'après le recalcul. */
+.ligne-ed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 104px 112px 40px;
+  gap: 10px 12px;
+  align-items: end;
+  padding: 14px;
+  background: var(--dv-paper);
+  border: 1px solid var(--dv-rule);
+  border-radius: var(--dv-radius);
+}
+.ligne-ed.est-estimee { border-color: var(--dv-accent-edge); }
+.ligne-ed .champ--detail { grid-column: 1 / 5; }
+.ligne-ed .champ select {
+  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  background: var(--dv-paper); color: var(--dv-ink);
+  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
+}
+.ligne-ed input[aria-invalid="true"] { border-color: var(--dv-danger); background: var(--dv-danger-tint); }
+
+.ligne-ed__retirer {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 44px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--dv-radius);
+  background: none; color: var(--dv-faint); cursor: pointer;
+}
+.ligne-ed__retirer:hover { color: var(--dv-danger); border-color: var(--dv-danger-edge); }
+.ligne-ed__retirer svg { width: 18px; height: 18px; }
+
+/* Le statut du prix, sous la ligne. Coché, l'artisan prend le prix à son compte
+   et la mention « estimé » disparaît du PDF. */
+.ligne-ed__prix {
+  grid-column: 1 / -1;
+  display: inline-flex; align-items: center; gap: 8px;
+  justify-self: start;
+  padding: 4px 10px;
+  border-radius: var(--dv-radius-pill);
+  background: var(--dv-accent-tint);
+  border: 1px solid var(--dv-accent-edge);
+  font-family: var(--dv-mono); font-size: 11.5px; letter-spacing: .03em;
+  color: var(--dv-accent);
+  cursor: pointer;
+}
+.ligne-ed__prix input { width: 15px; height: 15px; margin: 0; accent-color: var(--dv-accent); }
+.ligne-ed__prix:has(input:checked) { background: none; border-color: var(--dv-rule); color: var(--dv-muted); }
+
+.edition__ajout { margin-top: 12px; }
+.edition textarea {
+  width: 100%; min-height: 110px; padding: 11px 13px; font: inherit; font-size: 15px;
+  line-height: 1.55; resize: vertical;
+  background: var(--dv-paper); color: var(--dv-ink);
+  border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
+}
+.edition textarea:focus { outline: none; border-color: var(--dv-accent); }
+
+.edition__erreur { min-height: 20px; margin-top: 22px; font-size: 14px; color: var(--dv-danger); }
+.edition__erreur:empty { min-height: 0; margin-top: 0; }
+.edition__actions { display: flex; gap: 12px; margin-top: 22px; }
+
+/* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. */
+.relecture.en-edition #btn-pdf,
+.relecture.en-edition #btn-modifier { display: none; }
+
+@media (max-width: 640px) {
+  .ligne-ed { grid-template-columns: 1fr 1fr 1fr; }
+  .ligne-ed .champ--designation { grid-column: 1 / 3; }
+  .ligne-ed .champ--detail { grid-column: 1 / -1; }
+  .ligne-ed__retirer { grid-column: 3; grid-row: 1; justify-self: end; }
+  .edition__actions { flex-direction: column; }
+  .edition__actions .btn { width: 100%; }
+}
+
+
 /* ======================================================================== */
 /* Mouvement réduit                                                         */
 /*                                                                          */
