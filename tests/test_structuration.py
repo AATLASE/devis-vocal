@@ -240,7 +240,7 @@ def test_le_mode_fixtures_refuse_une_transcription_inconnue(monkeypatch):
 
 
 @pytest.mark.live
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="ANTHROPIC_API_KEY absente")
+@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="OPENAI_API_KEY absente")
 def test_appel_reel(monkeypatch):
     """Coûte quelques centimes. Lancer avec : pytest -m live"""
     monkeypatch.setenv("USE_FIXTURES", "false")

@@ -3,8 +3,9 @@
 Interface unique : `transcribe(audio, filename) -> str`. Tout le reste du projet ignore
 quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien casser.
 
-Par défaut : Groq (whisper-large-v3-turbo). Endpoint compatible OpenAI, très rapide, et
-son tier gratuit suffit largement à une démo. Une alternative 100 % locale est décrite
+Par défaut : OpenAI (gpt-4o-transcribe), avec la même clé que le chiffrage. Groq
+(whisper-large-v3-turbo) reste disponible via TRANSCRIPTION_PROVIDER=groq : endpoint
+compatible OpenAI, très rapide, tier gratuit. Une alternative 100 % locale est décrite
 en bas de fichier.
 """
 
@@ -47,20 +48,32 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    if not config.groq_api_key:
+    # Les deux fournisseurs parlent le même protocole : seuls la clé, l'URL et le
+    # modèle changent.
+    if config.transcription_provider == "groq":
+        cle, variable = config.groq_api_key, "GROQ_API_KEY"
+        base_url, modele = config.groq_base_url, config.model_transcription
+    else:
+        cle, variable = config.openai_api_key, "OPENAI_API_KEY"
+        base_url, modele = None, config.model_transcription_openai  # api.openai.com
+
+    if not cle:
         raise TranscriptionError(
-            "GROQ_API_KEY absente. Renseigne-la dans le .env, ou colle directement une "
+            f"{variable} absente. Renseigne-la dans le .env, ou colle directement une "
             "transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=config.groq_api_key, base_url=config.groq_base_url)
+    client = OpenAI(api_key=cle, base_url=base_url)
 
     fichier = io.BytesIO(audio)
-    fichier.name = filename  # le SDK s'appuie sur l'extension pour typer l'envoi
+    # Le SDK s'appuie sur l'extension pour typer l'envoi, et « .opus » n'est pas dans
+    # la liste des fournisseurs. Un vocal WhatsApp est de l'Opus dans un conteneur
+    # Ogg : même fichier, autre nom.
+    fichier.name = filename[: -len(extension)] + ".ogg" if extension == ".opus" else filename
 
     try:
         reponse = client.audio.transcriptions.create(
-            model=config.model_transcription,
+            model=modele,
             file=fichier,
             language="fr",
             # Amorce le vocabulaire : sans ça, « BA13 » ressort en « bat treize ».
@@ -80,7 +93,7 @@ def transcribe(audio: bytes, filename: str) -> str:
         # n'a pas la même cause qu'un 500 sur un webm de 200 Ko bien formé.
         logger.warning(
             "Transcription refusée (%s, %.0f Ko, modèle %s) : %s",
-            filename, len(audio) / 1024, config.model_transcription, err,
+            filename, len(audio) / 1024, modele, err,
         )
         raise TranscriptionError(
             "Le service de transcription n'a pas répondu. Votre enregistrement est "

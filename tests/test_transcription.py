@@ -19,7 +19,9 @@ SAMPLES = Path(__file__).parent.parent / "samples"
 @pytest.fixture(autouse=True)
 def sans_cle(monkeypatch):
     """Aucune clé : on teste les garde-fous, jamais le fournisseur."""
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
     get_config.cache_clear()
     yield
     get_config.cache_clear()
@@ -54,17 +56,24 @@ def test_les_formats_du_telephone_et_de_whatsapp_passent_le_controle():
     sur la clé manquante et pas sur le format."""
     for nom in ["vocal.m4a", "vocal.ogg", "vocal.opus", "vocal.mp3", "vocal.wav",
                 "dictee.webm", "dictee.mp4"]:
-        with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+        with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
             transcribe(b"x" * 100, nom)
 
 
 def test_la_majuscule_dans_l_extension_ne_gene_pas():
-    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
         transcribe(b"x" * 100, "VOCAL.M4A")
+
+
+def test_la_cle_reclamee_est_celle_du_fournisseur_choisi(monkeypatch):
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
+    get_config.cache_clear()
+    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+        transcribe(b"x" * 100, "vocal.m4a")
 
 
 @pytest.mark.skipif(not (SAMPLES / "vocal_synthese.wav").exists(), reason="échantillon absent")
 def test_l_echantillon_de_synthese_passe_les_controles():
     audio = (SAMPLES / "vocal_synthese.wav").read_bytes()
-    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
         transcribe(audio, "vocal_synthese.wav")

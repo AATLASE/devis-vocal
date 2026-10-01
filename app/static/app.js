@@ -49,7 +49,7 @@ let transcriptionCourante = null;
 let dureeVocal = null;
 let chrono = null;
 let revelation = null;
-let fournisseur = 'anthropic';   // renseigné par /health
+let fournisseur = 'openai';   // renseigné par /health
 
 /* ---- navigation -------------------------------------------------------- */
 
@@ -131,7 +131,7 @@ const ETAPES = [
   {
     titre: 'Analyse et chiffrage',
     detail: 'Identification des prestations, des quantités et des prix',
-    occupe: ATTENTE.anthropic,   // ajusté au retour de /health
+    occupe: ATTENTE.openai,   // ajusté au retour de /health
   },
   { titre: 'Génération du devis', detail: 'Mise en forme du document et des mentions légales' },
 ];
@@ -941,12 +941,13 @@ const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI' };
 fetch('/health')
   .then((r) => r.json())
   .then((info) => {
-    fournisseur = info.provider || 'anthropic';
+    fournisseur = info.provider || 'openai';
     const rejoue = info.mode === 'fixtures';
 
-    ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.anthropic);
+    ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.openai);
 
-    const secours = !rejoue && fournisseur !== 'anthropic';
+    // Seul Groq est un moteur de secours : c'est sur lui que l'écart a été mesuré.
+    const secours = !rejoue && fournisseur === 'groq';
     if (!rejoue && !secours) return;
 
     $('bandeau-fixtures').hidden = !rejoue;
