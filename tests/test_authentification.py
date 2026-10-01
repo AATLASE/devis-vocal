@@ -132,6 +132,25 @@ async def test_le_schema_bearer_est_insensible_a_la_casse(firebase_configure, mo
     assert await utilisateur_requis(authorization="bearer bon-jeton") == ARTISAN
 
 
+def test_un_poste_qui_retarde_ne_refuse_pas_un_jeton_neuf(monkeypatch):
+    """Un jeton tout juste émis par Google est « dans le futur » pour un poste dont
+    l'horloge retarde de quelques secondes. Sans tolérance, la première requête après
+    la connexion part en 401 — celle qui lit la fiche — et le compte a l'air cassé."""
+    from firebase_admin import auth as firebase_auth
+
+    recu = {}
+
+    def verifier(_jeton, app=None, **options):
+        recu.update(options)
+        return {"uid": "uid-artisan", "email": "jean@example.com", "name": "Jean"}
+
+    monkeypatch.setattr(authentification, "application", lambda: object())
+    monkeypatch.setattr(firebase_auth, "verify_id_token", verifier)
+
+    assert authentification.verifier_jeton("jeton-neuf") == ARTISAN
+    assert recu["clock_skew_seconds"] >= 10
+
+
 # ---------------------------------------------------------------------------
 # Le pipeline du devis ne doit jamais dépendre du compte
 # ---------------------------------------------------------------------------
