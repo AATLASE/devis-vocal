@@ -14,7 +14,7 @@ openai>=1.55
 anthropic>=1.0
 
 # Rendu PDF
-playwright>=1.49
+playwright==1.62.0
 jinja2>=3.1
 
 # Tests
