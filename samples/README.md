@@ -7,7 +7,7 @@ sous le nom `vocal_sdb.m4a`.
 ## En attendant : `vocal_synthese.wav`
 
 Ce fichier (56 s, voix de synthèse Windows) est là pour **vérifier que le chemin audio
-fonctionne** — dépôt du fichier, appel Groq, transcription. Rien d'autre.
+fonctionne** — dépôt du fichier, appel au fournisseur, transcription. Rien d'autre.
 
 Ce n'est pas un vocal de démonstration et il ne faut jamais le montrer à un artisan : la
 voix est parfaitement articulée, sans bruit et sans vraie hésitation. Il ne prouve donc

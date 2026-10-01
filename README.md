@@ -48,17 +48,14 @@ C'est le mode de travail pour itérer sur le PDF et le front.
 
 ## Passer en réel
 
-Deux clés à mettre dans le `.env`, puis `USE_FIXTURES=false` :
+Une seule clé à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 
 | Variable | Où l'obtenir | Coût |
 |---|---|---|
-| `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte bancaire | gratuit |
-| `ANTHROPIC_API_KEY` | <https://console.anthropic.com> — pas de tier gratuit | 5 € de crédit ≈ plusieurs centaines de devis |
+| `OPENAI_API_KEY` | <https://platform.openai.com/api-keys> — pas de tier gratuit | facturé à l'usage |
 
-Pour tout faire tourner sur une seule clé OpenAI — transcription par `whisper-1`,
-chiffrage par `gpt-5` — renseigner `OPENAI_API_KEY` et ajouter
-`STRUCTURATION_PROVIDER=openai` et `TRANSCRIPTION_PROVIDER=openai`. Anthropic reste le
-moteur de référence pour le chiffrage : la page le rappelle par un bandeau.
+Elle sert à la transcription et au chiffrage. Groq et Anthropic restent utilisables via
+`TRANSCRIPTION_PROVIDER` et `STRUCTURATION_PROVIDER` — voir `.env.example`.
 
 Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
 nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
@@ -75,7 +72,7 @@ pas porter un faux SIRET crédible.
 
 ```bash
 uv run pytest              # ne touche à aucune API, ne coûte rien
-uv run pytest -m live      # appelle réellement Claude (quelques centimes)
+uv run pytest -m live      # appelle réellement l'API (quelques centimes)
 ```
 
 ## Comment ça marche
@@ -105,8 +102,8 @@ Le découpage du code suit ce pipeline :
 | Fichier | Rôle |
 |---|---|
 | `app/models.py` | **Le contrat.** `DevisExtraction`, `Devis`, et `to_devis()` entre les deux |
-| `app/transcription.py` | `transcribe(audio, filename) -> str` — Groq derrière l'interface |
-| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — Claude en sortie JSON contrainte |
+| `app/transcription.py` | `transcribe(audio, filename) -> str` — OpenAI derrière l'interface |
+| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — OpenAI en sortie JSON contrainte |
 | `app/prompts/structuration.md` | Le prompt de chiffrage, hors du code. C'est le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` — Chromium headless via Playwright, et la pagination du document |
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |

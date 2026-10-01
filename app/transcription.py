@@ -3,10 +3,10 @@
 Interface unique : `transcribe(audio, filename) -> str`. Tout le reste du projet ignore
 quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien casser.
 
-Par défaut : Groq (whisper-large-v3-turbo). Endpoint compatible OpenAI, très rapide, et
-son tier gratuit suffit largement à une démo. `TRANSCRIPTION_PROVIDER=openai` envoie le
-même appel à OpenAI (whisper-1) — pour qui veut tout faire tourner sur une seule clé.
-Une alternative 100 % locale est décrite en bas de fichier.
+Par défaut : OpenAI (gpt-4o-transcribe), avec la même clé que le chiffrage. Groq
+(whisper-large-v3-turbo) reste disponible via TRANSCRIPTION_PROVIDER=groq : endpoint
+compatible OpenAI, très rapide, tier gratuit. Une alternative 100 % locale est décrite
+en bas de fichier.
 """
 
 from __future__ import annotations
@@ -49,14 +49,14 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    # Groq expose le même endpoint qu'OpenAI : un seul chemin de code, et seuls la clé,
-    # l'URL et le modèle changent d'un fournisseur à l'autre.
+    # Les deux fournisseurs parlent le même protocole : seuls la clé, l'URL et le
+    # modèle changent.
     fournisseur = config.transcription_provider
     modele = config.modele_transcription_actif
-    if fournisseur == "openai":
-        variable, cle, base_url = "OPENAI_API_KEY", config.openai_api_key, None  # api.openai.com
+    if fournisseur == "groq":
+        cle, variable, base_url = config.groq_api_key, "GROQ_API_KEY", config.groq_base_url
     else:
-        variable, cle, base_url = "GROQ_API_KEY", config.groq_api_key, config.groq_base_url
+        cle, variable, base_url = config.openai_api_key, "OPENAI_API_KEY", None  # api.openai.com
 
     if not cle:
         raise TranscriptionError(
@@ -67,7 +67,10 @@ def transcribe(audio: bytes, filename: str) -> str:
     client = OpenAI(api_key=cle, base_url=base_url)
 
     fichier = io.BytesIO(audio)
-    fichier.name = filename  # le SDK s'appuie sur l'extension pour typer l'envoi
+    # Le SDK s'appuie sur l'extension pour typer l'envoi, et « .opus » n'est pas dans
+    # la liste des fournisseurs. Un vocal WhatsApp est de l'Opus dans un conteneur
+    # Ogg : même fichier, autre nom.
+    fichier.name = filename[: -len(extension)] + ".ogg" if extension == ".opus" else filename
 
     try:
         reponse = client.audio.transcriptions.create(

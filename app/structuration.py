@@ -1,4 +1,4 @@
-"""Transcription -> devis structuré, via Claude en sortie JSON contrainte.
+"""Transcription -> devis structuré, via un LLM en sortie JSON contrainte.
 
 Interface unique : `structure(transcript) -> DevisExtraction`.
 

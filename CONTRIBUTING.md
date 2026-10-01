@@ -161,7 +161,7 @@ c'est exactement le moteur qui produit le PDF final. `apercu.html` est ignoré p
 Chaque fixture est une paire `nom.txt` (la transcription) + `nom.json` (l'extraction).
 Les tests et le mode hors-ligne s'appuient sur les deux.
 
-Avec une clé Anthropic — un appel payé une fois, rejoué gratuitement ensuite :
+Avec une clé OpenAI — un appel payé une fois, rejoué gratuitement ensuite :
 
 ```bash
 uv run python scripts/enregistrer_fixture.py mon_cas chemin/vers/transcription.txt
@@ -174,23 +174,21 @@ est valide et que les totaux tombent juste.
 
 Le prompt vit dans `app/prompts/structuration.md`, jamais en dur dans le code.
 
-Pour les essais, baisse le modèle dans ton `.env` — un appel coûte environ 2,8 centimes en
-Opus, 0,6 en Haiku :
+Pour les essais, baisse le modèle dans ton `.env` :
 
 ```
-MODEL_STRUCTURATION=claude-haiku-4-5
+MODEL_STRUCTURATION_OPENAI=gpt-5-mini
 ```
 
-Repasse sur `claude-opus-5` pour juger la qualité réelle : c'est lui qui tourne en démo.
+Repasse sur `gpt-5` pour juger la qualité réelle : c'est lui qui tourne en démo.
 
 ## Passer en réel
 
-Deux clés dans le `.env`, puis `USE_FIXTURES=false` :
+Une seule clé dans le `.env`, puis `USE_FIXTURES=false` :
 
 | Variable | Où | Coût |
 |---|---|---|
-| `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte | gratuit |
-| `ANTHROPIC_API_KEY` | <https://console.anthropic.com> | ~2,8 centimes par devis |
+| `OPENAI_API_KEY` | <https://platform.openai.com/api-keys> | facturé à l'usage |
 
-Un abonnement Claude Pro ou Max ne donne **pas** accès à l'API : ce sont deux produits
-facturés séparément.
+Un abonnement ChatGPT ne donne **pas** accès à l'API : ce sont deux produits facturés
+séparément.

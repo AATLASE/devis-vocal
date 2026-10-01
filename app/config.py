@@ -54,22 +54,18 @@ class Config(BaseSettings):
     openai_api_key: str = ""
 
     # --- Modèles ---
-    # `anthropic` est le fournisseur de référence : c'est lui qui doit tourner en démo.
-    # `groq` est une option gratuite pour dégrossir sans consommer de crédit — le
-    # chiffrage y est sensiblement moins juste (voir CONTRIBUTING.md).
-    structuration_provider: Literal["anthropic", "groq", "openai"] = "anthropic"
+    # `openai` est le fournisseur par défaut, pour le chiffrage comme pour la
+    # transcription : une seule clé, OPENAI_API_KEY, fait tourner tout le pipeline.
+    # `anthropic` et `groq` restent sélectionnables. Groq est gratuit pour dégrossir,
+    # mais son chiffrage est sensiblement moins juste (voir CONTRIBUTING.md).
+    structuration_provider: Literal["anthropic", "groq", "openai"] = "openai"
     model_structuration: str = "claude-opus-5"
     model_structuration_groq: str = "openai/gpt-oss-120b"
     model_structuration_openai: str = "gpt-5"
-    model_transcription: str = "whisper-large-v3-turbo"
+    transcription_provider: Literal["openai", "groq"] = "openai"
+    model_transcription_openai: str = "gpt-4o-transcribe"
+    model_transcription: str = "whisper-large-v3-turbo"  # chez Groq
     groq_base_url: str = "https://api.groq.com/openai/v1"
-
-    # Qui transcrit : `groq` (gratuit, la référence) ou `openai`. Avec
-    # STRUCTURATION_PROVIDER=openai, c'est ce qui permet de tout faire tourner sur la
-    # seule OPENAI_API_KEY. Même SDK, même appel : seuls l'URL, la clé et le modèle
-    # changent.
-    transcription_provider: Literal["groq", "openai"] = "groq"
-    model_transcription_openai: str = "whisper-1"
 
     @property
     def modele_transcription_actif(self) -> str:

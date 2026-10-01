@@ -19,7 +19,9 @@ SAMPLES = Path(__file__).parent.parent / "samples"
 @pytest.fixture(autouse=True)
 def sans_cle(monkeypatch):
     """Aucune clé : on teste les garde-fous, jamais le fournisseur."""
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("GROQ_API_KEY", "")
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
     get_config.cache_clear()
     yield
     get_config.cache_clear()
@@ -54,19 +56,26 @@ def test_les_formats_du_telephone_et_de_whatsapp_passent_le_controle():
     sur la clé manquante et pas sur le format."""
     for nom in ["vocal.m4a", "vocal.ogg", "vocal.opus", "vocal.mp3", "vocal.wav",
                 "dictee.webm", "dictee.mp4"]:
-        with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+        with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
             transcribe(b"x" * 100, nom)
 
 
 def test_la_majuscule_dans_l_extension_ne_gene_pas():
-    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
         transcribe(b"x" * 100, "VOCAL.M4A")
+
+
+def test_la_cle_reclamee_est_celle_du_fournisseur_choisi(monkeypatch):
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
+    get_config.cache_clear()
+    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+        transcribe(b"x" * 100, "vocal.m4a")
 
 
 @pytest.mark.skipif(not (SAMPLES / "vocal_synthese.wav").exists(), reason="échantillon absent")
 def test_l_echantillon_de_synthese_passe_les_controles():
     audio = (SAMPLES / "vocal_synthese.wav").read_bytes()
-    with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
+    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
         transcribe(audio, "vocal_synthese.wav")
 
 
@@ -104,8 +113,23 @@ def faux_client(monkeypatch):
     return _FauxClient
 
 
-def test_par_defaut_la_transcription_part_chez_groq(monkeypatch, faux_client):
+def test_par_defaut_une_seule_cle_suffit(monkeypatch, faux_client):
+    """Le cas « une seule clé » : sans rien régler, la transcription part chez OpenAI,
+    et rien ne part chez Groq — ni la clé ni l'audio."""
+    monkeypatch.delenv("TRANSCRIPTION_PROVIDER")
+    monkeypatch.setenv("OPENAI_API_KEY", "cle-openai")
+    get_config.cache_clear()
+
+    assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
+    assert faux_client.construits == [{"api_key": "cle-openai", "base_url": None}]
+    assert faux_client.appels[0]["model"] == "gpt-4o-transcribe"
+    assert faux_client.appels[0]["language"] == "fr"
+
+
+def test_avec_groq_la_transcription_part_chez_groq(monkeypatch, faux_client):
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "groq")
     monkeypatch.setenv("GROQ_API_KEY", "cle-groq")
+    monkeypatch.setenv("OPENAI_API_KEY", "cle-openai")   # présente, et pourtant inutile
     get_config.cache_clear()
 
     assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
@@ -115,24 +139,11 @@ def test_par_defaut_la_transcription_part_chez_groq(monkeypatch, faux_client):
     assert faux_client.appels[0]["model"] == "whisper-large-v3-turbo"
 
 
-def test_avec_openai_la_cle_groq_n_est_plus_necessaire(monkeypatch, faux_client):
-    """Le cas « une seule clé » : rien ne doit partir chez Groq, ni la clé ni l'audio."""
-    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
+def test_un_vocal_whatsapp_est_envoye_sous_un_nom_que_le_fournisseur_accepte(monkeypatch, faux_client):
+    """« .opus » n'est pas dans la liste des fournisseurs ; « .ogg » si, et c'est le
+    même fichier."""
     monkeypatch.setenv("OPENAI_API_KEY", "cle-openai")
     get_config.cache_clear()
 
-    assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
-    assert faux_client.construits == [{"api_key": "cle-openai", "base_url": None}]
-    assert faux_client.appels[0]["model"] == "whisper-1"
-    assert faux_client.appels[0]["language"] == "fr"
-
-
-def test_avec_openai_la_cle_reclamee_est_la_bonne(monkeypatch):
-    """Réclamer GROQ_API_KEY à quelqu'un qui a choisi OpenAI l'enverrait créer un
-    compte dont il n'a pas besoin."""
-    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
-    monkeypatch.setenv("GROQ_API_KEY", "cle-groq")   # présente, et pourtant inutile
-    get_config.cache_clear()
-
-    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
-        transcribe(b"x" * 100, "vocal.m4a")
+    transcribe(b"x" * 100, "PTT-20260901-WA0003.opus")
+    assert faux_client.appels[0]["file"].name == "PTT-20260901-WA0003.ogg"
