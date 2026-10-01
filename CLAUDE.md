@@ -55,8 +55,8 @@ Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être
 ## Stack
 
 - **Backend** : Python 3.12, FastAPI
-- **Transcription** : Groq (whisper-large-v3-turbo), derrière `transcribe(audio, filename) -> str`
-- **Structuration** : API Anthropic, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
+- **Transcription** : API OpenAI (gpt-4o-transcribe), derrière `transcribe(audio, filename) -> str`
+- **Structuration** : API OpenAI, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
 - **PDF** : Playwright (Chromium headless) rendant `templates/devis.html`
 - **Front** : une page HTML servie par FastAPI, JS vanilla, pas de framework
 - **Comptes** : Firebase Auth, jetons vérifiés par `firebase-admin`, derrière les deux

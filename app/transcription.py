@@ -3,13 +3,14 @@
 Interface unique : `transcribe(audio, filename) -> str`. Tout le reste du projet ignore
 quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien casser.
 
-Par défaut : Groq (whisper-large-v3-turbo). Endpoint compatible OpenAI, très rapide, et
-son tier gratuit suffit largement à une démo.
+Par défaut : OpenAI (gpt-4o-transcribe), avec la même clé que le chiffrage. Groq
+(whisper-large-v3-turbo) reste disponible via TRANSCRIPTION_PROVIDER=groq : endpoint
+compatible OpenAI, très rapide, tier gratuit.
 
 L'appel ne connaît que trois choses — une URL, une clé, un modèle — donc n'importe quel
-fournisseur parlant le format OpenAI le remplace sans toucher au code : OpenAI lui-même,
-Fireworks, ou un Whisper servi en local. Voir les variables TRANSCRIPTION_* du .env.
-Une alternative 100 % locale est décrite en bas de fichier.
+fournisseur parlant le format OpenAI le remplace sans toucher au code : Fireworks, ou un
+Whisper servi en local. Voir TRANSCRIPTION_PROVIDER=autre et les variables
+TRANSCRIPTION_* du .env. Une alternative 100 % locale est décrite en bas de fichier.
 """
 
 from __future__ import annotations
@@ -52,22 +53,26 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    if not config.transcription_key:
+    # Tous les fournisseurs parlent le même protocole : seuls la clé, l'URL et le
+    # modèle changent, et la configuration les a déjà choisis.
+    cle, modele = config.transcription_key, config.modele_transcription
+    if not cle:
         raise TranscriptionError(
-            "Aucune clé de transcription. Renseigne GROQ_API_KEY dans le .env — c'est "
-            "gratuit et sans carte bancaire — ou TRANSCRIPTION_API_KEY et "
-            "TRANSCRIPTION_BASE_URL pour un autre fournisseur. Sinon, colle directement "
-            "une transcription dans le champ texte de la page."
+            f"{config.transcription_variable} absente. Renseigne-la dans le .env, ou "
+            "colle directement une transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=config.transcription_key, base_url=config.transcription_url)
+    client = OpenAI(api_key=cle, base_url=config.transcription_url)
 
     fichier = io.BytesIO(audio)
-    fichier.name = filename  # le SDK s'appuie sur l'extension pour typer l'envoi
+    # Le SDK s'appuie sur l'extension pour typer l'envoi, et « .opus » n'est pas dans
+    # la liste des fournisseurs. Un vocal WhatsApp est de l'Opus dans un conteneur
+    # Ogg : même fichier, autre nom.
+    fichier.name = filename[: -len(extension)] + ".ogg" if extension == ".opus" else filename
 
     try:
         reponse = client.audio.transcriptions.create(
-            model=config.model_transcription,
+            model=modele,
             file=fichier,
             language="fr",
             # Amorce le vocabulaire : sans ça, « BA13 » ressort en « bat treize ».
@@ -87,16 +92,16 @@ def transcribe(audio: bytes, filename: str) -> str:
         # n'a pas la même cause qu'un 500 sur un webm de 200 Ko bien formé.
         logger.warning(
             "Transcription refusée (%s, %.0f Ko, modèle %s) : %s",
-            filename, len(audio) / 1024, config.model_transcription, err,
+            filename, len(audio) / 1024, modele, err,
         )
         raise TranscriptionError(
             "Le service de transcription n'a pas répondu. Votre enregistrement est "
             "conservé — réessayez dans un instant."
         ) from err
 
-    # Groq facture la transcription à la durée d'audio, pas au token : la ligne dit
+    # La transcription se facture à la durée d'audio, pas au token : la ligne dit
     # quel modèle a répondu, le coût ne s'estime pas ici.
-    suivi.appel("groq", config.model_transcription)
+    suivi.appel(config.transcription_provider, modele)
 
     texte = (reponse.text or "").strip()
     if not texte:

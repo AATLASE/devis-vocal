@@ -112,7 +112,7 @@ def noter_vocal(audio: bytes, filename: str, transcription: str,
             "horodatage": instant.isoformat(timespec="seconds"),
             "fichier": filename,
             "octets": len(audio),
-            "modele_transcription": config.model_transcription,
+            "modele_transcription": config.modele_transcription,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     _sans_casser(ecrire)
@@ -140,11 +140,7 @@ def noter_extraction(transcription: str, extraction: DevisExtraction,
         donnees = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else {}
         donnees["chiffre_le"] = instant.isoformat(timespec="seconds")
         donnees["fournisseur"] = config.structuration_provider
-        donnees["modele_structuration"] = {
-            "anthropic": config.model_structuration,
-            "groq": config.model_structuration_groq,
-            "openai": config.model_structuration_openai,
-        }.get(config.structuration_provider, "?")
+        donnees["modele_structuration"] = config.modele_structuration
         donnees["lignes"] = len(extraction.lignes)
         donnees["lignes_estimees"] = sum(1 for l in extraction.lignes if l.a_valider)
         meta.write_text(json.dumps(donnees, ensure_ascii=False, indent=2), encoding="utf-8")

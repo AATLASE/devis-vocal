@@ -48,16 +48,18 @@ C'est le mode de travail pour itérer sur le PDF et le front.
 
 ## Passer en réel
 
-Deux clés à mettre dans le `.env`, puis `USE_FIXTURES=false` :
+Une seule clé à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 
 | Variable | Où l'obtenir | Coût |
 |---|---|---|
-| `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte bancaire | gratuit |
-| `ANTHROPIC_API_KEY` | <https://console.anthropic.com> — pas de tier gratuit | 5 € de crédit ≈ plusieurs centaines de devis |
+| `OPENAI_API_KEY` | <https://platform.openai.com/api-keys> — pas de tier gratuit | facturé à l'usage |
+
+Elle sert à la transcription et au chiffrage. Groq et Anthropic restent utilisables via
+`TRANSCRIPTION_PROVIDER` et `STRUCTURATION_PROVIDER` — voir `.env.example`.
 
 ### Avec la clé que tu as déjà
 
-Anthropic est la référence, mais rien n'y oblige. Quasiment toutes les API de modèles
+OpenAI est le défaut, mais rien n'y oblige. Quasiment toutes les API de modèles
 parlent le format OpenAI, donc trois variables suffisent à en brancher une que le projet
 ne connaît pas — Mistral, DeepSeek, OpenRouter, xAI, ou un modèle local sous Ollama :
 
@@ -69,15 +71,15 @@ MODEL_STRUCTURATION_AUTRE=mistral-large-latest
 ```
 
 Pour les fournisseurs que le projet connaît déjà, **la clé suffit** : `STRUCTURATION_PROVIDER`
-se déduit de ce qui est renseigné. Poser `OPENAI_API_KEY` et rien d'autre chiffre chez
-OpenAI. On ne le précise que pour trancher quand plusieurs clés cohabitent — typiquement
-une `GROQ_API_KEY` présente pour la transcription alors qu'Anthropic doit chiffrer, ce
-que la déduction fait déjà dans le bon sens. Le moteur retenu est annoncé sur `/health`
-et affiché dans le bandeau : déduit ne veut pas dire invisible.
+se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` et rien d'autre chiffre chez
+Anthropic. On ne le précise que pour trancher quand plusieurs clés cohabitent — une clé
+OpenAI présente gagne toujours, puisque c'est le défaut. Le moteur retenu est annoncé sur
+`/health` et affiché dans le bandeau : déduit ne veut pas dire invisible.
 
-Même chose pour l'audio avec `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY` —
-laissées vides, elles retombent sur Groq, dont le Whisper est gratuit et difficile à
-battre. Le `.env.example` liste les URL des fournisseurs courants.
+Même chose pour l'audio avec `TRANSCRIPTION_PROVIDER` : OpenAI si sa clé est là, sinon
+Groq, dont le Whisper est gratuit. `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY`
+branchent n'importe quel autre fournisseur au format OpenAI. Le `.env.example` liste les
+URL des fournisseurs courants.
 
 Un fournisseur qui ne sait pas imposer un schéma JSON bascule tout seul sur un mode moins
 contraint, avec un avertissement dans les logs. La sortie reste validée par Pydantic,
@@ -85,7 +87,7 @@ donc un devis faux échoue au lieu de passer — mais il échouera plus souvent.
 faire confiance à un nouveau fournisseur devant un artisan, mesure-le :
 
 ```bash
-uv run python scripts/comparer.py anthropic autre
+uv run python scripts/comparer.py openai autre
 ```
 
 ## L'identité de l'artisan
@@ -122,7 +124,7 @@ pas porter un faux SIRET crédible.
 
 ```bash
 uv run pytest              # ne touche à aucune API, ne coûte rien
-uv run pytest -m live      # appelle réellement Claude (quelques centimes)
+uv run pytest -m live      # appelle réellement l'API (quelques centimes)
 ```
 
 ## Comment ça marche
@@ -152,8 +154,8 @@ Le découpage du code suit ce pipeline :
 | Fichier | Rôle |
 |---|---|
 | `app/models.py` | **Le contrat.** `DevisExtraction`, `Devis`, et `to_devis()` entre les deux |
-| `app/transcription.py` | `transcribe(audio, filename) -> str` — Groq derrière l'interface |
-| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — Claude en sortie JSON contrainte |
+| `app/transcription.py` | `transcribe(audio, filename) -> str` — OpenAI derrière l'interface |
+| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — OpenAI en sortie JSON contrainte |
 | `app/prompts/structuration.md` | Le prompt de chiffrage, hors du code. C'est le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` — Chromium headless via Playwright, et la pagination du document |
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |

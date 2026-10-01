@@ -96,12 +96,8 @@ def configurer() -> None:
         "  configuration  mode=%s fournisseur=%s structuration=%s transcription=%s journal=%s",
         "fixtures" if config.use_fixtures else "reel",
         config.structuration_provider,
-        {
-            "anthropic": config.model_structuration,
-            "groq": config.model_structuration_groq,
-            "openai": config.model_structuration_openai,
-        }.get(config.structuration_provider, "?"),
-        config.model_transcription,
+        config.modele_structuration,
+        config.modele_transcription,
         "arme" if config.journal else "off",
     )
     logger.info("  suivi          %s", config.log_dir / "devis-vocal.log")

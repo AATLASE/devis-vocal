@@ -47,7 +47,10 @@ class EntrepriseSettings(Entreprise, BaseSettings):
 
 
 class Config(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # `env_ignore_empty` : une ligne `STRUCTURATION_PROVIDER=` laissée vide, comme dans
+    # .env.example, vaut « non renseigné » et pas la chaîne vide — sans quoi pydantic la
+    # refuse et l'application ne démarre pas sur un .env copié tel quel.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     # --- Clés API ---
     anthropic_api_key: str = ""
@@ -55,13 +58,14 @@ class Config(BaseSettings):
     openai_api_key: str = ""
 
     # --- Modèles ---
-    # `anthropic` est le fournisseur de référence : c'est lui qui doit tourner en démo.
-    # `groq` est une option gratuite pour dégrossir sans consommer de crédit — le
-    # chiffrage y est sensiblement moins juste (voir CONTRIBUTING.md).
+    # `openai` est le fournisseur par défaut, pour le chiffrage comme pour la
+    # transcription : une seule clé, OPENAI_API_KEY, fait tourner tout le pipeline.
+    # `anthropic` et `groq` restent sélectionnables. Groq est gratuit pour dégrossir,
+    # mais son chiffrage est sensiblement moins juste (voir CONTRIBUTING.md).
     # `autre` accepte n'importe quelle API au format OpenAI — Mistral, DeepSeek,
     # OpenRouter, Together, xAI, ou un modèle local servi par Ollama ou vLLM. Trois
     # variables suffisent : l'URL, la clé, le modèle.
-    # Laisse vide et il se déduit de la clé qu'on trouve — voir `_deduire_fournisseur`.
+    # Laisse vide et il se déduit de la clé qu'on trouve — voir `_deduire_fournisseurs`.
     structuration_provider: Literal["anthropic", "groq", "openai", "autre"] | None = None
     model_structuration: str = "claude-opus-5"
     model_structuration_groq: str = "openai/gpt-oss-120b"
@@ -74,21 +78,52 @@ class Config(BaseSettings):
     model_structuration_autre: str = ""
 
     # --- Transcription ---
-    # Groq par défaut : son Whisper est gratuit, rapide, et sans carte bancaire. Les
-    # variables TRANSCRIPTION_* ouvrent le même appel à n'importe quel fournisseur au
-    # format OpenAI. Laissées vides, elles retombent sur Groq : rien ne change pour
-    # les .env existants.
-    model_transcription: str = "whisper-large-v3-turbo"
+    # Même règle que le chiffrage : OpenAI par défaut, déduit de la clé si laissé vide.
+    # `autre` ouvre le même appel à n'importe quel fournisseur au format OpenAI —
+    # Fireworks, un Whisper local — avec TRANSCRIPTION_BASE_URL et TRANSCRIPTION_API_KEY.
+    transcription_provider: Literal["openai", "groq", "autre"] | None = None
+    model_transcription_openai: str = "gpt-4o-transcribe"
+    model_transcription: str = "whisper-large-v3-turbo"  # chez Groq, et pour `autre`
     transcription_base_url: str = ""
     transcription_api_key: str = ""
 
     @property
-    def transcription_url(self) -> str:
-        return self.transcription_base_url or self.groq_base_url
+    def transcription_url(self) -> str | None:
+        """None veut dire api.openai.com, l'URL par défaut du SDK."""
+        return {
+            "groq": self.groq_base_url,
+            "autre": self.transcription_base_url,
+        }.get(self.transcription_provider)
 
     @property
     def transcription_key(self) -> str:
-        return self.transcription_api_key or self.groq_api_key
+        return {
+            "groq": self.groq_api_key,
+            "autre": self.transcription_api_key,
+        }.get(self.transcription_provider, self.openai_api_key)
+
+    @property
+    def transcription_variable(self) -> str:
+        """La variable à renseigner quand la clé manque — c'est elle que l'erreur nomme."""
+        return {
+            "groq": "GROQ_API_KEY",
+            "autre": "TRANSCRIPTION_API_KEY",
+        }.get(self.transcription_provider, "OPENAI_API_KEY")
+
+    @property
+    def modele_transcription(self) -> str:
+        if self.transcription_provider == "openai":
+            return self.model_transcription_openai
+        return self.model_transcription
+
+    @property
+    def modele_structuration(self) -> str:
+        return {
+            "anthropic": self.model_structuration,
+            "groq": self.model_structuration_groq,
+            "openai": self.model_structuration_openai,
+            "autre": self.model_structuration_autre,
+        }.get(self.structuration_provider, "?")
 
     # --- Mode hors-ligne : rejoue une extraction enregistrée, zéro appel API, zéro euro ---
     use_fixtures: bool = False
@@ -201,37 +236,48 @@ class Config(BaseSettings):
         return self.max_gabarit_ko * 1024
 
     @model_validator(mode="after")
-    def _deduire_fournisseur(self) -> "Config":
-        """Sans STRUCTURATION_PROVIDER explicite, on chiffre avec la clé qu'on a.
+    def _deduire_fournisseurs(self) -> "Config":
+        """Sans STRUCTURATION_PROVIDER ni TRANSCRIPTION_PROVIDER, on prend la clé qu'on a.
 
         Renseigner une clé et devoir en plus nommer son fournisseur est une double
         déclaration qui ne sert à rien : la clé désigne déjà le moteur. On ne déduit
-        que le silence — un `STRUCTURATION_PROVIDER` écrit dans le .env gagne toujours,
-        y compris pour forcer un fournisseur dont la clé est absente et obtenir le
-        message d'erreur qui va avec.
+        que le silence — un `*_PROVIDER` écrit dans le .env gagne toujours, y compris
+        pour forcer un fournisseur dont la clé est absente et obtenir le message
+        d'erreur qui va avec.
 
-        L'ordre suit la qualité du chiffrage, pas la commodité : Anthropic est la
-        référence. Groq passe en dernier bien qu'il soit souvent présent, parce qu'une
-        GROQ_API_KEY est d'abord là pour la transcription — la trouver ne veut pas dire
-        qu'on a choisi Groq pour chiffrer.
+        OpenAI passe en premier : c'est le fournisseur par défaut, et sa seule clé fait
+        tourner tout le pipeline. Groq passe en dernier pour le chiffrage bien qu'il
+        soit souvent présent, parce qu'une GROQ_API_KEY est d'abord là pour la
+        transcription — la trouver ne veut pas dire qu'on a choisi Groq pour chiffrer.
 
         Le moteur retenu reste annoncé par `/health` et affiché à l'écran : déduit ne
         veut pas dire invisible.
         """
         if self.structuration_provider is None:
-            if self.anthropic_api_key:
-                deduit = "anthropic"
-            elif self.openai_api_key:
+            if self.openai_api_key:
                 deduit = "openai"
+            elif self.anthropic_api_key:
+                deduit = "anthropic"
             elif self.structuration_base_url:
                 deduit = "autre"
             elif self.groq_api_key:
                 deduit = "groq"
             else:
-                # Aucune clé nulle part : rester sur la référence, dont le message
-                # d'absence est celui qui aide le plus (il mentionne USE_FIXTURES).
-                deduit = "anthropic"
+                # Aucune clé nulle part : le fournisseur par défaut, dont le message
+                # d'absence nomme la variable à renseigner.
+                deduit = "openai"
             self.structuration_provider = deduit
+
+        if self.transcription_provider is None:
+            if self.transcription_base_url:
+                deduit = "autre"
+            elif self.openai_api_key:
+                deduit = "openai"
+            elif self.groq_api_key:
+                deduit = "groq"
+            else:
+                deduit = "openai"
+            self.transcription_provider = deduit
         return self
 
     entreprise_settings: EntrepriseSettings = Field(default_factory=EntrepriseSettings)
@@ -257,8 +303,9 @@ def annoncer() -> None:
     """
     config = get_config()
     logging.getLogger("devis-vocal").info(
-        "Chiffrage : %s · transcription : %s · mode : %s",
+        "Chiffrage : %s · transcription : %s (%s) · mode : %s",
         config.structuration_provider,
-        config.transcription_url,
+        config.transcription_provider,
+        config.transcription_url or "api.openai.com",
         "fixtures" if config.use_fixtures else "réel",
     )

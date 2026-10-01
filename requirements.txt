@@ -7,17 +7,17 @@ python-multipart>=0.0.12
 pydantic>=2.9
 pydantic-settings>=2.6
 
-# LLM — structuration du devis
-anthropic>=1.0
-
-# Transcription — client compatible OpenAI (utilisé contre l'endpoint Groq)
+# Transcription et structuration — OpenAI par défaut, et l'endpoint compatible de Groq
 openai>=1.55
+
+# Structuration, option STRUCTURATION_PROVIDER=anthropic
+anthropic>=1.0
 
 # Annuaire public des entreprises (recherche-entreprises.api.gouv.fr)
 httpx>=0.27
 
 # Rendu PDF
-playwright>=1.49
+playwright==1.62.0
 jinja2>=3.1
 
 # Authentification et gabarits par artisan — hors du périmètre d'origine du

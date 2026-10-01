@@ -49,7 +49,7 @@ let transcriptionCourante = null;
 let dureeVocal = null;
 let chrono = null;
 let revelation = null;
-let fournisseur = 'anthropic';   // renseigné par /health
+let fournisseur = 'openai';   // renseigné par /health
 
 /* ---- navigation -------------------------------------------------------- */
 
@@ -157,7 +157,7 @@ const ETAPES = [
   {
     titre: 'Analyse et chiffrage',
     detail: 'Identification des prestations, des quantités et des prix',
-    occupe: ATTENTE.anthropic,   // ajusté au retour de /health
+    occupe: ATTENTE.openai,   // ajusté au retour de /health
   },
   { titre: 'Génération du devis', detail: 'Mise en forme du document et des mentions légales' },
 ];
@@ -1577,15 +1577,17 @@ peindreIdentite();
    les prix dictés mais sous-estime les prix estimés de 6 à 46 %. Les deux méritent
    la même bande. Au passage, l'attente annoncée s'aligne sur le moteur réel. */
 
-const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI' };
+const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI', autre: 'fournisseur libre' };
 
 function peindreSante(info) {
-  fournisseur = info.provider || 'anthropic';
+  fournisseur = info.provider || 'openai';
   const rejoue = info.mode === 'fixtures';
 
-  ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.anthropic);
+  ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.openai);
 
-  const secours = !rejoue && fournisseur !== 'anthropic';
+  // Groq est le moteur de secours : c'est sur lui que l'écart a été mesuré. Un
+  // fournisseur libre n'a été mesuré nulle part — il porte la même bande, par prudence.
+  const secours = !rejoue && (fournisseur === 'groq' || fournisseur === 'autre');
   if (!rejoue && !secours) return;
 
   $('bandeau-fixtures').hidden = !rejoue;

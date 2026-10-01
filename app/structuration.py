@@ -1,4 +1,4 @@
-"""Transcription -> devis structuré, via Claude en sortie JSON contrainte.
+"""Transcription -> devis structuré, via un LLM en sortie JSON contrainte.
 
 Interface unique : `structure(transcript) -> DevisExtraction`.
 
@@ -93,7 +93,13 @@ def _structure_compatible_openai(
     from openai import OpenAI, OpenAIError
 
     if not api_key:
-        raise StructurationError(f"Clé API absente : impossible de chiffrer via {fournisseur}.")
+        # OpenAI est le repli quand aucune clé n'est trouvée : ce message est celui
+        # qu'on lit en premier sur un poste neuf, il doit dire quoi faire.
+        raise StructurationError(
+            f"Clé API absente : impossible de chiffrer via {fournisseur}. Renseigne-la "
+            "dans le .env, ou passe USE_FIXTURES=true pour travailler sur les "
+            "extractions enregistrées."
+        )
 
     client = OpenAI(api_key=api_key, base_url=base_url)
 
