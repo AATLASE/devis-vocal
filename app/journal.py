@@ -104,7 +104,7 @@ def noter_vocal(audio: bytes, filename: str, transcription: str,
             "horodatage": instant.isoformat(timespec="seconds"),
             "fichier": filename,
             "octets": len(audio),
-            "modele_transcription": config.model_transcription,
+            "modele_transcription": config.modele_transcription_actif,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     _sans_casser(ecrire)

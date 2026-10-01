@@ -10,7 +10,7 @@ pydantic-settings>=2.6
 # LLM — structuration du devis
 anthropic>=1.0
 
-# Transcription — client compatible OpenAI (utilisé contre l'endpoint Groq)
+# Transcription — client compatible OpenAI (contre l'endpoint Groq, ou OpenAI lui-même)
 openai>=1.55
 
 # Rendu PDF

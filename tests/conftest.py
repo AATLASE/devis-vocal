@@ -35,7 +35,8 @@ EntrepriseSettings.model_config["env_file"] = None
 # liste nominative : une variable ajoutée demain à `Config` serait sinon oubliée ici,
 # et la fuite reviendrait sans que personne la voie.
 _PREFIXES = ("FIREBASE_", "ENTREPRISE_", "ANTHROPIC_", "GROQ_", "OPENAI_")
-_AUTRES = ("USE_FIXTURES", "STRUCTURATION_PROVIDER", "JOURNAL", "JOURNAL_DIR",
+_AUTRES = ("USE_FIXTURES", "STRUCTURATION_PROVIDER", "TRANSCRIPTION_PROVIDER",
+           "JOURNAL", "JOURNAL_DIR",
            "LOG_DIR", "LOG_CONTENU", "LOG_RETENTION_JOURS", "TVA_DEFAUT",
            "VALIDITE_JOURS", "ACOMPTE_PCT", "MAX_UPLOAD_MO", "MAX_GABARIT_KO")
 

@@ -55,6 +55,11 @@ Deux clés à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 | `GROQ_API_KEY` | <https://console.groq.com> — inscription Google/GitHub, sans carte bancaire | gratuit |
 | `ANTHROPIC_API_KEY` | <https://console.anthropic.com> — pas de tier gratuit | 5 € de crédit ≈ plusieurs centaines de devis |
 
+Pour tout faire tourner sur une seule clé OpenAI — transcription par `whisper-1`,
+chiffrage par `gpt-5` — renseigner `OPENAI_API_KEY` et ajouter
+`STRUCTURATION_PROVIDER=openai` et `TRANSCRIPTION_PROVIDER=openai`. Anthropic reste le
+moteur de référence pour le chiffrage : la page le rappelle par un bandeau.
+
 Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
 nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
 produit. Huit des dix lignes sont publiques — cherche son entreprise sur

@@ -64,6 +64,20 @@ class Config(BaseSettings):
     model_transcription: str = "whisper-large-v3-turbo"
     groq_base_url: str = "https://api.groq.com/openai/v1"
 
+    # Qui transcrit : `groq` (gratuit, la référence) ou `openai`. Avec
+    # STRUCTURATION_PROVIDER=openai, c'est ce qui permet de tout faire tourner sur la
+    # seule OPENAI_API_KEY. Même SDK, même appel : seuls l'URL, la clé et le modèle
+    # changent.
+    transcription_provider: Literal["groq", "openai"] = "groq"
+    model_transcription_openai: str = "whisper-1"
+
+    @property
+    def modele_transcription_actif(self) -> str:
+        """Le modèle du fournisseur de transcription retenu — celui qui répond vraiment."""
+        if self.transcription_provider == "openai":
+            return self.model_transcription_openai
+        return self.model_transcription
+
     # --- Mode hors-ligne : rejoue une extraction enregistrée, zéro appel API, zéro euro ---
     use_fixtures: bool = False
 

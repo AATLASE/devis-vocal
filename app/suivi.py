@@ -101,7 +101,7 @@ def configurer() -> None:
             "groq": config.model_structuration_groq,
             "openai": config.model_structuration_openai,
         }.get(config.structuration_provider, "?"),
-        config.model_transcription,
+        f"{config.transcription_provider}/{config.modele_transcription_actif}",
         "arme" if config.journal else "off",
     )
     logger.info("  suivi          %s", config.log_dir / "devis-vocal.log")

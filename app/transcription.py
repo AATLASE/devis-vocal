@@ -4,8 +4,9 @@ Interface unique : `transcribe(audio, filename) -> str`. Tout le reste du projet
 quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien casser.
 
 Par défaut : Groq (whisper-large-v3-turbo). Endpoint compatible OpenAI, très rapide, et
-son tier gratuit suffit largement à une démo. Une alternative 100 % locale est décrite
-en bas de fichier.
+son tier gratuit suffit largement à une démo. `TRANSCRIPTION_PROVIDER=openai` envoie le
+même appel à OpenAI (whisper-1) — pour qui veut tout faire tourner sur une seule clé.
+Une alternative 100 % locale est décrite en bas de fichier.
 """
 
 from __future__ import annotations
@@ -48,20 +49,29 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    if not config.groq_api_key:
+    # Groq expose le même endpoint qu'OpenAI : un seul chemin de code, et seuls la clé,
+    # l'URL et le modèle changent d'un fournisseur à l'autre.
+    fournisseur = config.transcription_provider
+    modele = config.modele_transcription_actif
+    if fournisseur == "openai":
+        variable, cle, base_url = "OPENAI_API_KEY", config.openai_api_key, None  # api.openai.com
+    else:
+        variable, cle, base_url = "GROQ_API_KEY", config.groq_api_key, config.groq_base_url
+
+    if not cle:
         raise TranscriptionError(
-            "GROQ_API_KEY absente. Renseigne-la dans le .env, ou colle directement une "
+            f"{variable} absente. Renseigne-la dans le .env, ou colle directement une "
             "transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=config.groq_api_key, base_url=config.groq_base_url)
+    client = OpenAI(api_key=cle, base_url=base_url)
 
     fichier = io.BytesIO(audio)
     fichier.name = filename  # le SDK s'appuie sur l'extension pour typer l'envoi
 
     try:
         reponse = client.audio.transcriptions.create(
-            model=config.model_transcription,
+            model=modele,
             file=fichier,
             language="fr",
             # Amorce le vocabulaire : sans ça, « BA13 » ressort en « bat treize ».
@@ -81,16 +91,16 @@ def transcribe(audio: bytes, filename: str) -> str:
         # n'a pas la même cause qu'un 500 sur un webm de 200 Ko bien formé.
         logger.warning(
             "Transcription refusée (%s, %.0f Ko, modèle %s) : %s",
-            filename, len(audio) / 1024, config.model_transcription, err,
+            filename, len(audio) / 1024, modele, err,
         )
         raise TranscriptionError(
             "Le service de transcription n'a pas répondu. Votre enregistrement est "
             "conservé — réessayez dans un instant."
         ) from err
 
-    # Groq facture la transcription à la durée d'audio, pas au token : la ligne dit
-    # quel modèle a répondu, le coût ne s'estime pas ici.
-    suivi.appel("groq", config.model_transcription)
+    # Groq comme OpenAI facturent la transcription à la durée d'audio, pas au token :
+    # la ligne dit qui a répondu et avec quel modèle, le coût ne s'estime pas ici.
+    suivi.appel(fournisseur, modele)
 
     texte = (reponse.text or "").strip()
     if not texte:

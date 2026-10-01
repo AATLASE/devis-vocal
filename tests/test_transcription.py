@@ -68,3 +68,71 @@ def test_l_echantillon_de_synthese_passe_les_controles():
     audio = (SAMPLES / "vocal_synthese.wav").read_bytes()
     with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
         transcribe(audio, "vocal_synthese.wav")
+
+
+# ---------------------------------------------------------------------------
+# Le choix du fournisseur — TRANSCRIPTION_PROVIDER
+# ---------------------------------------------------------------------------
+
+
+class _FauxClient:
+    """Tient la place du SDK : retient avec quoi on l'a construit et appelé."""
+
+    construits: list[dict] = []
+    appels: list[dict] = []
+
+    def __init__(self, **options):
+        self.construits.append(options)
+        self.audio = self
+        self.transcriptions = self
+
+    def create(self, **options):
+        self.appels.append(options)
+
+        class Reponse:
+            text = "  Bonjour, c'est pour la salle de bain.  "
+
+        return Reponse()
+
+
+@pytest.fixture
+def faux_client(monkeypatch):
+    from app import transcription
+
+    _FauxClient.construits, _FauxClient.appels = [], []
+    monkeypatch.setattr(transcription, "OpenAI", _FauxClient)
+    return _FauxClient
+
+
+def test_par_defaut_la_transcription_part_chez_groq(monkeypatch, faux_client):
+    monkeypatch.setenv("GROQ_API_KEY", "cle-groq")
+    get_config.cache_clear()
+
+    assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
+    assert faux_client.construits == [
+        {"api_key": "cle-groq", "base_url": "https://api.groq.com/openai/v1"}
+    ]
+    assert faux_client.appels[0]["model"] == "whisper-large-v3-turbo"
+
+
+def test_avec_openai_la_cle_groq_n_est_plus_necessaire(monkeypatch, faux_client):
+    """Le cas « une seule clé » : rien ne doit partir chez Groq, ni la clé ni l'audio."""
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "cle-openai")
+    get_config.cache_clear()
+
+    assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
+    assert faux_client.construits == [{"api_key": "cle-openai", "base_url": None}]
+    assert faux_client.appels[0]["model"] == "whisper-1"
+    assert faux_client.appels[0]["language"] == "fr"
+
+
+def test_avec_openai_la_cle_reclamee_est_la_bonne(monkeypatch):
+    """Réclamer GROQ_API_KEY à quelqu'un qui a choisi OpenAI l'enverrait créer un
+    compte dont il n'a pas besoin."""
+    monkeypatch.setenv("TRANSCRIPTION_PROVIDER", "openai")
+    monkeypatch.setenv("GROQ_API_KEY", "cle-groq")   # présente, et pourtant inutile
+    get_config.cache_clear()
+
+    with pytest.raises(TranscriptionError, match="OPENAI_API_KEY"):
+        transcribe(b"x" * 100, "vocal.m4a")
