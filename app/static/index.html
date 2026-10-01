@@ -127,6 +127,9 @@
       <span class="compte__qui" id="compte-qui"></span>
       <button class="compte__lien" id="btn-gabarit">Mon gabarit</button>
       <button class="compte__lien" id="btn-deconnexion">Se déconnecter</button>
+      <!-- Seul bouton de la barre pour qui a choisi de continuer sans compte : le
+           chemin du retour vers la connexion, sans rien imposer. -->
+      <button class="compte__lien" id="btn-connexion" hidden>Se connecter</button>
     </div>
   </div>
 </header>
@@ -169,6 +172,14 @@
     </form>
 
     <p class="connexion__erreur" id="connexion-erreur" role="alert" hidden></p>
+
+    <!-- La phrase du haut le promet, ce bouton le tient : le compte ne conditionne
+         jamais la dictée (CLAUDE.md § Périmètre). Sans lui, un artisan rencontré en
+         rendez-vous resterait devant un formulaire dont il n'a que faire. -->
+    <button class="connexion__passer" id="btn-sans-compte" type="button">
+      Continuer sans compte
+      <svg aria-hidden="true"><use href="#i-retour"/></svg>
+    </button>
   </div>
 </section>
 

@@ -44,6 +44,23 @@ window.Compte = {
 let auth = null;
 let utilisateur = null;
 
+/* L'artisan qui a choisi « Continuer sans compte » ne doit plus retomber sur la
+   connexion à chaque chargement : ce serait remettre le mur qu'on vient d'ouvrir.
+   Le choix est gardé sur l'appareil ; « Se connecter », dans l'en-tête, le défait.
+   Stockage bloqué : le choix vaut pour la page en cours, ce qui suffit à dicter. */
+const CLE_SANS_COMPTE = 'devis-vocal.sans-compte';
+
+let sansCompte = false;
+try { sansCompte = localStorage.getItem(CLE_SANS_COMPTE) === '1'; } catch (_) { /* bloqué */ }
+
+function choisirSansCompte(valeur) {
+  sansCompte = valeur;
+  try {
+    if (valeur) localStorage.setItem(CLE_SANS_COMPTE, '1');
+    else localStorage.removeItem(CLE_SANS_COMPTE);
+  } catch (_) { /* vaut pour la page en cours */ }
+}
+
 /* ---- l'écran à montrer -------------------------------------------------- */
 
 /* Tant qu'on ignore si quelqu'un est connecté, on ne sait pas quel écran est le bon.
@@ -141,19 +158,41 @@ async function demarrer() {
   brancher();
 }
 
+/* La barre de compte a deux visages : celui du compte connecté, et le seul bouton
+   « Se connecter » pour qui a choisi de s'en passer. */
+function peindreBarre(connecte) {
+  $('compte-qui').hidden = !connecte;
+  $('btn-gabarit').hidden = !connecte;
+  $('btn-deconnexion').hidden = !connecte;
+  $('btn-connexion').hidden = connecte;
+}
+
 async function peindreCompte() {
   const barre = $('compte');
   if (!utilisateur) {
-    barre.hidden = true;
     profil = null;
+    if (sansCompte) {
+      barre.hidden = false;
+      peindreBarre(false);
+      // Pas de retour forcé à l'accueil : l'artisan est peut-être en pleine relecture.
+      if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active')) {
+        montrer('accueil');
+      }
+      return;
+    }
+    barre.hidden = true;
     // Le compte suivant repart d'une barre entière : sans ça, un artisan qui se
     // déconnecte depuis l'écran de la fiche laisserait « Mon gabarit » caché.
-    $('btn-gabarit').hidden = false;
+    peindreBarre(true);
     montrer('connexion');
     return;
   }
 
+  // Connecté : le choix « sans compte » n'a plus d'objet, et ne doit pas survivre à
+  // une déconnexion ultérieure.
+  choisirSansCompte(false);
   barre.hidden = false;
+  peindreBarre(true);
   $('compte-qui').textContent = utilisateur.email || utilisateur.displayName || 'Connecté';
 
   // La fiche décide de l'écran : tant qu'elle manque, l'inscription n'est pas finie.
@@ -397,6 +436,17 @@ function brancher() {
   });
 
   $('btn-deconnexion').addEventListener('click', () => signOut(auth));
+
+  $('btn-sans-compte').addEventListener('click', () => {
+    choisirSansCompte(true);
+    direErreur('');
+    peindreCompte();
+  });
+
+  $('btn-connexion').addEventListener('click', () => {
+    choisirSansCompte(false);
+    peindreCompte();
+  });
 
   $('form-profil').addEventListener('submit', (e) => {
     e.preventDefault();

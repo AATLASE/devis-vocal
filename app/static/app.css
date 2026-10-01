@@ -454,6 +454,24 @@ body.compte-inconnu .screen { visibility: hidden; }
 .connexion__form .btn { width: 100%; }
 .connexion__form .btn--ghost { margin-top: calc(var(--dv-s-2) * -1); }
 
+/* La sortie sans compte. Un lien plutôt qu'un troisième bouton plein : elle doit se
+   trouver sans faire concurrence à la connexion. */
+.connexion__passer {
+  display: flex; align-items: center; justify-content: center; gap: var(--dv-s-3);
+  width: 100%;
+  min-height: var(--dv-cible);
+  margin-top: var(--dv-s-8);
+  padding: 0;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-sm);
+  font-weight: 500;
+  color: var(--dv-muted);
+  transition: color var(--dv-duree-vite) var(--dv-sortie);
+}
+.connexion__passer:hover { color: var(--dv-accent); }
+.connexion__passer svg { width: 18px; height: 18px; transform: scaleX(-1); }
+
 .connexion__erreur {
   margin-top: var(--dv-s-6);
   padding: var(--dv-s-4) var(--dv-s-5);
