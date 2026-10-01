@@ -313,7 +313,7 @@ async def garder_les_routes(request: Request, call_next):
 
 # Ce que le navigateur doit refuser de faire avec cette page. Le socle n'autorise que
 # l'application elle-même : polices, styles et scripts sont servis par elle, donc
-# `'self'` suffit et il n'y a aucun `unsafe-inline` à concéder.
+# `'self'` suffit — à une concession près, sur les styles, expliquée en dessous.
 #
 # Les origines Firebase ne s'y ajoutent QUE lorsque l'authentification est armée. Une
 # CSP qui les autoriserait en permanence élargirait la surface d'un démonstrateur qui,
@@ -323,7 +323,15 @@ SOCLE = {
     "img-src": ["'self'", "data:"],
     "media-src": ["'self'", "blob:"],   # la relecture du vocal passe par un blob:
     "font-src": ["'self'"],
-    "style-src": ["'self'"],
+    # `'unsafe-inline'` pour les styles, et pour eux seuls. L'aperçu A4 est un
+    # `srcdoc` : il hérite de cette politique, et le devis y porte sa feuille de style
+    # dans une balise `<style>` — comme tout gabarit d'artisan. Sans cette concession,
+    # l'aperçu s'affichait en texte brut, en silence. Une empreinte du CSS livré ne
+    # suffirait pas : elle laisserait les gabarits téléversés sans style.
+    # Le risque est faible et borné : la page n'insère du contenu qu'en texte, le cadre
+    # de l'aperçu n'exécute aucun script, et `img-src`/`font-src` restent sur l'origine
+    # — une feuille de style injectée n'aurait nulle part où envoyer quoi que ce soit.
+    "style-src": ["'self'", "'unsafe-inline'"],
     "script-src": ["'self'"],
     "connect-src": ["'self'"],
     "object-src": ["'none'"],

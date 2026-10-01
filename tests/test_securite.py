@@ -287,8 +287,23 @@ def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_pa
     assert "https://mon-projet.firebaseapp.com" in csp           # la fenêtre Google
 
     # Ce qui ne doit pas s'ouvrir au passage.
-    assert "'unsafe-inline'" not in csp
+    assert "'unsafe-inline'" not in directives(csp)["script-src"]
     assert "frame-ancestors 'none'" in csp
+
+
+def directives(csp: str) -> dict[str, list[str]]:
+    return {nom: valeurs for nom, *valeurs in (d.split() for d in csp.split("; "))}
+
+
+def test_l_apercu_garde_son_style_et_les_scripts_restent_fermes():
+    """L'aperçu A4 est un `srcdoc` qui hérite de la CSP de la page, et le devis y
+    porte sa feuille de style en ligne. Sans `'unsafe-inline'` sur les styles, il
+    s'affichait en texte brut — sans erreur visible ailleurs que dans la console."""
+    csp = directives(securite.politique())
+    assert "'unsafe-inline'" in csp["style-src"]
+    assert csp["script-src"] == ["'self'"]
+    assert csp["img-src"] == ["'self'", "data:"]
+    assert csp["font-src"] == ["'self'"]
 
 
 def test_le_micro_reste_autorise():
