@@ -153,7 +153,13 @@
         <label class="champ__label" for="champ-motdepasse">Mot de passe</label>
         <input type="password" id="champ-motdepasse"
                autocomplete="current-password" minlength="6" required>
-        <div class="champ__aide">Six caractères au moins.</div>
+        <!-- Le lien reprend l'adresse déjà saisie au-dessus : pas d'écran de plus,
+             pas d'adresse à retaper. `type="button"`, sinon Entrée l'emporterait
+             sur « Se connecter ». -->
+        <div class="champ__pied">
+          <div class="champ__aide">Six caractères au moins.</div>
+          <button class="connexion__oubli" type="button" id="btn-oubli">Mot de passe oublié&nbsp;?</button>
+        </div>
       </div>
       <button class="btn btn--large" type="submit" id="btn-email">Se connecter</button>
       <!-- Un artisan rencontré en rendez-vous n'a pas de compte. Lui faire chercher
@@ -162,6 +168,7 @@
     </form>
 
     <p class="connexion__erreur" id="connexion-erreur" role="alert" hidden></p>
+    <p class="connexion__info" id="connexion-info" role="status" hidden></p>
   </div>
 </section>
 
