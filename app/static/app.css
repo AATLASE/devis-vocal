@@ -1660,10 +1660,13 @@ body.compte-inconnu .screen { visibility: hidden; }
 .relecture.en-edition #btn-modifier { display: none; }
 
 @media (max-width: 640px) {
-  .ligne-ed { grid-template-columns: 1fr 1fr 1fr; }
-  .ligne-ed .champ--designation { grid-column: 1 / 3; }
+  /* La désignation prend tout le rang à côté de la croix : c'est le texte le plus
+     long, et tronqué il ne se relit plus. Le prix récupère la colonne libre dessous. */
+  .ligne-ed { grid-template-columns: 1fr 1fr 1fr 40px; }
+  .ligne-ed .champ--designation { grid-column: 1 / 4; }
+  .ligne-ed .champ--prix { grid-column: 3 / -1; }
   .ligne-ed .champ--detail { grid-column: 1 / -1; }
-  .ligne-ed__retirer { grid-column: 3; grid-row: 1; justify-self: end; }
+  .ligne-ed__retirer { grid-column: 4; grid-row: 1; justify-self: end; }
   .edition__actions { flex-direction: column; }
   .edition__actions .btn { width: 100%; }
 }

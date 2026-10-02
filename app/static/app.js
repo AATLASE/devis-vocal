@@ -898,7 +898,7 @@ function editeurDeLigne(l) {
     champEdition('champ--designation', 'Désignation', designation),
     champEdition(null, 'Qté', quantite),
     champEdition(null, 'Unité', unite),
-    champEdition(null, 'P.U. HT (€)', prix),
+    champEdition('champ--prix', 'P.U. HT (€)', prix),
     retirer,
     champEdition('champ--detail', 'Détail (facultatif)', detail),
   );
