@@ -84,6 +84,7 @@ function reinitialiser() {
   // « Recommencer » lancerait un devis au lieu d'en effacer un.
   arreterDictee(true);
   fermerRelu();
+  fermerEdition();
   devisCourant = null;
   pdfPret = null;
   vocalCourant = null;
@@ -248,6 +249,13 @@ function devoiler(texte, cible) {
 
 /* ---- appels ------------------------------------------------------------ */
 
+/* Deux en-têtes peuvent accompagner un appel, et ils ne disent pas la même chose :
+   le jeton Firebase dit QUI appelle, le code d'accès dit qu'on a le droit d'appeler.
+   Le second reste utile même avec le premier — sans identifiants Firebase, la
+   vérification de jeton est inactive et n'importe qui passerait.
+
+   Ni l'un ni l'autre ne voyage dans l'URL : une URL se retrouve dans l'historique,
+   dans les journaux du reverse proxy et dans le `Referer` envoyé aux sites tiers. */
 /* Le jeton Firebase, quand il y en a un. `compte.js` est un module chargé après ce
    fichier : tant qu'il n'a pas tourné — ou si Firebase n'est pas configuré — on part
    sans en-tête, et l'API se comporte exactement comme avant. Le compte n'est jamais
@@ -266,12 +274,30 @@ async function poste(url, options) {
   let reponse;
   options = await avecJeton(options);
   try {
-    reponse = await fetch(url, options);
+    reponse = await fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), ...enteteAcces() },
+    });
   } catch (_) {
     // `fetch` ne rejette que sur un échec réseau — coupure, serveur arrêté, tunnel
     // tombé. Le navigateur donne « Failed to fetch », en anglais et sans sujet :
     // illisible pour un artisan, et surtout muet sur ce qu'il peut faire.
     throw new Error('La connexion au serveur a été perdue. Vérifiez le réseau, puis réessayez.');
+  }
+  if (reponse.status === 401) {
+    // Deux refus portent désormais ce code : le code d'accès, et la session Firebase
+    // expirée. Les confondre enverrait l'artisan retaper un code juste — qui serait
+    // refusé à nouveau, sans qu'il comprenne pourquoi. On lit donc le motif.
+    let motif = '';
+    try { motif = (await reponse.json()).detail || ''; } catch (_) { /* corps vide */ }
+
+    if (/code d'accès/i.test(motif)) {
+      oublierAcces();
+      montrer('porte');
+      $('porte-erreur').textContent = "Ce code n'est plus valable. Redemandez-le.";
+      throw new Error("Code d'accès refusé.");
+    }
+    throw new Error(motif || 'Votre session a expiré. Reconnectez-vous.');
   }
   if (!reponse.ok) {
     let detail = `Erreur ${reponse.status}.`;
@@ -295,7 +321,9 @@ async function chiffrer(transcription) {
   const r = await poste('/api/devis', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transcription }),
+    // L'identité part avec la demande : c'est le navigateur qui la retient, pas le
+    // serveur. Absente, l'API retombe sur la configuration du `.env`.
+    body: JSON.stringify({ transcription, entreprise: entrepriseCourante || undefined }),
   });
   return await r.json();
 }
@@ -803,6 +831,384 @@ function peindreTotaux(d) {
   }
 }
 
+/* ---- 3 bis. édition ---------------------------------------------------- */
+/* Hors périmètre d'origine, ajoutée sur décision explicite — voir CLAUDE.md
+   § Périmètre. C'est la réponse à « et si c'est faux ? », la première question
+   d'un artisan devant la démonstration.
+
+   Le navigateur ne calcule rien, ici moins qu'ailleurs : il relit ce que
+   l'artisan a saisi, l'envoie avec le devis d'origine, et c'est le serveur qui
+   renvoie le devis recalculé. Aucun total n'est affiché pendant la saisie — un
+   total calculé ici serait une seconde arithmétique à garder juste. */
+
+const UNITES = ['m²', 'ml', 'm³', 'u', 'forfait', 'h', 'j'];
+let numeroChampEdition = 0;
+
+/* « 1 200,50 » comme « 1200.5 » : ce que l'artisan tape, rendu lisible par le
+   serveur. Rendu en chaîne et pas en nombre : le Decimal se construit de l'autre
+   côté, sans passer par la virgule flottante. `null` quand c'est illisible. */
+function lireNombre(texte) {
+  const brut = String(texte).replace(/[\s  ]/g, '').replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(brut) ? brut : null;
+}
+
+function champEdition(classe, libelle, el) {
+  const champ = noeud('div', 'champ' + (classe ? ' ' + classe : ''));
+  el.id = 'ed-champ-' + (++numeroChampEdition);
+  const etiquette = noeud('label', null, libelle);
+  etiquette.htmlFor = el.id;
+  champ.append(etiquette, el);
+  return champ;
+}
+
+function editeurDeLigne(l) {
+  const rang = noeud('div', 'ligne-ed');
+
+  const saisie = (cle, valeur, classe) => {
+    const el = noeud('input', classe);
+    el.dataset.cle = cle;
+    el.autocomplete = 'off';
+    el.value = valeur;
+    return el;
+  };
+
+  const designation = saisie('designation', l.designation || '');
+  const quantite = saisie('quantite', l.quantite != null ? nombre(l.quantite) : '', 'num');
+  const prix = saisie('prix', l.prix_unitaire_ht != null ? nombre(l.prix_unitaire_ht) : '', 'num');
+  const detail = saisie('detail', l.detail || '');
+  quantite.inputMode = prix.inputMode = 'decimal';
+  detail.placeholder = 'Fourniture client, marque, finition…';
+
+  const unite = noeud('select');
+  unite.dataset.cle = 'unite';
+  UNITES.forEach((u) => {
+    const option = noeud('option', null, u);
+    option.value = u;
+    unite.append(option);
+  });
+  unite.value = UNITES.includes(l.unite) ? l.unite : 'u';
+
+  const retirer = noeud('button', 'ligne-ed__retirer');
+  retirer.type = 'button';
+  retirer.setAttribute('aria-label', 'Retirer cette ligne');
+  retirer.append(icone('i-croix'));
+  retirer.addEventListener('click', () => rang.remove());
+
+  rang.append(
+    champEdition('champ--designation', 'Désignation', designation),
+    champEdition(null, 'Qté', quantite),
+    champEdition(null, 'Unité', unite),
+    champEdition('champ--prix', 'P.U. HT (€)', prix),
+    retirer,
+    champEdition('champ--detail', 'Détail (facultatif)', detail),
+  );
+
+  // Un prix estimé le reste tant que l'artisan ne l'a pas pris à son compte. Taper
+  // un prix, c'est le prendre : la case se coche d'elle-même. La laisser vide,
+  // c'est garder la mention « estimé » sur le PDF — elle ne disparaît jamais seule.
+  if (l.a_valider) {
+    rang.classList.add('est-estimee');
+    const verifie = noeud('input');
+    verifie.type = 'checkbox';
+    verifie.dataset.cle = 'verifie';
+    const etiquette = noeud('label', 'ligne-ed__prix');
+    etiquette.append(verifie, document.createTextNode('Prix estimé · cocher une fois vérifié'));
+    rang.append(etiquette);
+    prix.addEventListener('input', () => { verifie.checked = true; });
+  }
+  return rang;
+}
+
+/* Relit les lignes de l'écran. Les erreurs de lecture — un « 12,5,3 » dans la
+   quantité — sont dites ici, au champ près ; les règles du devis, elles, sont
+   tenues par le serveur, qui renvoie le numéro de la ligne fautive. */
+function lireLignes() {
+  const erreurs = [];
+  const lignes = [...$('ed-lignes').children].map((rang, i) => {
+    const champ = (cle) => rang.querySelector(`[data-cle="${cle}"]`);
+    const quantite = lireNombre(champ('quantite').value);
+    const prix = lireNombre(champ('prix').value);
+    const designation = champ('designation').value.trim();
+
+    champ('designation').setAttribute('aria-invalid', String(!designation));
+    champ('quantite').setAttribute('aria-invalid', String(quantite === null));
+    champ('prix').setAttribute('aria-invalid', String(prix === null));
+    const motif = (el) => (el.value.trim() ? 'est illisible' : 'est vide');
+    if (!designation) erreurs.push(`Ligne ${i + 1} : la désignation est vide.`);
+    if (quantite === null) erreurs.push(`Ligne ${i + 1} : la quantité ${motif(champ('quantite'))}.`);
+    if (prix === null) erreurs.push(`Ligne ${i + 1} : le prix unitaire ${motif(champ('prix'))}.`);
+
+    const verifie = champ('verifie');
+    return {
+      designation,
+      detail: champ('detail').value.trim() || null,
+      quantite,
+      unite: champ('unite').value,
+      prix_unitaire_ht: prix,
+      a_valider: verifie ? !verifie.checked : false,
+    };
+  });
+  return { lignes, erreurs };
+}
+
+function basculerEdition(actif) {
+  $('rel-lecture').hidden = actif;
+  $('rel-edition').hidden = !actif;
+  $('ecran-relecture').classList.toggle('en-edition', actif);
+  // Sur un téléphone, l'édition vit dans la vue « Détail » : si l'artisan était
+  // sur l'aperçu, on l'y ramène plutôt que de lui ouvrir un formulaire invisible.
+  if (actif && vueRelecture !== 'detail') {
+    vueRelecture = 'detail';
+    appliquerVue();
+  }
+}
+
+function ouvrirEdition() {
+  const d = devisCourant;
+  if (!d) return;
+  $('ed-client-nom').value = d.client.nom || '';
+  $('ed-client-adresse').value = d.client.adresse || '';
+  $('ed-client-telephone').value = d.client.telephone || '';
+  $('ed-objet').value = d.type_travaux || '';
+  $('ed-duree').value = d.duree_estimee || '';
+  $('ed-tva').value = Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
+  $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
+  $('ed-notes').value = d.notes.join('\n');
+  $('ed-erreur').textContent = '';
+  $('ed-pro-recherche').value = '';
+  $('ed-pro-etat').textContent = '';
+  $('ed-pro-resultats').hidden = true;
+  fermerRepli('ed-pro', 'ed-pro-bascule');
+  viderSuggestionsAdresse();
+  basculerEdition(true);
+  $('rel-edition').scrollIntoView({ behavior: MOUVEMENT_REDUIT ? 'auto' : 'smooth', block: 'start' });
+}
+
+function fermerEdition() {
+  viderSuggestionsAdresse();
+  basculerEdition(false);
+}
+
+async function validerEdition(e) {
+  e.preventDefault();
+  const { lignes, erreurs } = lireLignes();
+  if (!lignes.length) erreurs.push('Un devis doit compter au moins une ligne.');
+  if (erreurs.length) {
+    $('ed-erreur').textContent = erreurs[0];
+    return;
+  }
+
+  const corrections = {
+    client: {
+      nom: $('ed-client-nom').value,
+      adresse: $('ed-client-adresse').value,
+      telephone: $('ed-client-telephone').value,
+    },
+    type_travaux: $('ed-objet').value,
+    duree_estimee: $('ed-duree').value,
+    taux_tva: $('ed-tva').value,
+    lignes,
+    notes: $('ed-notes').value.split('\n').map((n) => n.trim()).filter(Boolean),
+  };
+
+  const bouton = $('ed-valider');
+  bouton.disabled = true;
+  $('ed-erreur').textContent = '';
+  try {
+    const r = await poste('/api/devis/corriger', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ devis: devisCourant, corrections }),
+    });
+    devisCourant = await r.json();
+  } catch (err) {
+    // Le formulaire reste tel quel : l'artisan corrige la ligne citée et revalide,
+    // sans rien perdre de ce qu'il a déjà saisi.
+    $('ed-erreur').textContent = err.message;
+    return;
+  } finally {
+    bouton.disabled = false;
+  }
+
+  fermerEdition();
+  peindreRelecture(devisCourant);
+  // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
+  preparerPdf();
+  peindreApercu();
+  window.scrollTo(0, 0);
+}
+
+/* ---- l'adresse du client ----------------------------------------------- */
+/* Autocomplétée depuis la Base Adresse Nationale, par le serveur. Il n'existe pas
+   d'annuaire des particuliers, et c'est très bien ainsi : on complète l'adresse
+   qu'on tape, on ne la devine pas à partir d'un nom. */
+
+let minuterieAdresse = null;
+let numeroAdresse = 0;
+let suggestionsAdresse = [];
+let indexAdresse = -1;
+
+function viderSuggestionsAdresse() {
+  clearTimeout(minuterieAdresse);
+  numeroAdresse++;   // une réponse encore en route ne rouvrira pas la liste
+  suggestionsAdresse = [];
+  indexAdresse = -1;
+  $('ed-adresse-resultats').replaceChildren();
+  $('ed-adresse-resultats').hidden = true;
+  $('ed-client-adresse').setAttribute('aria-expanded', 'false');
+  $('ed-client-adresse').removeAttribute('aria-activedescendant');
+}
+
+function choisirAdresse(adresse) {
+  $('ed-client-adresse').value = adresse.libelle;
+  viderSuggestionsAdresse();
+}
+
+async function chercherAdresse(requete) {
+  const q = requete.trim();
+  if (q.length < 5) { viderSuggestionsAdresse(); return; }
+
+  const moi = ++numeroAdresse;
+  let trouvees = [];
+  try {
+    const r = await fetch('/api/adresse?q=' + encodeURIComponent(q), { headers: enteteAcces() });
+    if (r.ok) trouvees = await r.json();
+  } catch (_) { /* hors réseau : l'artisan tape l'adresse en entier */ }
+  if (moi !== numeroAdresse) return;
+
+  suggestionsAdresse = trouvees;
+  indexAdresse = -1;
+  const boite = $('ed-adresse-resultats');
+  boite.replaceChildren(...trouvees.map((a, i) => {
+    const option = noeud('button', 'resultat');
+    option.type = 'button';
+    option.id = 'ed-adresse-' + i;
+    option.setAttribute('role', 'option');
+    option.append(noeud('div', 'resultat__nom', a.libelle));
+    if (a.contexte) option.append(noeud('div', 'resultat__meta', a.contexte));
+    option.addEventListener('click', () => choisirAdresse(a));
+    return option;
+  }));
+  boite.hidden = trouvees.length === 0;
+  $('ed-client-adresse').setAttribute('aria-expanded', String(trouvees.length > 0));
+}
+
+function surlignerAdresse(index) {
+  indexAdresse = index;
+  [...$('ed-adresse-resultats').children].forEach((option, i) =>
+    option.setAttribute('aria-selected', String(i === index)));
+  $('ed-client-adresse').setAttribute('aria-activedescendant', 'ed-adresse-' + index);
+}
+
+/* ---- le client professionnel ------------------------------------------- */
+/* Un syndic, une SCI, un commerce : ceux-là sont dans l'annuaire des entreprises,
+   le même que pour l'identité de l'artisan. Le nom et l'adresse s'y retrouvent ;
+   le téléphone reste à saisir, la base ne le connaît pas. */
+
+let minuteriePro = null;
+let numeroPro = 0;
+
+async function chercherClientPro(requete) {
+  const q = requete.trim();
+  const boite = $('ed-pro-resultats');
+  if (q.length < 3) {
+    boite.hidden = true;
+    $('ed-pro-etat').textContent = '';
+    return;
+  }
+
+  const moi = ++numeroPro;
+  $('ed-pro-etat').textContent = 'Recherche…';
+  let trouvees = [];
+  try {
+    const r = await fetch('/api/entreprise?q=' + encodeURIComponent(q), { headers: enteteAcces() });
+    if (r.ok) trouvees = await r.json();
+  } catch (_) { /* annuaire injoignable : la saisie à la main reste ouverte */ }
+  if (moi !== numeroPro) return;
+
+  boite.replaceChildren(...trouvees.map((e) => {
+    const bouton = noeud('button', 'resultat');
+    bouton.type = 'button';
+    bouton.append(
+      noeud('div', 'resultat__nom', e.nom),
+      noeud('div', 'resultat__meta', [e.adresse, e.code_postal_ville].filter(Boolean).join(', ')),
+    );
+    bouton.addEventListener('click', () => choisirClientPro(e));
+    return bouton;
+  }));
+  boite.hidden = trouvees.length === 0;
+  $('ed-pro-etat').textContent = trouvees.length
+    ? ''
+    : 'Aucune entreprise trouvée. Complétez le nom et l’adresse à la main.';
+}
+
+function choisirClientPro(e) {
+  $('ed-client-nom').value = e.nom;
+  $('ed-client-adresse').value = [e.adresse, e.code_postal_ville].filter(Boolean).join(', ');
+  $('ed-pro-recherche').value = '';
+  $('ed-pro-resultats').hidden = true;
+  $('ed-pro-etat').textContent = 'Rempli depuis l’annuaire. Ajoutez le téléphone si vous l’avez.';
+  $('ed-client-telephone').focus({ preventScroll: true });
+}
+
+/* ---- branchements de l'édition ----------------------------------------- */
+
+$('btn-modifier').addEventListener('click', ouvrirEdition);
+$('ed-annuler').addEventListener('click', fermerEdition);
+$('rel-edition').addEventListener('submit', validerEdition);
+
+$('ed-ajouter').addEventListener('click', () => {
+  const rang = editeurDeLigne({ quantite: 1, unite: 'u' });
+  $('ed-lignes').append(rang);
+  rang.querySelector('[data-cle="designation"]').focus();
+});
+
+$('ed-pro-bascule').addEventListener('click', () => {
+  const ouvert = !$('ed-pro').classList.contains('is-open');
+  ouvrirRepli('ed-pro', 'ed-pro-bascule', ouvert);
+  if (ouvert) $('ed-pro-recherche').focus({ preventScroll: true });
+});
+
+$('ed-pro-recherche').addEventListener('input', (e) => {
+  clearTimeout(minuteriePro);
+  const valeur = e.target.value;
+  minuteriePro = setTimeout(() => chercherClientPro(valeur), 320);
+});
+// Entrée lance la recherche, et surtout pas la validation du formulaire entier.
+$('ed-pro-recherche').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(minuteriePro);
+  chercherClientPro(e.target.value);
+});
+
+/* Le débit autorisé est partagé par toutes les routes : on attend une vraie pause
+   dans la frappe avant de consommer une requête. */
+$('ed-client-adresse').addEventListener('input', (e) => {
+  clearTimeout(minuterieAdresse);
+  const valeur = e.target.value;
+  minuterieAdresse = setTimeout(() => chercherAdresse(valeur), 350);
+});
+
+$('ed-client-adresse').addEventListener('keydown', (e) => {
+  const n = suggestionsAdresse.length;
+  if (!n || $('ed-adresse-resultats').hidden) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); surlignerAdresse((indexAdresse + 1) % n); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); surlignerAdresse((indexAdresse - 1 + n) % n); }
+  else if (e.key === 'Escape') { e.preventDefault(); viderSuggestionsAdresse(); }
+  else if (e.key === 'Enter' && indexAdresse >= 0) {
+    e.preventDefault();
+    choisirAdresse(suggestionsAdresse[indexAdresse]);
+  }
+});
+
+/* La liste se ferme quand on quitte le champ — mais après coup : un clic sur une
+   suggestion fait d'abord perdre le focus au champ, et fermer tout de suite
+   retirerait la suggestion sous le doigt avant que le clic n'arrive. */
+$('ed-client-adresse').addEventListener('blur', () => {
+  setTimeout(viderSuggestionsAdresse, 180);
+});
+
 /* ---- 4. devis vide ----------------------------------------------------- */
 
 function peindreVide(d) {
@@ -1256,29 +1662,394 @@ $('btn-copier-observations').addEventListener('click', async (e) => {
   setTimeout(() => { bouton.textContent = libelle; }, 1800);
 });
 
+/* ---- 6. identité de l'entreprise --------------------------------------- */
+/* Le SIRET est le geste le plus coûteux du parcours : quatorze chiffres sans
+   signification, tapés sur un téléphone. On ne le demande donc pas, on le retrouve
+   dans l'annuaire public — l'artisan tape le nom de sa boîte et sept champs se
+   remplissent, numéro de TVA compris (il se calcule depuis le SIREN).
+
+   L'identité est conservée par le navigateur, pas par le serveur : elle est
+   renseignée une fois, elle voyage avec chaque demande de devis, et la règle
+   « le serveur ne garde rien » reste intacte. */
+
+const CHAMPS_ENTREPRISE = [
+  'nom', 'forme_juridique', 'metier', 'adresse', 'code_postal_ville',
+  'telephone', 'email', 'siret', 'code_ape', 'tva_intracom',
+  'assurance', 'assurance_police', 'iban',
+];
+
+const CLE_ENTREPRISE = 'devis-vocal.entreprise';
+
+let entrepriseCourante = null;
+
+/* localStorage jette dans un onglet privé ou quand les données de site sont
+   bloquées. Une identité qu'on ne peut pas relire n'est pas une raison de ne pas
+   pouvoir faire un devis : on retombe simplement sur la configuration du serveur. */
+function lireEntreprise() {
+  try {
+    const brut = localStorage.getItem(CLE_ENTREPRISE);
+    return brut ? JSON.parse(brut) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function ecrireEntreprise(entreprise) {
+  try {
+    if (entreprise) localStorage.setItem(CLE_ENTREPRISE, JSON.stringify(entreprise));
+    else localStorage.removeItem(CLE_ENTREPRISE);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function estRemplie(e) {
+  return !!(e && typeof e.nom === 'string' && e.nom.trim());
+}
+
+/* La ligne d'accueil. Tant que l'identité manque, elle porte l'accent : un devis
+   sans SIRET ni assurance décennale n'est pas un devis, et ça ne doit pas se
+   découvrir sur le PDF, devant un client. */
+function peindreIdentite() {
+  const remplie = estRemplie(entrepriseCourante);
+  $('identite').classList.toggle('est-vide', !remplie);
+  $('identite-label').textContent = remplie ? 'Devis établis au nom de' : 'Votre entreprise';
+  $('identite-nom').textContent = remplie ? entrepriseCourante.nom : 'à renseigner';
+  $('identite-action').textContent = remplie ? 'Modifier' : 'Renseigner';
+}
+
+function remplirFormulaire(entreprise) {
+  CHAMPS_ENTREPRISE.forEach((champ) => {
+    const el = $('e-' + champ);
+    if (el) el.value = (entreprise && entreprise[champ]) || '';
+  });
+}
+
+function lireFormulaire() {
+  const entreprise = {};
+  CHAMPS_ENTREPRISE.forEach((champ) => {
+    const el = $('e-' + champ);
+    entreprise[champ] = el ? el.value.trim() : '';
+  });
+  return entreprise;
+}
+
+/* ---- recherche --------------------------------------------------------- */
+
+let minuterieRecherche = null;
+let numeroRecherche = 0;
+
+function etatRecherche(texte) {
+  $('entreprise-etat').textContent = texte;
+}
+
+function viderResultats() {
+  $('entreprise-resultats').replaceChildren();
+  $('entreprise-resultats').hidden = true;
+}
+
+function peindreResultats(trouvees) {
+  const boite = $('entreprise-resultats');
+  boite.replaceChildren();
+
+  trouvees.forEach((e) => {
+    const bouton = noeud('button', 'resultat');
+    bouton.type = 'button';
+    bouton.appendChild(noeud('div', 'resultat__nom', e.nom));
+
+    // La ville et la date distinguent deux homonymes — c'est à ça que l'artisan
+    // reconnaît la sienne. Le SIRET seul ne dit rien à personne.
+    const meta = noeud('div', 'resultat__meta');
+    const details = [e.code_postal_ville, e.metier, e.date_creation && 'depuis ' + e.date_creation]
+      .filter(Boolean).join(' · ');
+    meta.appendChild(document.createTextNode(details));
+    bouton.appendChild(meta);
+
+    const numero = noeud('div', 'resultat__meta');
+    numero.appendChild(noeud('span', 'num', 'SIRET ' + e.siret));
+    bouton.appendChild(numero);
+
+    bouton.addEventListener('click', () => choisirEntreprise(e));
+    boite.appendChild(bouton);
+  });
+
+  boite.hidden = trouvees.length === 0;
+}
+
+async function chercherEntreprise(requete) {
+  const q = requete.trim();
+  if (q.length < 3) {
+    viderResultats();
+    etatRecherche('Trois lettres suffisent. Ajoutez la ville si le nom est courant.');
+    return;
+  }
+
+  // Chaque frappe peut lancer une requête, et rien ne garantit qu'elles reviennent
+  // dans l'ordre. Sans ce compteur, une réponse lente à « dup » écrase la réponse
+  // rapide à « dupont plomberie » : l'artisan voit une liste qui ne correspond plus
+  // à ce qu'il a tapé.
+  const moi = ++numeroRecherche;
+  etatRecherche('Recherche…');
+
+  let trouvees = [];
+  try {
+    const reponse = await fetch('/api/entreprise?q=' + encodeURIComponent(q),
+                                { headers: enteteAcces() });
+    if (reponse.ok) trouvees = await reponse.json();
+  } catch (_) {
+    // Réseau coupé : on le dit et le formulaire prend le relais.
+  }
+
+  if (moi !== numeroRecherche) return;
+
+  peindreResultats(trouvees);
+  if (trouvees.length) {
+    etatRecherche(trouvees.length === 1 ? '1 entreprise trouvée.' : trouvees.length + ' entreprises trouvées.');
+  } else if (/^[\d\s]+$/.test(q)) {
+    etatRecherche("Ce numéro ne correspond à aucune entreprise ouverte. Vérifiez les chiffres, ou complétez à la main.");
+  } else {
+    etatRecherche("Aucune entreprise trouvée. Essayez avec la ville, ou complétez à la main — certaines entreprises ne sont pas diffusées dans l'annuaire.");
+  }
+}
+
+/* Une entreprise choisie remplit ce que la base connaît, et rien d'autre : le
+   téléphone, l'assurance et l'IBAN restent ce que l'artisan avait déjà saisi.
+   Écraser ses champs à lui parce qu'il reprend la recherche serait une punition. */
+function choisirEntreprise(trouvee) {
+  const actuel = lireFormulaire();
+  CHAMPS_ENTREPRISE.forEach((champ) => {
+    if (typeof trouvee[champ] === 'string' && trouvee[champ]) actuel[champ] = trouvee[champ];
+  });
+  remplirFormulaire(actuel);
+
+  viderResultats();
+  $('entreprise-recherche').value = '';
+  etatRecherche('Rempli depuis l’annuaire. Vérifiez, puis complétez ce qui manque.');
+
+  // Le formulaire s'ouvre : l'artisan voit ce qui vient d'être rempli — c'est
+  // l'argument — et surtout les quelques champs qui restent à sa charge.
+  $('entreprise-formulaire').classList.add('is-open');
+
+  signalerCapital();
+
+  const manquant = ['telephone', 'email', 'assurance', 'iban'].find((c) => !actuel[c]);
+  if (manquant) $('e-' + manquant).focus({ preventScroll: true });
+}
+
+/* L'annuaire donne la forme juridique — « SARL » — mais pas le capital social, qui
+   n'est publié nulle part. Or il fait partie des mentions obligatoires d'une société
+   sur ses documents commerciaux. On ne l'invente pas : on le demande, une fois, à
+   l'endroit où l'artisan a le champ sous les yeux. */
+const SOCIETES = ['SARL', 'EURL', 'SAS', 'SASU', 'SA', 'SNC'];
+
+function signalerCapital() {
+  const aide = $('forme-aide');
+  const forme = $('e-forme_juridique').value.trim();
+  const societe = SOCIETES.includes(forme.toUpperCase());
+  const capitalAbsent = !/capital/i.test(forme);
+
+  if (societe && capitalAbsent) {
+    aide.textContent = 'Ajoutez le capital social : mention obligatoire pour une société.';
+    aide.classList.add('est-faux');
+  } else {
+    aide.textContent = '';
+    aide.classList.remove('est-faux');
+  }
+}
+
+/* ---- écran ------------------------------------------------------------- */
+
+function ouvrirEntreprise() {
+  remplirFormulaire(entrepriseCourante);
+  $('entreprise-recherche').value = '';
+  viderResultats();
+  etatRecherche('Trois lettres suffisent. Ajoutez la ville si le nom est courant.');
+  // Une identité déjà renseignée n'a plus rien à chercher : on montre le formulaire.
+  $('entreprise-formulaire').classList.toggle('is-open', estRemplie(entrepriseCourante));
+  signalerCapital();
+  montrer('entreprise');
+  if (!estRemplie(entrepriseCourante)) $('entreprise-recherche').focus({ preventScroll: true });
+}
+
+function enregistrerEntreprise() {
+  const saisie = lireFormulaire();
+  entrepriseCourante = estRemplie(saisie) ? saisie : null;
+
+  const bouton = $('btn-entreprise-enregistrer');
+  if (!ecrireEntreprise(entrepriseCourante)) {
+    // Navigation privée, stockage bloqué : l'identité vaut pour la session en cours
+    // mais ne survivra pas à la fermeture. Le taire serait pire que le dire.
+    bouton.textContent = 'Gardé pour cette session seulement';
+    setTimeout(() => { bouton.textContent = 'Enregistrer'; }, 2600);
+  }
+
+  peindreIdentite();
+  montrer('accueil');
+}
+
+$('identite').addEventListener('click', ouvrirEntreprise);
+$('btn-entreprise-retour').addEventListener('click', () => montrer('accueil'));
+$('btn-entreprise-enregistrer').addEventListener('click', enregistrerEntreprise);
+
+$('btn-entreprise-oublier').addEventListener('click', () => {
+  entrepriseCourante = null;
+  ecrireEntreprise(null);
+  remplirFormulaire(null);
+  peindreIdentite();
+  etatRecherche('Identité effacée de cet appareil.');
+});
+
+$('e-forme_juridique').addEventListener('blur', signalerCapital);
+
+$('entreprise-bascule').addEventListener('click', () =>
+  $('entreprise-formulaire').classList.toggle('is-open'));
+
+/* On attend une pause dans la frappe : l'API publique est limitée en débit, et
+   une requête par caractère la gaspillerait pour un résultat qu'on n'a pas le
+   temps de lire. */
+$('entreprise-recherche').addEventListener('input', (e) => {
+  clearTimeout(minuterieRecherche);
+  const valeur = e.target.value;
+  minuterieRecherche = setTimeout(() => chercherEntreprise(valeur), 320);
+});
+
+$('entreprise-recherche').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  clearTimeout(minuterieRecherche);
+  chercherEntreprise(e.target.value);
+});
+
+/* Le numéro de TVA se déduit du SIRET : si l'artisan corrige l'un à la main,
+   l'autre doit suivre, sinon le devis porte deux identités qui se contredisent. */
+$('e-siret').addEventListener('blur', async () => {
+  const siret = $('e-siret').value.trim();
+  const aide = $('siret-controle');
+  if (!siret) { aide.textContent = ''; aide.classList.remove('est-faux'); return; }
+
+  const trouvees = await (async () => {
+    try {
+      const r = await fetch('/api/entreprise?q=' + encodeURIComponent(siret),
+                            { headers: enteteAcces() });
+      return r.ok ? await r.json() : [];
+    } catch (_) { return []; }
+  })();
+
+  const exact = trouvees.find((t) => t.siret.replace(/\D/g, '') === siret.replace(/\D/g, ''));
+  if (exact) {
+    aide.classList.remove('est-faux');
+    aide.textContent = exact.nom;
+    if (!$('e-tva_intracom').value.trim()) $('e-tva_intracom').value = exact.tva_intracom;
+  } else {
+    aide.classList.add('est-faux');
+    aide.textContent = "Ce numéro ne correspond à aucune entreprise ouverte.";
+  }
+});
+
+entrepriseCourante = lireEntreprise();
+peindreIdentite();
+
 /* Deux façons de montrer autre chose que ce qu'on croit montrer : un chiffrage
    rejoué depuis une fixture, et un chiffrage calculé par un moteur de secours. La
    première était signalée, la seconde ne l'était pas — or Groq reprend fidèlement
    les prix dictés mais sous-estime les prix estimés de 6 à 46 %. Les deux méritent
    la même bande. Au passage, l'attente annoncée s'aligne sur le moteur réel. */
 
-const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI' };
+const MOTEURS = { anthropic: 'Anthropic', groq: 'Groq', openai: 'OpenAI', autre: 'fournisseur libre' };
 
-fetch('/health')
-  .then((r) => r.json())
-  .then((info) => {
-    fournisseur = info.provider || 'openai';
-    const rejoue = info.mode === 'fixtures';
+function peindreSante(info) {
+  fournisseur = info.provider || 'openai';
+  const rejoue = info.mode === 'fixtures';
 
-    ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.openai);
+  ETAPES[1].occupe = rejoue ? ATTENTE.fixtures : (ATTENTE[fournisseur] || ATTENTE.openai);
 
-    // Seul Groq est un moteur de secours : c'est sur lui que l'écart a été mesuré.
-    const secours = !rejoue && fournisseur === 'groq';
-    if (!rejoue && !secours) return;
+  // Groq est le moteur de secours : c'est sur lui que l'écart a été mesuré. Un
+  // fournisseur libre n'a été mesuré nulle part — il porte la même bande, par prudence.
+  const secours = !rejoue && (fournisseur === 'groq' || fournisseur === 'autre');
+  if (!rejoue && !secours) return;
 
-    $('bandeau-fixtures').hidden = !rejoue;
-    $('bandeau-fournisseur').hidden = !secours;
-    if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
-    $('bandeau').hidden = false;
-    })
-  .catch(() => { /* le bandeau reste caché : pas de quoi bloquer la page */ });
+  $('bandeau-fixtures').hidden = !rejoue;
+  $('bandeau-fournisseur').hidden = !secours;
+  if (secours) $('bandeau-moteur').textContent = MOTEURS[fournisseur] || fournisseur;
+  $('bandeau').hidden = false;
+}
+
+/* ---- 7. porte d'entrée -------------------------------------------------- */
+/* Le démonstrateur tourne sur les clés API de ses auteurs : sans porte, quiconque
+   trouve l'URL chiffre à leurs frais. Le code est unique et donné de vive voix ;
+   ce n'est pas une authentification, c'est un verrou en attendant les comptes.
+
+   Il est gardé par le navigateur pour ne pas être redemandé à chaque devis — mais
+   c'est le serveur qui décide, à chaque appel. Ce qui est stocké ici n'est qu'une
+   commodité : le retirer ne donne accès à rien. */
+
+const CLE_ACCES = 'devis-vocal.acces';
+
+let codeAcces = '';
+try { codeAcces = localStorage.getItem(CLE_ACCES) || ''; } catch (_) { /* stockage bloqué */ }
+
+function enteteAcces() {
+  return codeAcces ? { 'X-Acces': codeAcces } : {};
+}
+
+function oublierAcces() {
+  codeAcces = '';
+  try { localStorage.removeItem(CLE_ACCES); } catch (_) { /* rien à retirer */ }
+}
+
+async function entrer() {
+  const saisi = $('porte-code').value.trim();
+  if (!saisi) return;
+
+  const bouton = $('btn-porte');
+  bouton.disabled = true;
+  $('porte-erreur').textContent = '';
+
+  codeAcces = saisi;
+  let info = null;
+  try {
+    info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
+  } catch (_) {
+    $('porte-erreur').textContent = 'Serveur injoignable. Vérifiez le réseau.';
+  }
+
+  bouton.disabled = false;
+
+  if (!info) return;
+
+  if (info.acces === 'requis') {
+    oublierAcces();
+    $('porte-erreur').textContent = 'Code incorrect.';
+    $('porte-code').select();
+    return;
+  }
+
+  try { localStorage.setItem(CLE_ACCES, saisi); } catch (_) { /* vaut pour la session */ }
+  $('porte-code').value = '';
+  peindreSante(info);
+  montrer('accueil');
+}
+
+$('btn-porte').addEventListener('click', entrer);
+$('porte-code').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); entrer(); }
+});
+
+/* Au chargement : le serveur dit s'il réclame un code, et le reste de ce qu'il
+   annonce — moteur, mode — n'est donné qu'une fois la porte franchie. */
+(async () => {
+  let info = null;
+  try {
+    info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
+  } catch (_) {
+    return;  // serveur muet : la page reste debout, l'erreur viendra à l'usage
+  }
+
+  if (info.acces === 'requis') {
+    montrer('porte');
+    $('porte-code').focus({ preventScroll: true });
+    return;
+  }
+  peindreSante(info);
+})();

@@ -57,12 +57,64 @@ Une seule clé à mettre dans le `.env`, puis `USE_FIXTURES=false` :
 Elle sert à la transcription et au chiffrage. Groq et Anthropic restent utilisables via
 `TRANSCRIPTION_PROVIDER` et `STRUCTURATION_PROVIDER` — voir `.env.example`.
 
-Renseigner aussi les variables `ENTREPRISE_*` **avant chaque rendez-vous** : un devis au
-nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur argument du
-produit. Huit des dix lignes sont publiques — cherche son entreprise sur
-<https://annuaire-entreprises.data.gouv.fr> et tu as le SIRET, le code APE, l'adresse et
-de quoi former le n° de TVA. Seuls l'assurance décennale et l'IBAN doivent lui être
-demandés.
+### Avec la clé que tu as déjà
+
+OpenAI est le défaut, mais rien n'y oblige. Quasiment toutes les API de modèles
+parlent le format OpenAI, donc trois variables suffisent à en brancher une que le projet
+ne connaît pas — Mistral, DeepSeek, OpenRouter, xAI, ou un modèle local sous Ollama :
+
+```bash
+STRUCTURATION_PROVIDER=autre
+STRUCTURATION_BASE_URL=https://api.mistral.ai/v1
+STRUCTURATION_API_KEY=...
+MODEL_STRUCTURATION_AUTRE=mistral-large-latest
+```
+
+Pour les fournisseurs que le projet connaît déjà, **la clé suffit** : `STRUCTURATION_PROVIDER`
+se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` et rien d'autre chiffre chez
+Anthropic. On ne le précise que pour trancher quand plusieurs clés cohabitent — une clé
+OpenAI présente gagne toujours, puisque c'est le défaut. Le moteur retenu est annoncé sur
+`/health` et affiché dans le bandeau : déduit ne veut pas dire invisible.
+
+Même chose pour l'audio avec `TRANSCRIPTION_PROVIDER` : OpenAI si sa clé est là, sinon
+Groq, dont le Whisper est gratuit. `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY`
+branchent n'importe quel autre fournisseur au format OpenAI. Le `.env.example` liste les
+URL des fournisseurs courants.
+
+Un fournisseur qui ne sait pas imposer un schéma JSON bascule tout seul sur un mode moins
+contraint, avec un avertissement dans les logs. La sortie reste validée par Pydantic,
+donc un devis faux échoue au lieu de passer — mais il échouera plus souvent. Avant de
+faire confiance à un nouveau fournisseur devant un artisan, mesure-le :
+
+```bash
+uv run python scripts/comparer.py openai autre
+```
+
+## L'identité de l'artisan
+
+Un devis au nom de l'artisan qu'on a en face, avec son vrai SIRET, est le meilleur
+argument du produit. Il se renseigne **depuis la page**, pas depuis le `.env` : la
+ligne « Votre entreprise » sur l'écran d'accueil ouvre un champ de recherche.
+
+L'artisan tape le nom de sa boîte — ou son SIRET — et choisit dans la liste. Sept champs
+se remplissent d'un coup depuis l'annuaire public de l'État : raison sociale, forme
+juridique, adresse, ville, SIRET, code APE, et le numéro de TVA, qui n'est pas cherché
+mais *calculé* depuis le SIREN. Restent le téléphone, l'e-mail, l'assurance décennale et
+l'IBAN, qui ne figurent dans aucune base et n'appartiennent qu'à lui.
+
+L'identité est conservée par le navigateur et repart avec chaque demande de devis : le
+serveur n'en garde rien, et changer d'artisan entre deux rendez-vous ne demande plus
+d'éditer un fichier ni de redémarrer quoi que ce soit.
+
+Deux réserves à connaître. Une entreprise peut s'opposer à la diffusion de ses données —
+c'est fréquent chez les entrepreneurs individuels — et elle est alors introuvable : le
+formulaire de saisie reste ouvert dessous, et la clé de contrôle du SIRET attrape les
+fautes de frappe hors ligne. Et le capital social, mention obligatoire pour une société,
+n'est publié nulle part : l'écran le réclame plutôt que de l'inventer.
+
+Les variables `ENTREPRISE_*` du `.env` restent utiles comme valeurs de repli, notamment
+pour préremplir avant un rendez-vous. Ce qui est saisi dans la page les recouvre ; ce qui
+est laissé vide les laisse passer.
 
 Les identifiants légaux livrés par défaut sont à zéro, et pas remplis de valeurs
 plausibles : un devis dont l'argument est la conformité aux mentions obligatoires ne peut
@@ -337,15 +389,153 @@ POST   /api/gabarit/apercu  le PDF d'un gabarit, avant de l'enregistrer
 GET    /api/gabarit/modele  le gabarit livré, comme point de départ
 ```
 
+## Avant de mettre en ligne
+
+Le démonstrateur tourne sur **tes** clés API. Sur une URL publique sans protection,
+n'importe qui peut faire tourner le chiffrage à tes frais — il suffit du lien, aucune
+compétence requise. Trois gestes, dans cet ordre d'importance :
+
+**1. Poser un plafond de dépense chez ton fournisseur.** Deux minutes, gratuit, et c'est
+la seule barrière qu'un bug dans ce dépôt ne peut pas contourner. Console Anthropic ou
+tableau de bord OpenAI, plafond mensuel. Le tier gratuit de Groq est déjà sûr : pas de
+carte enregistrée, donc pas de facture possible.
+
+**2. Renseigner `ACCES_CODE` dans le `.env`.** Vide, tout est ouvert — c'est le mode de
+développement. Rempli, les routes coûteuses exigent le code et la page le réclame à
+l'arrivée.
+
+Il ne fait pas double emploi avec l'authentification Firebase, et il ne la remplace pas :
+le jeton dit **qui** appelle, le code dit qu'on a **le droit** d'appeler. Surtout, sans
+identifiants Firebase la vérification de jeton est inactive et `utilisateur_requis`
+laisse tout passer — le code d'accès est alors la seule chose qui garde l'API. Toutes
+les routes `/api/` sont couvertes, à la seule exception de `/api/firebase`, dont le
+navigateur a besoin pour afficher l'écran de connexion.
+
+**3. Vérifier que `DEVIS_PAR_JOUR` et `DEVIS_PAR_MOIS` te conviennent.** C'est le
+garde-fou du portefeuille : il couvre ce que le code d'accès ne couvre pas — un code qui
+a circulé, un script laissé en boucle, une fausse manœuvre. Deux échelles parce qu'une
+seule ne suffit pas : 80 par jour laisse passer 2 400 devis dans le mois.
+
+Les compteurs sont écrits dans `var/compteurs.json` et survivent à un redémarrage — un
+plafond qu'on annule en relançant l'application ne protège de rien. **En conteneur, ce
+dossier doit être un volume**, sans quoi chaque déploiement les remet à zéro. Leur état
+est lisible sur `/health`, une fois la porte franchie.
+
+Le reste est déjà en place et ne demande rien : en-têtes de sécurité et CSP stricte sur
+chaque réponse, refus des corps trop volumineux **avant** de les lire, limitation de
+débit par adresse, plafond de lignes par devis et de rendus PDF simultanés. Le détail
+des variables est dans `.env.example`, et `tests/test_securite.py` les couvre.
+
+Deux points à ne pas oublier au montage :
+
+- **HTTPS est obligatoire**, pas décoratif : le micro du navigateur ne s'ouvre pas sur
+  une page non sécurisée. Sans certificat, pas de dictée en rendez-vous.
+- Derrière un reverse proxy, lancer uvicorn avec `--proxy-headers`. Sans ça, toutes les
+  requêtes semblent venir du proxy et la limitation de débit compte une seule adresse
+  pour tout le monde. L'en-tête `X-Forwarded-For` n'est **jamais** lu directement : il
+  est écrit par le client, donc n'importe qui pourrait s'inventer une adresse neuve à
+  chaque requête.
+
 ## Déploiement
 
+Deux chemins. **Le premier ne demande pas Docker** — c'est celui qu'on recommande, parce
+que le seul obstacle qu'il résolvait, les dépendances système de Chromium, est levé par
+une commande Playwright.
+
+Dans les deux cas, **HTTPS n'est pas une finition** : le micro d'un navigateur ne
+s'ouvre pas sur une page non sécurisée. Sans certificat, pas de dictée en rendez-vous,
+donc pas de démonstration.
+
+### Sur un serveur, sans Docker
+
+Il te faut un domaine qui pointe vers la machine. Pas de domaine ? `duckdns.org` en
+donne un gratuitement et Let's Encrypt le reconnaît.
+
 ```bash
-docker compose up --build
+# 1. La mémoire. Chromium demande environ 1 Go au moment du rendu.
+free -m
+
+# 2. Python et les outils. Ubuntu 24.04 fournit déjà Python 3.12 ; sur 22.04,
+#    ajouter le PPA deadsnakes.
+sudo apt update && sudo apt install -y python3.12 python3.12-venv git
+
+# 3. Un utilisateur dédié — surtout pas root : l'application rend du HTML tiers
+#    dans Chromium.
+sudo useradd --system --create-home --home-dir /opt/devis-vocal devis
+sudo -u devis git clone <URL_DU_DEPOT> /opt/devis-vocal
+cd /opt/devis-vocal
+
+# 4. Les dépendances
+sudo -u devis python3.12 -m venv .venv
+sudo -u devis .venv/bin/pip install -r requirements.txt
+
+# 5. Chromium ET ses bibliothèques système, en une commande. C'est elle qui rend
+#    Docker facultatif.
+sudo .venv/bin/playwright install-deps chromium
+sudo -u devis .venv/bin/playwright install chromium
+
+# 6. La configuration. Ne pas oublier ACCES_CODE : c'est le geste de la mise en
+#    ligne (voir « Avant de mettre en ligne » plus haut).
+sudo -u devis cp .env.example .env && sudo -u devis nano .env
+sudo chmod 600 .env
+
+# 7. Le service
+sudo cp deploiement/devis-vocal.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now devis-vocal
+curl -s localhost:8000/health        # doit répondre
+
+# 8. Caddy, pour le HTTPS
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key   | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt   | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update && sudo apt install -y caddy
+
+sudo cp Caddyfile /etc/caddy/Caddyfile
+sudo nano /etc/caddy/Caddyfile      # remplacer {$DOMAINE} par ton domaine
+sudo systemctl reload caddy
+
+# 9. Vérifier
+curl -s https://ton-domaine/health
+journalctl -u caddy -n 30           # le certificat s'obtient en quelques secondes
+```
+
+Les ports **80 et 443** doivent être joignables : Let's Encrypt passe par le 80 pour
+vérifier le domaine. Si le certificat échoue, c'est presque toujours ça — ou le domaine
+qui ne pointe pas encore.
+
+Une précision sur le `.env` : systemd le lit ligne par ligne, sans interpréter. Pour
+Firebase, préférer donc `FIREBASE_CREDENTIALS` — un chemin vers le fichier JSON — plutôt
+que `FIREBASE_CREDENTIALS_JSON`, dont les accolades et les guillemets sur une seule ligne
+demanderaient un échappement délicat. La forme JSON existe pour les hébergeurs qui
+injectent des variables sans pouvoir déposer de fichier.
+
+Pour mettre à jour : `sudo -u devis git pull && sudo systemctl restart devis-vocal`.
+
+Deux dossiers ne doivent pas être effacés : `var/` (les compteurs de dépense — un
+plafond qu'on annule en redéployant ne protège de rien) et `journal/` (les vocaux réels
+des rendez-vous, qui ne se rejouent pas).
+
+Un seul processus uvicorn, volontairement : chaque worker lance son propre Chromium, et
+c'est la mémoire qui manque en premier sur un petit serveur.
+
+### Avec Docker
+
+```bash
+docker compose up --build                                            # local, sur 127.0.0.1:8000
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build   # serveur, avec Caddy
 ```
 
 L'image part de l'image officielle Playwright : Chromium et ses dépendances sont déjà
-dedans. Sur Coolify, pointer sur le `Dockerfile`, exposer le port 8000, healthcheck sur
-`/health`, et renseigner les variables d'environnement du `.env`.
+dedans. Le port n'est publié que sur la boucle locale — il faut vouloir l'ouvrir pour
+l'ouvrir, et Compose *fusionnant* les listes `ports`, une surcouche ne saurait pas le
+refermer ensuite.
+
+### Sur Coolify
+
+Pointer sur le `Dockerfile`, exposer le port 8000, healthcheck sur `/health`, et
+renseigner les variables d'environnement du `.env`. Coolify fournit lui-même le HTTPS :
+`docker-compose.prod.yml` et le `Caddyfile` ne servent alors à rien. Déclarer les
+volumes persistants pour `/app/var` et `/app/journal`.
 
 Pour l'authentification, Coolify injecte des variables et ne dépose pas de fichiers :
 utiliser `FIREBASE_CREDENTIALS_JSON` — le JSON du compte de service sur une ligne —

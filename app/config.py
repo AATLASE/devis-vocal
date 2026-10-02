@@ -6,12 +6,13 @@ sans aucun `.env` ni aucune clé API.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import Entreprise
@@ -46,7 +47,10 @@ class EntrepriseSettings(Entreprise, BaseSettings):
 
 
 class Config(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # `env_ignore_empty` : une ligne `STRUCTURATION_PROVIDER=` laissée vide, comme dans
+    # .env.example, vaut « non renseigné » et pas la chaîne vide — sans quoi pydantic la
+    # refuse et l'application ne démarre pas sur un .env copié tel quel.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", env_ignore_empty=True)
 
     # --- Clés API ---
     anthropic_api_key: str = ""
@@ -58,14 +62,53 @@ class Config(BaseSettings):
     # transcription : une seule clé, OPENAI_API_KEY, fait tourner tout le pipeline.
     # `anthropic` et `groq` restent sélectionnables. Groq est gratuit pour dégrossir,
     # mais son chiffrage est sensiblement moins juste (voir CONTRIBUTING.md).
-    structuration_provider: Literal["anthropic", "groq", "openai"] = "openai"
+    # `autre` accepte n'importe quelle API au format OpenAI — Mistral, DeepSeek,
+    # OpenRouter, Together, xAI, ou un modèle local servi par Ollama ou vLLM. Trois
+    # variables suffisent : l'URL, la clé, le modèle.
+    # Laisse vide et il se déduit de la clé qu'on trouve — voir `_deduire_fournisseurs`.
+    structuration_provider: Literal["anthropic", "groq", "openai", "autre"] | None = None
     model_structuration: str = "claude-opus-5"
     model_structuration_groq: str = "openai/gpt-oss-120b"
     model_structuration_openai: str = "gpt-5"
-    transcription_provider: Literal["openai", "groq"] = "openai"
-    model_transcription_openai: str = "gpt-4o-transcribe"
-    model_transcription: str = "whisper-large-v3-turbo"  # chez Groq
     groq_base_url: str = "https://api.groq.com/openai/v1"
+
+    # --- Fournisseur libre pour le chiffrage (STRUCTURATION_PROVIDER=autre) ---
+    structuration_base_url: str = ""
+    structuration_api_key: str = ""
+    model_structuration_autre: str = ""
+
+    # --- Transcription ---
+    # Même règle que le chiffrage : OpenAI par défaut, déduit de la clé si laissé vide.
+    # `autre` ouvre le même appel à n'importe quel fournisseur au format OpenAI —
+    # Fireworks, un Whisper local — avec TRANSCRIPTION_BASE_URL et TRANSCRIPTION_API_KEY.
+    transcription_provider: Literal["openai", "groq", "autre"] | None = None
+    model_transcription_openai: str = "gpt-4o-transcribe"
+    model_transcription: str = "whisper-large-v3-turbo"  # chez Groq, et pour `autre`
+    transcription_base_url: str = ""
+    transcription_api_key: str = ""
+
+    @property
+    def transcription_url(self) -> str | None:
+        """None veut dire api.openai.com, l'URL par défaut du SDK."""
+        return {
+            "groq": self.groq_base_url,
+            "autre": self.transcription_base_url,
+        }.get(self.transcription_provider)
+
+    @property
+    def transcription_key(self) -> str:
+        return {
+            "groq": self.groq_api_key,
+            "autre": self.transcription_api_key,
+        }.get(self.transcription_provider, self.openai_api_key)
+
+    @property
+    def transcription_variable(self) -> str:
+        """La variable à renseigner quand la clé manque — c'est elle que l'erreur nomme."""
+        return {
+            "groq": "GROQ_API_KEY",
+            "autre": "TRANSCRIPTION_API_KEY",
+        }.get(self.transcription_provider, "OPENAI_API_KEY")
 
     @property
     def modele_transcription_actif(self) -> str:
@@ -73,6 +116,15 @@ class Config(BaseSettings):
         if self.transcription_provider == "openai":
             return self.model_transcription_openai
         return self.model_transcription
+
+    @property
+    def modele_structuration(self) -> str:
+        return {
+            "anthropic": self.model_structuration,
+            "groq": self.model_structuration_groq,
+            "openai": self.model_structuration_openai,
+            "autre": self.model_structuration_autre,
+        }.get(self.structuration_provider, "?")
 
     # --- Mode hors-ligne : rejoue une extraction enregistrée, zéro appel API, zéro euro ---
     use_fixtures: bool = False
@@ -105,6 +157,45 @@ class Config(BaseSettings):
     @property
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
+
+    # Le code d'accès. Vide, tout est ouvert — c'est ce qu'on veut en développement et
+    # pendant les tests. Le renseigner arme la porte, et c'est le geste de la mise en
+    # ligne. Ce n'est pas une authentification : c'est un mot de passe unique qu'on
+    # donne de vive voix en rendez-vous, en attendant les comptes.
+    acces_code: str = ""
+
+    # Débit par adresse, sur une minute glissante. Trente laisse passer un artisan
+    # pressé qui reclique, et arrête une boucle.
+    limite_par_minute: int = 30
+
+    # Plafonds de chiffrages, tous appelants confondus. Le code protège du passant ;
+    # ceux-ci protègent du code qui a circulé et du script laissé en boucle. C'est le
+    # garde-fou du portefeuille : au-delà, plus aucun appel payant ne part.
+    #
+    # Deux échelles, parce qu'une seule ne suffit pas : un plafond journalier de 80
+    # laisse passer 2 400 devis dans le mois, ce qui n'est plus un démonstrateur mais
+    # une facture. Le mensuel attrape la fuite lente que le journalier laisse filer.
+    devis_par_jour: int = 80
+    devis_par_mois: int = 400
+
+    # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
+    # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en
+    # relançant l'application ne protège de rien.
+    #
+    # En conteneur, ce chemin DOIT être sur un volume, sinon chaque déploiement
+    # repart de zéro et on retombe exactement sur le problème qu'on voulait régler.
+    compteurs_fichier: Path = RACINE / "var" / "compteurs.json"
+
+    # Un devis qui pèse plus que ça n'est pas un devis, c'est une charge.
+    max_json_ko: int = 512
+
+    # Un devis honnête tient en quelques dizaines de lignes. Au-delà, c'est un
+    # Chromium qu'on cherche à faire ramer.
+    max_lignes_devis: int = 60
+
+    # Rendus PDF simultanés. Chaque page Chromium coûte de la mémoire, et sur un petit
+    # VPS c'est elle qui manque en premier — bien avant le processeur.
+    rendus_simultanes: int = 2
 
     # --- Authentification Firebase ---
     # Hors du périmètre d'origine du démonstrateur (CLAUDE.md interdit « comptes /
@@ -145,6 +236,51 @@ class Config(BaseSettings):
     def max_gabarit_octets(self) -> int:
         return self.max_gabarit_ko * 1024
 
+    @model_validator(mode="after")
+    def _deduire_fournisseurs(self) -> "Config":
+        """Sans STRUCTURATION_PROVIDER ni TRANSCRIPTION_PROVIDER, on prend la clé qu'on a.
+
+        Renseigner une clé et devoir en plus nommer son fournisseur est une double
+        déclaration qui ne sert à rien : la clé désigne déjà le moteur. On ne déduit
+        que le silence — un `*_PROVIDER` écrit dans le .env gagne toujours, y compris
+        pour forcer un fournisseur dont la clé est absente et obtenir le message
+        d'erreur qui va avec.
+
+        OpenAI passe en premier : c'est le fournisseur par défaut, et sa seule clé fait
+        tourner tout le pipeline. Groq passe en dernier pour le chiffrage bien qu'il
+        soit souvent présent, parce qu'une GROQ_API_KEY est d'abord là pour la
+        transcription — la trouver ne veut pas dire qu'on a choisi Groq pour chiffrer.
+
+        Le moteur retenu reste annoncé par `/health` et affiché à l'écran : déduit ne
+        veut pas dire invisible.
+        """
+        if self.structuration_provider is None:
+            if self.openai_api_key:
+                deduit = "openai"
+            elif self.anthropic_api_key:
+                deduit = "anthropic"
+            elif self.structuration_base_url:
+                deduit = "autre"
+            elif self.groq_api_key:
+                deduit = "groq"
+            else:
+                # Aucune clé nulle part : le fournisseur par défaut, dont le message
+                # d'absence nomme la variable à renseigner.
+                deduit = "openai"
+            self.structuration_provider = deduit
+
+        if self.transcription_provider is None:
+            if self.transcription_base_url:
+                deduit = "autre"
+            elif self.openai_api_key:
+                deduit = "openai"
+            elif self.groq_api_key:
+                deduit = "groq"
+            else:
+                deduit = "openai"
+            self.transcription_provider = deduit
+        return self
+
     entreprise_settings: EntrepriseSettings = Field(default_factory=EntrepriseSettings)
 
     @property
@@ -156,3 +292,21 @@ class Config(BaseSettings):
 @lru_cache
 def get_config() -> Config:
     return Config()
+
+
+def annoncer() -> None:
+    """Une ligne au démarrage : quel moteur chiffre, où part l'audio, dans quel mode.
+
+    C'est la question qu'on se pose toujours en premier quand un devis sort bizarre.
+    Appelée par le `lifespan` de l'application et par elle seule — `get_config()` est
+    invoquée des centaines de fois par requête, et un accesseur qui journalise se
+    retrouve à parler au milieu de n'importe quoi, y compris des tests d'autrui.
+    """
+    config = get_config()
+    logging.getLogger("devis-vocal").info(
+        "Chiffrage : %s · transcription : %s (%s) · mode : %s",
+        config.structuration_provider,
+        config.transcription_provider,
+        config.transcription_url or "api.openai.com",
+        "fixtures" if config.use_fixtures else "réel",
+    )

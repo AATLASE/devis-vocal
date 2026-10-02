@@ -96,11 +96,7 @@ def configurer() -> None:
         "  configuration  mode=%s fournisseur=%s structuration=%s transcription=%s journal=%s",
         "fixtures" if config.use_fixtures else "reel",
         config.structuration_provider,
-        {
-            "anthropic": config.model_structuration,
-            "groq": config.model_structuration_groq,
-            "openai": config.model_structuration_openai,
-        }.get(config.structuration_provider, "?"),
+        config.modele_structuration,
         f"{config.transcription_provider}/{config.modele_transcription_actif}",
         "arme" if config.journal else "off",
     )

@@ -113,10 +113,15 @@ d'aucune clé.
 L'objectif n'est pas un produit, c'est une preuve à montrer à des artisans en rendez-vous.
 Time-box : un week-end.
 
-**Ne pas construire :** comptes / auth · bibliothèque de prix par artisan · apprentissage
-des devis passés · WhatsApp Business API · édition en ligne du devis · envoi par email ·
-signature électronique · facturation · paiement · CRM · base de données · file d'attente ·
-cache · gestion d'erreurs exhaustive · design poussé du front.
+**Ne pas construire :** bibliothèque de prix par artisan · apprentissage des devis passés ·
+WhatsApp Business API · envoi par email · signature électronique · facturation ·
+paiement · CRM · file d'attente · cache · gestion d'erreurs exhaustive · design poussé
+du front.
+
+Trois éléments de cette liste en ont été retirés sur décision explicite — les comptes,
+la base de données (pour les gabarits seulement) et la correction du devis à l'écran.
+Leurs limites sont écrites dans `CLAUDE.md` § Périmètre : elles ne s'étendent pas
+d'elles-mêmes.
 
 Une seule exception à la sobriété : **le PDF**. C'est la vitrine, il doit être impeccable.
 

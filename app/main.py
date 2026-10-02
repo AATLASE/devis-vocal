@@ -7,9 +7,16 @@ l'aller-retour en JSON. C'est ce qui permet au navigateur d'afficher une vraie p
     POST /api/transcribe   audio          -> { transcription }
     POST /api/devis        transcription  -> Devis chiffré
     POST /api/pdf          Devis          -> application/pdf
+    GET  /api/entreprise   q              -> [ identités trouvées ]
 
 S'y ajoute `POST /api/apercu`, qui rend le même document que `/api/pdf` mais en HTML,
 pour l'aperçu A4 affiché pendant la relecture.
+
+Depuis l'ajout de l'édition — hors périmètre d'origine, voir CLAUDE.md § Périmètre —
+l'artisan corrige son devis à l'écran de relecture, et le serveur le recalcule :
+
+    POST /api/devis/corriger   Devis + corrections -> Devis recalculé
+    GET  /api/adresse          q                   -> [ adresses trouvées ]
 
 Depuis l'ajout des comptes — hors périmètre d'origine, voir CLAUDE.md § Périmètre —
 s'y ajoutent les routes de la fiche et du gabarit personnels de l'artisan :
@@ -36,19 +43,24 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from app import adresse as adresse_module
 from app import gabarits as gabarits_module
 from app import journal
 from app import pdf as pdf_module
 from app import profils as profils_module
 from app import suivi
 from app.authentification import Utilisateur, utilisateur_optionnel, utilisateur_requis
-from app.config import get_config
+from app.adresse import AdresseTrouvee
+from app.config import annoncer, get_config
+from app.edition import Corrections, EditionRefusee, recalculer
+from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
 from app.gabarits import GabaritRefuse
+from app import securite
 from app.models import Devis, to_devis
 from app.profils import ProfilRefuse
 from app.structuration import StructurationError, structure
@@ -64,6 +76,7 @@ async def lifespan(app: FastAPI):
     # Avant Chromium : si le navigateur ne démarre pas, on veut que la raison soit
     # dans le fichier de log et pas seulement dans un terminal qu'on aura fermé.
     suivi.configurer()
+    annoncer()
 
     # Chromium est lancé une fois pour toutes : le démarrer à chaque devis coûterait
     # une seconde de plus par rendu.
@@ -86,25 +99,54 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Devis Vocal", lifespan=lifespan)
 
+# L'ordre compte : le dernier enregistré s'exécute en premier. On refuse donc une
+# requête trop grosse avant de perdre du temps à poser des en-têtes sur sa réponse.
+app.middleware("http")(securite.poser_les_entetes)
+app.middleware("http")(securite.garder_les_routes)
+app.middleware("http")(securite.limiter_la_taille)
+
 
 class DemandeDevis(BaseModel):
     transcription: str
     taux_tva: Decimal | None = None  # force 0.10 ou 0.20 ; sinon on suit le LLM
 
+    # L'identité de l'artisan voyage avec la demande plutôt que de vivre dans le `.env`.
+    # Sans ça, changer d'artisan entre deux rendez-vous impose d'éditer un fichier et de
+    # redémarrer le serveur — impossible à faire en montrant l'outil à quelqu'un.
+    # Le serveur ne la retient pas : elle est conservée par le navigateur, ce qui laisse
+    # intacte la règle « le serveur ne garde rien ». Absente, on retombe sur la config.
+    entreprise: EntrepriseSaisie | None = None
+
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health(request: Request) -> dict[str, str]:
     # `mode` et `provider` sont lus par le front pour signaler à l'écran ce qui tourne
     # vraiment. Sans eux, on peut montrer à un artisan un devis rejoué depuis une
     # fixture — ou chiffré par un moteur de secours — en croyant voir le moteur de
     # référence. Dans les deux cas l'erreur est grossière et parfaitement invisible.
     # `provider` sert aussi à annoncer la bonne attente : quarante secondes chez
     # Anthropic, six chez Groq.
+    # `acces` est la seule information donnée sans le code : c'est elle qui permet à
+    # la page de savoir qu'il faut le demander. Le moteur et le mode, eux, ne
+    # regardent pas un visiteur de passage — ils disent quelles clés tournent derrière.
+    if securite.acces_requis():
+        try:
+            securite.verifier_acces(request)
+        except HTTPException:
+            return {"status": "ok", "acces": "requis"}
+
     config = get_config()
+    # `acces` décrit l'état de CETTE requête, pas la configuration du serveur :
+    # « requis » veut dire « il me manque un code valide », « ouvert » veut dire
+    # « tu peux continuer ». Confondre les deux, c'est une porte qui ne s'ouvre jamais.
+    # Les compteurs de dépense sont annoncés ici : savoir où on en est ne doit pas
+    # demander d'ouvrir un fichier sur le serveur, ni d'attendre la facture.
     return {
         "status": "ok",
+        "acces": "ouvert",
         "mode": "fixtures" if config.use_fixtures else "reel",
         "provider": config.structuration_provider,
+        **{cle: str(valeur) for cle, valeur in securite.compteurs().items()},
     }
 
 
@@ -131,6 +173,9 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
 @app.post("/api/devis")
 async def api_devis(demande: DemandeDevis) -> Devis:
     config = get_config()
+    # Compté avant l'appel, pas après : ce qu'on protège, c'est la dépense, et elle
+    # est engagée dès que la requête part chez le fournisseur.
+    securite.consommer_devis()
     try:
         with suivi.etape("structuration", attendu=StructurationError,
                          caracteres=len(demande.transcription)) as detail:
@@ -145,9 +190,15 @@ async def api_devis(demande: DemandeDevis) -> Devis:
     suivi.bloc("extraction", extraction.model_dump_json(indent=2))
     journal.noter_extraction(demande.transcription, extraction)
 
+    entreprise = (
+        demande.entreprise.fusionner(config.entreprise)
+        if demande.entreprise
+        else config.entreprise
+    )
+
     devis = to_devis(
         extraction,
-        entreprise=config.entreprise,
+        entreprise=entreprise,
         transcription=demande.transcription,
         validite_jours=config.validite_jours,
         acompte_pct=config.acompte_pct,
@@ -165,11 +216,48 @@ async def api_devis(demande: DemandeDevis) -> Devis:
     return devis
 
 
+class DemandeCorrection(BaseModel):
+    devis: Devis  # le devis tel qu'il a été établi — numéro, date, entreprise, conditions
+    corrections: Corrections
+
+
+@app.post("/api/devis/corriger")
+async def api_devis_corriger(demande: DemandeCorrection) -> Devis:
+    """Le devis corrigé par l'artisan, recalculé de bout en bout.
+
+    Aucun appel au modèle, donc rien qui coûte : la route ne consomme pas le plafond
+    de devis du jour. Le débit, lui, s'applique comme partout sous `/api/`.
+    """
+    try:
+        devis = recalculer(
+            demande.devis, demande.corrections, max_lignes=get_config().max_lignes_devis
+        )
+    except EditionRefusee as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+    logger.info(
+        "  correction numero=%s lignes=%d tva=%s total_ht=%s total_ttc=%s dont_estime=%s",
+        devis.numero, len(devis.lignes), devis.taux_tva, devis.total_ht,
+        devis.total_ttc, devis.total_ht_estime,
+    )
+    return devis
+
+
 @app.post("/api/pdf")
 async def api_pdf(
     devis: Devis,
     utilisateur: Utilisateur = Depends(utilisateur_optionnel),
 ) -> Response:
+    # Le corps de la requête est un devis quelconque, fabriqué par le client. Sans
+    # plafond, cinquante mille lignes occupent Chromium pendant plusieurs minutes —
+    # et pendant ce temps, plus personne n'obtient de PDF.
+    plafond = get_config().max_lignes_devis
+    if len(devis.lignes) > plafond:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Un devis ne peut pas dépasser {plafond} lignes.",
+        )
+
     # L'authentification est facultative ici, et c'est délibéré : un artisan qui n'est
     # pas connecté doit pouvoir dicter et sortir son devis exactement comme avant. Le
     # compte ne sert qu'à retrouver son gabarit.
@@ -467,6 +555,32 @@ class StatiquesRevalidees(StaticFiles):
         reponse = super().file_response(*args, **kwargs)
         reponse.headers["Cache-Control"] = REVALIDER
         return reponse
+
+
+@app.get("/api/entreprise")
+async def api_entreprise(q: str = "") -> list[EntrepriseTrouvee]:
+    """Retrouve une entreprise par nom, ville ou numéro, dans la base publique.
+
+    Le travail se fait ici et pas dans le navigateur, pour la même raison que les totaux :
+    la clé de TVA, la clé de contrôle du SIRET et la traduction des codes officiels sont
+    du calcul, et le calcul ne quitte pas Python. Le front n'a plus qu'à afficher.
+
+    Jamais d'erreur : une recherche infructueuse et un annuaire en panne donnent tous deux
+    une liste vide, et le formulaire de saisie prend le relais. Un artisan bloqué parce
+    qu'un service tiers ne répond pas, ce serait le comble pour un champ qu'on cherche
+    justement à lui épargner.
+    """
+    return await rechercher(q)
+
+
+@app.get("/api/adresse")
+async def api_adresse(q: str = "") -> list[AdresseTrouvee]:
+    """Autocomplète l'adresse du client depuis la Base Adresse Nationale.
+
+    Même contrat que la recherche d'entreprise : jamais d'erreur, une liste vide quand
+    rien ne colle ou que la base ne répond pas, et l'artisan tape l'adresse en entier.
+    """
+    return await adresse_module.rechercher(q)
 
 
 @app.get("/")

@@ -1,0 +1,56 @@
+# Surcouche de mise en ligne. À utiliser avec le fichier principal :
+#
+#     docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Elle fait trois choses, et chacune corrige un défaut du montage de développement :
+#
+# 1. Elle met Caddy devant, seul à joindre l'application par le réseau interne de
+#    Docker. Le port 8000, lui, est déjà limité à la boucle locale par le fichier
+#    principal — Compose fusionnant les listes `ports`, une surcouche ne pourrait pas
+#    refermer ce qui aurait été ouvert.
+# 2. Caddy obtient et renouvelle le certificat tout seul. Sans HTTPS, le micro du
+#    navigateur reste fermé et il n'y a pas de dictée possible.
+# 3. Elle fait confiance à Caddy pour l'adresse réelle de l'appelant — ce qui n'est
+#    sûr que grâce au point 1, et seulement grâce à lui.
+
+services:
+  devis-vocal:
+    # Aucune section `ports` ici, volontairement : Compose fusionne les listes au lieu
+    # de les remplacer, donc une surcouche ne saurait pas refermer un port ouvert. Le
+    # fichier principal se limite déjà à la boucle locale, et c'est ce qu'il faut.
+    environment:
+      # Caddy est le seul à pouvoir atteindre l'application : plus personne d'autre ne
+      # peut écrire `X-Forwarded-For`, et lui écrase toujours celui du client. C'est
+      # ce qui rend `*` sûr ICI, et nulle part ailleurs.
+      #
+      # Si tu rouvres un jour le port 8000 vers l'extérieur, remets cette valeur à
+      # 127.0.0.1 dans la seconde — sinon n'importe qui s'invente une adresse neuve à
+      # chaque requête et la limitation de débit ne limite plus rien.
+      FORWARDED_ALLOW_IPS: "*"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"     # exigé par Let's Encrypt pour la vérification du domaine
+      - "443:443"
+      - "443:443/udp"
+    env_file: .env  # y lit DOMAINE
+    environment:
+      # Le Caddyfile vise la boucle locale par défaut, pour le montage systemd. En
+      # conteneur, 127.0.0.1 désignerait Caddy lui-même : on lui donne le nom du
+      # service, que Docker résout sur son réseau interne.
+      AMONT: "devis-vocal:8000"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Les certificats. Sans ce volume, Caddy en redemande à chaque déploiement et
+      # Let's Encrypt finit par refuser : cinq échecs par domaine et par heure.
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./logs/caddy:/var/log/caddy
+    depends_on:
+      - devis-vocal
+
+volumes:
+  caddy_data:
+  caddy_config:
