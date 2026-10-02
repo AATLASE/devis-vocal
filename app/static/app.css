@@ -481,6 +481,41 @@ body.compte-inconnu .screen { visibility: hidden; }
   color: var(--dv-danger);
   font-size: var(--dv-t-sm);
 }
+/* Le pendant de l'erreur, pour ce qui s'est bien passé : l'e-mail de
+   réinitialisation est parti. */
+.connexion__info {
+  margin-top: var(--dv-s-6);
+  padding: var(--dv-s-4) var(--dv-s-5);
+  background: var(--dv-accent-tint);
+  border: 1px solid var(--dv-accent-edge);
+  border-radius: var(--dv-radius);
+  color: var(--dv-accent);
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+}
+
+/* « Mot de passe oublié ? », sous le champ, en face de son aide. Un lien et non un
+   bouton plein : c'est la sortie de secours, pas le chemin. La marge négative rend
+   à la ligne la hauteur que la cible tactile lui prend. */
+.champ__pied {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--dv-s-4);
+  margin-top: calc(var(--dv-s-2) * -1);
+}
+.connexion__oubli {
+  display: inline-flex; align-items: center;
+  min-height: var(--dv-cible);
+  padding: 0;
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color var(--dv-duree-vite) var(--dv-sortie);
+}
+.connexion__oubli:hover { color: var(--dv-accent); }
+.connexion__oubli:disabled { cursor: default; opacity: .6; }
 
 
 /* ======================================================================== */

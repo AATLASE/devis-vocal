@@ -26,6 +26,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -99,11 +100,19 @@ const MESSAGES = {
     "Ce mode de connexion n'est pas activé sur le projet Firebase.",
 };
 
-const message = (err) =>
-  (err && MESSAGES[err.code]) || "La connexion a échoué. Réessayez dans un instant.";
+const message = (err, defaut = "La connexion a échoué. Réessayez dans un instant.") =>
+  (err && MESSAGES[err.code]) || defaut;
 
 function direErreur(texte) {
   const zone = $('connexion-erreur');
+  zone.textContent = texte;
+  zone.hidden = !texte;
+}
+
+/* Ce qui s'est bien passé — l'e-mail de réinitialisation est parti. Une zone à
+   part de l'erreur : `role="status"` et non `alert`, et une autre couleur. */
+function direInfo(texte) {
+  const zone = $('connexion-info');
   zone.textContent = texte;
   zone.hidden = !texte;
 }
@@ -138,6 +147,10 @@ async function demarrer() {
     reveler();
     return;
   }
+
+  // Les e-mails que Firebase envoie lui-même — la réinitialisation du mot de passe —
+  // et la page où l'on en choisit un nouveau sortent dans cette langue.
+  auth.languageCode = 'fr';
 
   window.Compte.actif = true;
   // `getIdToken()` renouvelle tout seul le jeton quand il approche de l'expiration :
@@ -408,11 +421,61 @@ async function envoyerProfil() {
 
 async function tenter(action) {
   direErreur('');
+  direInfo('');
   try {
     await action();
   } catch (err) {
     direErreur(message(err));
   }
+}
+
+/* ---- mot de passe oublié ------------------------------------------------ */
+/* Tout le travail est fait par Firebase : c'est lui qui envoie l'e-mail, et c'est
+   sur sa page que l'artisan choisit son nouveau mot de passe. Le serveur n'envoie
+   rien et ne voit jamais passer un mot de passe — ni l'ancien, ni le nouveau. */
+
+async function envoyerLeLien(email) {
+  try {
+    // L'adresse de retour ajoute, sur la page de Firebase, un bouton qui ramène ici
+    // une fois le mot de passe changé.
+    await sendPasswordResetEmail(auth, email, { url: window.location.origin + '/' });
+  } catch (err) {
+    // Firebase n'accepte une adresse de retour que sur un domaine autorisé du projet,
+    // et `127.0.0.1` n'en fait pas partie d'origine. On envoie alors le lien sans
+    // bouton de retour plutôt que de ne rien envoyer du tout.
+    if (err.code !== 'auth/unauthorized-continue-uri' && err.code !== 'auth/invalid-continue-uri') {
+      throw err;
+    }
+    await sendPasswordResetEmail(auth, email);
+  }
+}
+
+async function motDePasseOublie() {
+  const email = $('champ-email').value.trim();
+  direErreur('');
+  direInfo('');
+
+  if (!email) {
+    direErreur('Renseignez votre adresse e-mail ci-dessus, puis touchez de nouveau « Mot de passe oublié ».');
+    $('champ-email').focus();
+    return;
+  }
+
+  const bouton = $('btn-oubli');
+  bouton.disabled = true;
+  try {
+    await envoyerLeLien(email);
+  } catch (err) {
+    direErreur(message(err, "L'e-mail n'a pas pu être envoyé. Réessayez dans un instant."));
+    return;
+  } finally {
+    bouton.disabled = false;
+  }
+
+  // « Si un compte existe » et non « un e-mail est parti » : Firebase ne dit pas si
+  // l'adresse est connue, exprès — sinon ce lien servirait à tester des adresses.
+  direInfo('Si un compte existe à l’adresse ' + email + ', un e-mail vient de partir avec un '
+    + 'lien pour choisir un nouveau mot de passe. Pensez à regarder dans les indésirables.');
 }
 
 function brancher() {
@@ -434,6 +497,8 @@ function brancher() {
     }
     tenter(() => createUserWithEmailAndPassword(auth, email, motdepasse));
   });
+
+  $('btn-oubli').addEventListener('click', motDePasseOublie);
 
   $('btn-deconnexion').addEventListener('click', () => signOut(auth));
 

@@ -118,6 +118,16 @@ def reinitialiser() -> None:
 # ---------------------------------------------------------------------------
 
 
+# Le SDK refuse par défaut un jeton dont l'heure d'émission est dans le futur, à la
+# seconde près. Or un jeton sort tout juste des serveurs de Google au moment de la
+# connexion : il suffit que le poste retarde de quelques secondes pour que la toute
+# première requête soit refusée (« Token used too early ») — et c'est celle qui lit la
+# fiche. Observé sur un portable dont la synchronisation Windows était arrêtée. Soixante
+# secondes est le maximum que le SDK accepte ; la contrepartie, un jeton expiré toléré
+# une minute de plus, ne pèse rien.
+TOLERANCE_HORLOGE_S = 60
+
+
 def verifier_jeton(jeton: str) -> Utilisateur:
     """Vérifie un ID token Firebase et en tire l'utilisateur.
 
@@ -126,7 +136,9 @@ def verifier_jeton(jeton: str) -> Utilisateur:
     from firebase_admin import auth as firebase_auth
 
     try:
-        revendications = firebase_auth.verify_id_token(jeton, app=application())
+        revendications = firebase_auth.verify_id_token(
+            jeton, app=application(), clock_skew_seconds=TOLERANCE_HORLOGE_S
+        )
     except firebase_auth.ExpiredIdTokenError as err:
         raise AuthError("Votre session a expiré. Reconnectez-vous.") from err
     except firebase_auth.RevokedIdTokenError as err:

@@ -55,7 +55,8 @@ def transcribe(audio: bytes, filename: str) -> str:
 
     # Tous les fournisseurs parlent le même protocole : seuls la clé, l'URL et le
     # modèle changent, et la configuration les a déjà choisis.
-    cle, modele = config.transcription_key, config.modele_transcription
+    fournisseur = config.transcription_provider
+    cle, modele = config.transcription_key, config.modele_transcription_actif
     if not cle:
         raise TranscriptionError(
             f"{config.transcription_variable} absente. Renseigne-la dans le .env, ou "
@@ -99,9 +100,9 @@ def transcribe(audio: bytes, filename: str) -> str:
             "conservé — réessayez dans un instant."
         ) from err
 
-    # La transcription se facture à la durée d'audio, pas au token : la ligne dit
-    # quel modèle a répondu, le coût ne s'estime pas ici.
-    suivi.appel(config.transcription_provider, modele)
+    # Groq comme OpenAI facturent la transcription à la durée d'audio, pas au token :
+    # la ligne dit qui a répondu et avec quel modèle, le coût ne s'estime pas ici.
+    suivi.appel(fournisseur, modele)
 
     texte = (reponse.text or "").strip()
     if not texte:

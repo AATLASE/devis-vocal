@@ -97,7 +97,7 @@ def configurer() -> None:
         "fixtures" if config.use_fixtures else "reel",
         config.structuration_provider,
         config.modele_structuration,
-        config.modele_transcription,
+        f"{config.transcription_provider}/{config.modele_transcription_actif}",
         "arme" if config.journal else "off",
     )
     logger.info("  suivi          %s", config.log_dir / "devis-vocal.log")

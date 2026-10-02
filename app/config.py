@@ -111,7 +111,8 @@ class Config(BaseSettings):
         }.get(self.transcription_provider, "OPENAI_API_KEY")
 
     @property
-    def modele_transcription(self) -> str:
+    def modele_transcription_actif(self) -> str:
+        """Le modèle du fournisseur de transcription retenu — celui qui répond vraiment."""
         if self.transcription_provider == "openai":
             return self.model_transcription_openai
         return self.model_transcription
