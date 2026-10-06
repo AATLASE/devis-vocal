@@ -61,7 +61,7 @@ const FIL = {
   relecture:  'Relecture',
   vide:       'Devis non établi',
   erreur:     'Interruption',
-  gabarit:    'Mon gabarit',
+  template:    'Mon template',
 };
 
 function montrer(nom) {
@@ -368,7 +368,13 @@ let morceaux = [];
 let micro = null;
 let chronoDictee = null;
 let secondesDictee = 0;
+// Le temps réellement enregistré : ce qui est acquis avant la dernière pause, et le
+// début du segment en cours. Compter des tics d'une seconde en perdait jusqu'à une
+// par pause, or c'est cette durée qui sert de référence au lecteur de réécoute.
+let msAcquis = 0;
+let debutSegment = 0;
 let dicteeAnnulee = false;
+let dicteeDirecte = false;
 
 const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 
@@ -405,6 +411,13 @@ function ouvrirNiveau(flux) {
 
   const mesurer = () => {
     if (!analyseur) return;
+    // En pause le micro reste ouvert, donc l'analyseur entend toujours : ni les
+    // barres ni le pic ne doivent suivre une conversation qu'on n'enregistre pas.
+    if (enregistreur && enregistreur.state === 'paused') {
+      zone.style.setProperty('--dv-niveau', '0');
+      trameNiveau = requestAnimationFrame(mesurer);
+      return;
+    }
     analyseur.getByteTimeDomainData(echantillons);
     let somme = 0;
     for (const v of echantillons) {
@@ -518,17 +531,44 @@ function formatDisponible() {
 function peindreDictee(actif) {
   const zone = $('dictee');
   zone.classList.toggle('enregistre', actif);
+  $('dictee-actions').hidden = !actif;
   if (actif) {
     $('dictee-titre').textContent = mmss(0);
-    $('dictee-aide').replaceChildren(
-      noeud('span', 'dictee__point'),
-      document.createTextNode('Enregistrement · touchez pour arrêter'),
-    );
+    peindrePause(false);
     zone.setAttribute('aria-label', "Arrêter l'enregistrement");
   } else {
+    zone.classList.remove('en-pause');
     $('dictee-titre').textContent = 'Dictez votre devis';
     $('dictee-aide').textContent = 'Touchez pour commencer à parler';
     zone.setAttribute('aria-label', 'Enregistrer une note vocale');
+  }
+}
+
+/* La pause. `MediaRecorder` sait suspendre sans fermer le fichier : à la reprise il
+   écrit à la suite, et c'est un seul vocal qui part. Le micro, lui, reste ouvert —
+   le fermer mettrait fin à l'enregistrement. Toucher la carte arrête toujours, en
+   pause comme en cours : on peut finir sa dictée sans avoir à reprendre d'abord. */
+function peindrePause(enPause) {
+  $('dictee').classList.toggle('en-pause', enPause);
+  $('btn-pause-dictee').textContent = enPause ? 'Reprendre' : 'Pause';
+  $('dictee-aide').replaceChildren(
+    noeud('span', 'dictee__point'),
+    document.createTextNode(enPause
+      ? 'En pause · touchez pour terminer'
+      : 'Enregistrement · touchez pour arrêter'),
+  );
+}
+
+function basculerPause() {
+  if (!enregistreur) return;
+  if (enregistreur.state === 'recording') {
+    enregistreur.pause();
+    msAcquis += Date.now() - debutSegment;
+    peindrePause(true);
+  } else if (enregistreur.state === 'paused') {
+    enregistreur.resume();
+    debutSegment = Date.now();
+    peindrePause(false);
   }
 }
 
@@ -597,6 +637,8 @@ async function demarrerDictee() {
     const secondes = secondesDictee;
     const pic = picNiveau;
     const mesure = niveauMesure;
+    const directe = dicteeDirecte;
+    dicteeDirecte = false;
     fermerMicro();
     peindreDictee(false);
 
@@ -623,29 +665,45 @@ async function demarrerDictee() {
 
     // La durée vient du chronomètre et non du blob : un webm sorti de
     // MediaRecorder annonce presque toujours une durée infinie.
-    montrerRelu(new File([blob], `dictee.${extension}`, { type: blob.type }), secondes);
+    const fichier = new File([blob], `dictee.${extension}`, { type: blob.type });
+    // « Générer le devis » pendant la dictée : l'artisan a choisi d'envoyer sans
+    // réécouter. Les deux refus ci-dessus s'appliquent quand même.
+    if (directe) lancer(fichier, null, secondes);
+    else montrerRelu(fichier, secondes);
   });
 
   recorder.start();
   secondesDictee = 0;
+  msAcquis = 0;
+  debutSegment = Date.now();
   peindreDictee(true);
   chronoDictee = setInterval(() => {
-    secondesDictee += 1;
+    // L'intervalle tourne pendant la pause — c'est lui qui dit à `basculerDictee`
+    // qu'une dictée est en cours — mais il ne compte que ce qui s'enregistre.
+    if (recorder.state === 'paused') return;
+    secondesDictee = Math.floor((msAcquis + Date.now() - debutSegment) / 1000);
     $('dictee-titre').textContent = mmss(secondesDictee);
     if (secondesDictee >= DUREE_MAX) arreterDictee();
-  }, 1000);
+  }, 250);
 }
 
 /* `annuler` sépare les deux façons d'arrêter : le doigt qui met fin à la dictée
    pour l'envoyer, et le code qui la coupe pour en effacer la trace. L'événement
    `stop` du MediaRecorder n'arrive qu'après coup et ne saurait pas les distinguer
-   tout seul — il enchaînerait sur l'envoi dans les deux cas. */
-function arreterDictee(annuler) {
+   tout seul — il enchaînerait sur l'envoi dans les deux cas. `directe` est le
+   troisième cas : envoyer, mais sans passer par la réécoute. */
+function arreterDictee(annuler, directe) {
   clearInterval(chronoDictee);
   chronoDictee = null;
   dicteeAnnulee = !!annuler;
-  if (enregistreur && enregistreur.state !== 'inactive') enregistreur.stop();
-  else { fermerMicro(); peindreDictee(false); dicteeAnnulee = false; }
+  dicteeDirecte = !!directe;
+  if (enregistreur && enregistreur.state !== 'inactive') {
+    // Le dernier tic date d'un quart de seconde au plus : on solde le segment en
+    // cours pour que la durée annoncée soit celle du fichier.
+    if (enregistreur.state === 'recording') msAcquis += Date.now() - debutSegment;
+    secondesDictee = Math.floor(msAcquis / 1000);
+    enregistreur.stop();
+  } else { fermerMicro(); peindreDictee(false); dicteeAnnulee = dicteeDirecte = false; }
   enregistreur = null;
 }
 
@@ -815,7 +873,7 @@ function peindreVide(d) {
 
 /* ---- aperçu du document ------------------------------------------------ */
 /* La feuille A4 telle qu'elle partira, à côté du tableau qu'on relit. Elle sort du
-   même gabarit et de la même feuille de style que le PDF — c'est `/api/apercu`, qui
+   même template et de la même feuille de style que le PDF — c'est `/api/apercu`, qui
    rend le document en HTML au lieu de le passer par Chromium. Deux conséquences
    utiles : elle est là tout de suite, et elle se redimensionne.
 
@@ -851,12 +909,12 @@ async function peindreApercu() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(devisCourant),
     });
-    // Le gabarit de l'artisan a échoué et le serveur a rejoué sur celui livré. On
+    // Le template de l'artisan a échoué et le serveur a rejoué sur celui livré. On
     // le sait donc **avant** le téléchargement, au moment où il regarde le
     // document : c'est là que le dire sert à quelque chose.
-    if (r.headers.get('X-Gabarit-Repli') === '1') {
-      pdfSurGabaritDeRepli = true;
-      signalerRepliGabarit();
+    if (r.headers.get('X-Template-Repli') === '1') {
+      pdfSurTemplateDeRepli = true;
+      signalerRepliTemplate();
     }
     html = await r.text();
   } catch (_) {
@@ -877,7 +935,7 @@ async function peindreApercu() {
     const poser = () => {
       if (pose) return;
       pose = true;
-      // Le gabarit livré découpe le document en `.page` ; celui d'un artisan n'y
+      // Le template livré découpe le document en `.page` ; celui d'un artisan n'y
       // est pas tenu. Sans repère, on n'annonce pas de pagination plutôt que d'en
       // inventer une.
       const pages = doc.querySelectorAll('.page').length;
@@ -903,7 +961,7 @@ async function peindreApercu() {
 
   // `srcdoc` plutôt qu'une URL : le document hérite alors de l'origine de la page,
   // donc `/static/fonts.css` s'y charge normalement. Le bac à sable posé dans le
-  // balisage n'accorde pas `allow-scripts` — un gabarit d'artisan s'affiche, il ne
+  // balisage n'accorde pas `allow-scripts` — un template d'artisan s'affiche, il ne
   // s'exécute pas.
   cadre.srcdoc = html;
 }
@@ -960,10 +1018,10 @@ function appliquerVue() {
    de partage du système, elle, mène à WhatsApp, aux messages, au courrier. Ce n'est
    pas une intégration — c'est le partage de l'OS, et il tient en un appel. */
 
-/* Vrai quand le serveur a dû rejouer le PDF sur le gabarit livré parce que celui de
+/* Vrai quand le serveur a dû rejouer le PDF sur le template livré parce que celui de
    l'artisan a échoué. Sorti du corps de `genererPdf` parce que le blob voyage seul
    jusqu'au bouton, et que l'avertissement, lui, doit survivre au trajet. */
-let pdfSurGabaritDeRepli = false;
+let pdfSurTemplateDeRepli = false;
 
 async function genererPdf() {
   const r = await poste('/api/pdf', {
@@ -974,7 +1032,7 @@ async function genererPdf() {
   // Un devis sorti sur une autre mise en page que celle qu'on croit est exactement le
   // genre de substitution silencieuse que ce produit refuse ailleurs — voir le bandeau
   // du mode hors-ligne. Même principe : on le dit.
-  pdfSurGabaritDeRepli = r.headers.get('X-Gabarit-Repli') === '1';
+  pdfSurTemplateDeRepli = r.headers.get('X-Template-Repli') === '1';
   return await r.blob();
 }
 
@@ -1069,14 +1127,14 @@ async function envoyerPdf() {
     setTimeout(() => { libelle.textContent = dit; }, 2200);
   }
 
-  if (pdfSurGabaritDeRepli) signalerRepliGabarit();
+  if (pdfSurTemplateDeRepli) signalerRepliTemplate();
 }
 
-/* Le gabarit de l'artisan a échoué sur ce devis-là et le serveur a rejoué sur celui
+/* Le template de l'artisan a échoué sur ce devis-là et le serveur a rejoué sur celui
    livré. Le document est bon — il est simplement sur l'autre mise en page. Le dire au
    moment où l'artisan l'a en main, pas dans un log qu'il ne lira jamais. */
-function signalerRepliGabarit() {
-  const zone = $('bandeau-gabarit');
+function signalerRepliTemplate() {
+  const zone = $('bandeau-template');
   if (!zone) return;
   zone.hidden = false;
   $('bandeau').hidden = false;
@@ -1092,6 +1150,13 @@ dictee.addEventListener('keydown', (e) => {
     e.preventDefault();
     basculerDictee();
   }
+});
+$('btn-pause-dictee').addEventListener('click', basculerPause);
+$('btn-generer-dictee').addEventListener('click', () => {
+  if (chronoDictee) arreterDictee(false, true);
+});
+$('btn-annuler-dictee').addEventListener('click', () => {
+  if (chronoDictee) arreterDictee(true);
 });
 
 const depot = $('depot');
@@ -1207,7 +1272,7 @@ document.querySelectorAll('[data-recommencer]').forEach((b) =>
 /* La marque ramène à l'accueil. En cours d'établissement, elle abandonnerait un
    devis à mi-chemin sans le dire : on la laisse alors inerte plutôt que
    destructrice. Ailleurs, `reinitialiser()` fait le ménage complet.
-   `compte.js` pose son propre retour depuis l'écran du gabarit. */
+   `compte.js` pose son propre retour depuis l'écran du template. */
 $('marque').addEventListener('click', () => {
   if ($('ecran-traitement').classList.contains('is-active')) return;
   reinitialiser();

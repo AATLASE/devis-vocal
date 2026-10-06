@@ -5,7 +5,7 @@
 
    Ce fichier est lu deux fois : par le navigateur pour l'application, et par
    `app/pdf.py` qui l'inline en tête du document imprimé. Une variable ajoutée ici
-   est donc visible des deux côtés — et un gabarit d'artisan peut s'en servir.
+   est donc visible des deux côtés — et un template d'artisan peut s'en servir.
    D'où la séparation qui suit : ce qui vaut pour les deux surfaces d'abord, ce qui
    n'a de sens qu'à l'écran ensuite. Le papier n'a ni ombre, ni durée d'animation. */
 
@@ -192,7 +192,7 @@
   /* `--dv-mesure` : au-delà, l'œil perd la ligne suivante.                  */
 
   --dv-mesure-etroite: 480px;   /* connexion, message d'erreur */
-  --dv-mesure:         660px;   /* accueil, devis vide, gabarit */
+  --dv-mesure:         660px;   /* accueil, devis vide, template */
   --dv-mesure-large:   900px;   /* le tableau des prestations */
   --dv-mesure-xl:     1240px;   /* relecture avec l'aperçu A4 à côté */
 

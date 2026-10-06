@@ -27,7 +27,8 @@ from functools import lru_cache
 from math import ceil
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, TemplateError, select_autoescape
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import TemplateError as JinjaTemplateError
 from jinja2.sandbox import SandboxedEnvironment
 from markupsafe import Markup
 from playwright.async_api import Browser, async_playwright
@@ -65,7 +66,7 @@ LIGNES_MAX_AVEC_CLOTURE = 5     # sur une page de suite, où seul un titre coura
 # tableau de la page 1 demande en revanche de raisonner en hauteur : deux devis de
 # quatre lignes n'occupent pas la même place selon la longueur des désignations et des
 # observations. Toutes les valeurs ci-dessous sont **mesurées** dans le navigateur sur
-# le gabarit réel, jamais estimées à vue. Le jeu reproduit au pixel près la hauteur du
+# le template réel, jamais estimées à vue. Le jeu reproduit au pixel près la hauteur du
 # tableau des quatre fixtures.
 HAUTEUR_LIGNE = 38                      # une ligne de tableau sur une ligne de texte
 HAUTEUR_LIGNE_REPLI = 16                # chaque repli supplémentaire de la désignation
@@ -245,7 +246,7 @@ def _feuille_de_style(polices_inline: bool = True) -> Markup:
 
 
 def _poser_les_filtres(env: Environment) -> Environment:
-    """Les filtres de formatage français. Les mêmes des deux côtés : un gabarit
+    """Les filtres de formatage français. Les mêmes des deux côtés : un template
     d'artisan doit pouvoir écrire `{{ devis.total_ttc | euro }}` comme le nôtre."""
     env.filters["euro"] = f_euro
     env.filters["montant"] = f_montant
@@ -260,28 +261,28 @@ _env = _poser_les_filtres(
     Environment(loader=FileSystemLoader(TEMPLATES), autoescape=select_autoescape(["html"]))
 )
 
-# Le gabarit téléversé par un artisan est du code que nous n'avons pas écrit et que
+# Le template téléversé par un artisan est du code que nous n'avons pas écrit et que
 # nous exécutons sur notre serveur. Deux précautions, et elles ne sont pas de trop :
 #
 # - `SandboxedEnvironment` refuse l'accès aux attributs internes. Sans lui,
 #   `{{ devis.__class__.__init__.__globals__ }}` ouvre l'interpréteur — donc la
 #   configuration, donc les clés API.
-# - `loader=None` fait échouer `{% include %}` et `{% extends %}` : aucun gabarit ne
+# - `loader=None` fait échouer `{% include %}` et `{% extends %}` : aucun template ne
 #   lira un fichier du serveur.
 #
-# Ce qui reste possible, et qu'on assume : un gabarit peut écrire n'importe quoi dans
+# Ce qui reste possible, et qu'on assume : un template peut écrire n'importe quoi dans
 # le document, y compris un devis non conforme. C'est le sujet de `mentions_manquantes`.
-_env_gabarit = _poser_les_filtres(
+_env_template = _poser_les_filtres(
     SandboxedEnvironment(loader=None, autoescape=select_autoescape(["html"]))
 )
 
 
-class GabaritError(Exception):
-    """Le gabarit ne compile pas, ou explose au rendu."""
+class TemplateError(Exception):
+    """Le template ne compile pas, ou explose au rendu."""
 
 
 def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
-    """Tout ce qu'un gabarit peut lire. Documenté par `docs/gabarits.md` : c'est le
+    """Tout ce qu'un template peut lire. Documenté par `docs/templates.md` : c'est le
     contrat offert à l'artisan qui écrit sa propre mise en page."""
     pages, cloture_sur_derniere, total_pages = paginer(devis.lignes, devis.notes)
     return {
@@ -295,13 +296,13 @@ def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
     }
 
 
-def render_html(devis: Devis, gabarit: str | None = None, *, polices_inline: bool = True) -> str:
+def render_html(devis: Devis, template: str | None = None, *, polices_inline: bool = True) -> str:
     """Le devis en HTML. Exposé à part : c'est ce qu'on ouvre dans un onglet pour
     travailler la mise en page sans regénérer un PDF à chaque itération, et c'est ce
     que l'application affiche dans son aperçu A4.
 
-    `gabarit` remplace `templates/devis.html` par le HTML d'un artisan. Il est rendu
-    dans le bac à sable, avec exactement le même contexte — un gabarit tiers a accès
+    `template` remplace `templates/devis.html` par le HTML d'un artisan. Il est rendu
+    dans le bac à sable, avec exactement le même contexte — un template tiers a accès
     au devis, aux filtres et à la feuille de style, à rien d'autre.
 
     `polices_inline=False` allège le document de ses polices en base64 ; voir
@@ -309,12 +310,12 @@ def render_html(devis: Devis, gabarit: str | None = None, *, polices_inline: boo
     jamais pour un document qui doit se suffire à lui-même.
     """
     ctx = contexte(devis, polices_inline=polices_inline)
-    if gabarit is None:
+    if template is None:
         return _env.get_template("devis.html").render(**ctx)
     try:
-        return _env_gabarit.from_string(gabarit).render(**ctx)
-    except TemplateError as err:
-        raise GabaritError(f"{type(err).__name__} : {err}") from err
+        return _env_template.from_string(template).render(**ctx)
+    except JinjaTemplateError as err:
+        raise TemplateError(f"{type(err).__name__} : {err}") from err
 
 
 # ---------------------------------------------------------------------------
@@ -344,20 +345,20 @@ async def arreter() -> None:
         _playwright = None
 
 
-async def render(devis: Devis, gabarit: str | None = None) -> bytes:
-    """Produit le PDF du devis. `gabarit` : le HTML de l'artisan, sinon celui livré."""
+async def render(devis: Devis, template: str | None = None) -> bytes:
+    """Produit le PDF du devis. `template` : le HTML de l'artisan, sinon celui livré."""
     await demarrer()  # filet : permet d'appeler render() depuis un test, hors application
     assert _navigateur is not None
 
     page = await _navigateur.new_page()
     try:
-        await page.set_content(render_html(devis, gabarit), wait_until="load")
+        await page.set_content(render_html(devis, template), wait_until="load")
         # `load` ne dit rien des polices. Sans cette attente, Chromium imprime par
         # intermittence en police de repli — le document est alors juste, mais ce n'est
         # plus le design.
         await page.evaluate("document.fonts.ready")
         return await page.pdf(
-            # `@page { size: A4; margin: 0 }` et les pieds de page du gabarit portent
+            # `@page { size: A4; margin: 0 }` et les pieds de page du template portent
             # désormais les marges et la pagination : le navigateur n'ajoute rien.
             prefer_css_page_size=True,
             margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},

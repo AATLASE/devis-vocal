@@ -92,7 +92,7 @@ note vocale ──▶ POST /api/transcribe ──▶ transcription
      affiché pendant la relecture
 ```
 
-`/api/apercu` et `/api/pdf` rendent **le même document, sur le même gabarit** : l'un
+`/api/apercu` et `/api/pdf` rendent **le même document, sur le même template** : l'un
 par le navigateur de l'artisan, l'autre par Chromium. L'aperçu est là tout de suite et
 se redimensionne, là où le PDF coûte une à deux secondes de rendu ; il ne peut donc pas
 mentir sur le fond, et ne se réserve qu'un cheveu d'écart sur le rendu des polices.
@@ -113,7 +113,7 @@ Le découpage du code suit ce pipeline :
 | `app/journal.py` | Garde les vocaux réels des rendez-vous — hors du parcours, désactivé par défaut |
 | `app/authentification.py` | Firebase Auth. Deux dépendances FastAPI, et le seul module qui importe `firebase_admin` |
 | `app/profils.py` | La fiche de l'artisan — nom, prénom, entreprise, rôle. Demandée à l'inscription, **jamais dans le devis** |
-| `app/gabarits.py` | Le gabarit de devis par artisan : stockage, validation, contrôle des mentions |
+| `app/templates.py` | Le template de devis par artisan : stockage, validation, contrôle des mentions |
 
 ### Ce que fait le navigateur
 
@@ -127,8 +127,15 @@ de chercher un fichier. Le dépôt de fichier et le texte collé restent en repl
 - **Le point qui bat suit la voix**, pas une horloge : un analyseur mesure le niveau en
   continu. Si le pic n'a jamais dépassé le seuil, l'enregistrement n'est pas envoyé — un
   micro coupé se découvrirait sinon au retour de la transcription, trop tard.
-- **On réécoute avant d'envoyer.** L'arrêt ne déclenche plus le devis : il propose
-  « Établir le devis » ou « Refaire ».
+- **La dictée se met en pause.** Sous la carte, deux boutons côte à côte pendant
+  l'enregistrement. « Pause » suspend et reprend ; le chronomètre et les barres de
+  niveau s'arrêtent avec lui, et la reprise écrit à la suite dans le même vocal. Un
+  chantier interrompt sans cesse : sans pause, une question du client obligeait à
+  tout redicter. « Générer le devis » arrête et envoie d'un seul geste. Dessous, sur
+  toute la largeur et en rouge, « Annuler l'enregistrement » jette la dictée et
+  revient à l'accueil.
+- **On peut réécouter avant d'envoyer.** Toucher la carte arrête sans déclencher le
+  devis : l'écran propose « Établir le devis » ou « Refaire ».
 - **Si le chiffrage échoue**, la transcription est conservée et l'écran d'erreur propose de
   rejouer cette seule étape — sans refaire parler l'artisan.
 - **L'enregistrement est léger** : mono, 32 kbit/s. Chrome enregistre par défaut quatre
@@ -292,17 +299,17 @@ ensuite) :
 uv run python scripts/enregistrer_fixture.py sdb2 samples/vocal.m4a --audio
 ```
 
-## Comptes et gabarit par artisan
+## Comptes et template par artisan
 
 > **Hors du périmètre d'origine**, ajouté sur décision explicite. `CLAUDE.md` classait
 > « comptes / auth / multi-tenant » et « base de données » dans ce qu'il ne fallait pas
 > construire ; l'exception et ses garde-fous y sont maintenant décrits.
 
 Un artisan connecté peut remplacer la mise en page A4 livrée par la sienne, un fichier
-HTML qu'il téléverse. Le mode d'emploi côté artisan est dans **`docs/gabarits.md`**.
+HTML qu'il téléverse. Le mode d'emploi côté artisan est dans **`docs/templates.md`**.
 
 **Sans identifiants Firebase, tout ceci est inactif** : pas d'écran de connexion, pas de
-gabarit, et le démonstrateur se comporte exactement comme avant. C'est le mode par
+template, et le démonstrateur se comporte exactement comme avant. C'est le mode par
 défaut — et celui dans lequel `uv run pytest` passe, sans le moindre secret.
 
 Pour l'armer, renseigner les variables `FIREBASE_*` du `.env.example` : un compte de
@@ -312,29 +319,29 @@ navigateur. Le détail des écrans de la console Firebase y est.
 Deux règles tiennent la fonctionnalité, et elles sont plus importantes qu'elle :
 
 - **Le compte ne conditionne jamais la dictée.** Un artisan non connecté dicte et sort
-  son devis comme avant. Le compte ne sert qu'à retrouver son gabarit — un jeton qui
+  son devis comme avant. Le compte ne sert qu'à retrouver son template — un jeton qui
   expire pendant les quarante secondes de structuration ne fait donc rien perdre.
-- **Un gabarit téléversé ne garantit plus les mentions obligatoires.** C'est le coût
-  réel de la fonctionnalité. Il n'est pas tu : à l'enregistrement, le gabarit est rendu
+- **Un template téléversé ne garantit plus les mentions obligatoires.** C'est le coût
+  réel de la fonctionnalité. Il n'est pas tu : à l'enregistrement, le template est rendu
   sur un devis d'exemple et passé au crible de quatorze contrôles — SIRET, TVA
   intracommunautaire, assurance, totaux, « bon pour accord »… Ce qui manque s'affiche à
-  l'écran et y reste. Le gabarit livré, lui, passe les quatorze.
+  l'écran et y reste. Le template livré, lui, passe les quatorze.
 
-Le gabarit est validé à l'enregistrement, jamais au moment du rendu : un gabarit qui
-n'aurait pas compilé est refusé tout de suite, pas devant le client. Et si un gabarit
+Le template est validé à l'enregistrement, jamais au moment du rendu : un template qui
+n'aurait pas compilé est refusé tout de suite, pas devant le client. Et si un template
 valide échoue quand même sur un vrai devis — vingt lignes au lieu de cinq, un champ nul
-— le serveur rejoue sur le gabarit livré et **le signale par un bandeau**, au lieu de
+— le serveur rejoue sur le template livré et **le signale par un bandeau**, au lieu de
 substituer une mise en page en silence.
 
 ```
-GET    /api/firebase        la config publique du SDK navigateur
-GET    /api/profil          la fiche de l'artisan connecté, et `complet`
-PUT    /api/profil          l'enregistrer (les quatre champs sont requis)
-GET    /api/gabarit         le gabarit de l'artisan connecté
-PUT    /api/gabarit         en poser un (validé avant enregistrement)
-DELETE /api/gabarit         revenir au gabarit livré
-POST   /api/gabarit/apercu  le PDF d'un gabarit, avant de l'enregistrer
-GET    /api/gabarit/modele  le gabarit livré, comme point de départ
+GET    /api/firebase         la config publique du SDK navigateur
+GET    /api/profil           la fiche de l'artisan connecté, et `complet`
+PUT    /api/profil           l'enregistrer (les quatre champs sont requis)
+GET    /api/template         le template de l'artisan connecté
+PUT    /api/template         en poser un (validé avant enregistrement)
+DELETE /api/template         revenir au template livré
+POST   /api/template/apercu  le PDF d'un template, avant de l'enregistrer
+GET    /api/template/modele  le template livré, comme point de départ
 ```
 
 ## Déploiement

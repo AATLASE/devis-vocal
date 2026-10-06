@@ -7,7 +7,7 @@ profil n'entre jamais dans le devis, et rien dans le code ne l'empêcherait de l
 faire un jour par inadvertance. Un test le tient.
 
 Aucune clé, aucun Firebase, aucun réseau : sans identifiants, `profils` range en
-mémoire, exactement comme `gabarits`.
+mémoire, exactement comme `templates`.
 """
 
 from __future__ import annotations

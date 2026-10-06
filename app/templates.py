@@ -1,4 +1,4 @@
-"""Le gabarit de devis propre à chaque artisan : stockage, validation, conformité.
+"""Le template de devis propre à chaque artisan : stockage, validation, conformité.
 
 Hors du périmètre d'origine (`CLAUDE.md` exclut « base de données » et « comptes /
 auth / multi-tenant »), ajouté sur décision explicite. Le module tient trois rôles :
@@ -7,14 +7,14 @@ auth / multi-tenant »), ajouté sur décision explicite. Le module tient trois 
    dictionnaire en mémoire sinon. Le repli n'est pas une commodité : c'est ce qui fait
    passer `uv run pytest` sans le moindre secret, et ce qui garde le démonstrateur
    utilisable hors-ligne.
-2. **Valider** avant d'enregistrer, jamais au moment du rendu. Un gabarit qui explose
+2. **Valider** avant d'enregistrer, jamais au moment du rendu. Un template qui explose
    pendant la démonstration, devant l'artisan, est exactement ce qu'on ne peut pas se
    permettre : on refuse donc à l'enregistrement ce qui ne rend pas.
-3. **Contrôler les mentions obligatoires**. Le gabarit livré garantit la conformité du
-   devis ; un gabarit téléversé ne garantit rien, et c'est le risque assumé de cette
-   fonctionnalité. Plutôt que de le taire, on rend un devis d'exemple avec le gabarit
+3. **Contrôler les mentions obligatoires**. Le template livré garantit la conformité du
+   devis ; un template téléversé ne garantit rien, et c'est le risque assumé de cette
+   fonctionnalité. Plutôt que de le taire, on rend un devis d'exemple avec le template
    et on vérifie que les valeurs qui doivent figurer sur un devis français y sont. Ce
-   qui manque est listé, montré à l'écran, et conservé sur le gabarit.
+   qui manque est listé, montré à l'écran, et conservé sur le template.
 """
 
 from __future__ import annotations
@@ -28,11 +28,13 @@ from decimal import Decimal
 
 from app.authentification import UID_LOCAL, application
 from app.config import get_config
-from app.models import Client, Devis, Entreprise, Gabarit, LigneDevis, Unite, arrondi
-from app.pdf import GabaritError, f_date_fr, f_date_longue, f_montant, render_html
+from app.models import Client, Devis, Entreprise, LigneDevis, Template, Unite, arrondi
+from app.pdf import TemplateError, f_date_fr, f_date_longue, f_montant, render_html
 
 logger = logging.getLogger("devis-vocal")
 
+# L'ancien nom, gardé tel quel : c'est sous lui que sont rangés les templates déjà
+# posés. Le renommer ici les rendrait introuvables sans migration de la base.
 COLLECTION = "gabarits"
 
 # Les deux blancs que produit le formatage français du devis : l'espace fine insécable
@@ -43,13 +45,13 @@ FINE_INSECABLE = "\u202f"
 INSECABLE = "\u00a0"
 
 
-class GabaritRefuse(Exception):
-    """Le gabarit ne peut pas être enregistré. Le message part vers le navigateur :
+class TemplateRefuse(Exception):
+    """Le template ne peut pas être enregistré. Le message part vers le navigateur :
     il doit dire à l'artisan quoi corriger, pas décrire une pile d'appels."""
 
 
 # ---------------------------------------------------------------------------
-# Le devis d'exemple — sert à valider un gabarit et à en montrer l'aperçu
+# Le devis d'exemple — sert à valider un template et à en montrer l'aperçu
 # ---------------------------------------------------------------------------
 
 # Les montants sont volontairement peu ronds. Le contrôle des mentions cherche des
@@ -66,10 +68,10 @@ _LIGNES_EXEMPLE = [
 
 
 def devis_exemple(entreprise: Entreprise | None = None) -> Devis:
-    """Un devis complet et figé, pour valider un gabarit et en produire l'aperçu.
+    """Un devis complet et figé, pour valider un template et en produire l'aperçu.
 
     Figé au sens strict — dates comprises. Un aperçu qui changerait d'un appel à
-    l'autre empêcherait de comparer deux versions d'un gabarit côte à côte.
+    l'autre empêcherait de comparer deux versions d'un template côte à côte.
     """
     entreprise = entreprise or get_config().entreprise
 
@@ -134,17 +136,17 @@ _ATTRIBUT_EVENEMENT = re.compile(r"""\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+
 
 
 def nettoyer(html: str) -> str:
-    """Retire le JavaScript du gabarit.
+    """Retire le JavaScript du template.
 
     Un devis est un document, pas une application : rien de ce qu'un script pourrait
     faire n'a sa place dans un PDF. Et Chromium exécute vraiment ce qu'on lui donne —
-    un gabarit avec un `fetch` ferait dépendre le rendu du réseau au moment précis où
+    un template avec un `fetch` ferait dépendre le rendu du réseau au moment précis où
     on montre le devis à un artisan, et pourrait poster ailleurs ce qu'il contient.
 
     Le filtre est un jeu d'expressions régulières, donc perfectible face à quelqu'un
     qui chercherait à le contourner. Ce n'est pas la frontière de sécurité : celle-ci
     est le bac à sable Jinja de `pdf.py`, plus le fait qu'un artisan ne téléverse un
-    gabarit que sur son propre compte. C'est une mesure d'hygiène du document.
+    template que sur son propre compte. C'est une mesure d'hygiène du document.
     """
     html = _SCRIPT.sub("", html)
     html = _SCRIPT_OUVERT.sub("", html)
@@ -159,7 +161,7 @@ def nettoyer(html: str) -> str:
 def _mentions_attendues(devis: Devis) -> list[tuple[str, list[str]]]:
     """Le libellé montré à l'artisan, et les chaînes dont au moins une doit figurer.
 
-    On cherche les **valeurs**, pas des mots-clés : vérifier que le gabarit contient
+    On cherche les **valeurs**, pas des mots-clés : vérifier que le template contient
     le mot « SIRET » ne dit pas qu'il imprime le SIRET.
     """
     e = devis.entreprise
@@ -217,41 +219,41 @@ def controler_les_mentions(html_rendu: str, devis: Devis) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Validation complète — ce qui décide si un gabarit peut être enregistré
+# Validation complète — ce qui décide si un template peut être enregistré
 # ---------------------------------------------------------------------------
 
 
 def valider(html: str) -> tuple[str, str, list[str]]:
-    """Valide un gabarit. Renvoie `(html nettoyé, html rendu, mentions manquantes)`.
+    """Valide un template. Renvoie `(html nettoyé, html rendu, mentions manquantes)`.
 
-    Lève `GabaritRefuse` sur ce qui ne peut pas être enregistré : gabarit vide, trop
+    Lève `TemplateRefuse` sur ce qui ne peut pas être enregistré : template vide, trop
     gros, syntaxe Jinja fautive, ou explosion au rendu. Les mentions manquantes, elles,
     ne bloquent pas — elles sont signalées.
     """
     config = get_config()
 
     if not html.strip():
-        raise GabaritRefuse("Le fichier est vide.")
+        raise TemplateRefuse("Le fichier est vide.")
 
-    if len(html.encode("utf-8")) > config.max_gabarit_octets:
-        raise GabaritRefuse(
-            f"Le fichier dépasse {config.max_gabarit_ko} Ko. Les images doivent être "
-            "des URI `data:` compactes, ou rester hors du gabarit."
+    if len(html.encode("utf-8")) > config.max_template_octets:
+        raise TemplateRefuse(
+            f"Le fichier dépasse {config.max_template_ko} Ko. Les images doivent être "
+            "des URI `data:` compactes, ou rester hors du template."
         )
 
     propre = nettoyer(html)
     exemple = devis_exemple()
 
-    # Le rendu d'essai a deux fonctions : refuser tout de suite un gabarit cassé, et
+    # Le rendu d'essai a deux fonctions : refuser tout de suite un template cassé, et
     # produire le texte sur lequel on contrôle les mentions.
     try:
-        rendu = render_html(exemple, gabarit=propre)
-    except GabaritError as err:
-        raise GabaritRefuse(f"Le gabarit n'a pas pu être rendu. {err}") from err
-    except Exception as err:  # noqa: BLE001 — un gabarit tiers échoue de mille façons
-        logger.warning("  gabarit rendu d'essai échoué : %r", err)
-        raise GabaritRefuse(
-            f"Le gabarit n'a pas pu être rendu. {type(err).__name__} : {err}"
+        rendu = render_html(exemple, template=propre)
+    except TemplateError as err:
+        raise TemplateRefuse(f"Le template n'a pas pu être rendu. {err}") from err
+    except Exception as err:  # noqa: BLE001 — un template tiers échoue de mille façons
+        logger.warning("  template rendu d'essai échoué : %r", err)
+        raise TemplateRefuse(
+            f"Le template n'a pas pu être rendu. {type(err).__name__} : {err}"
         ) from err
 
     return propre, rendu, controler_les_mentions(rendu, exemple)
@@ -262,10 +264,10 @@ def valider(html: str) -> tuple[str, str, list[str]]:
 # ---------------------------------------------------------------------------
 
 # Le repli hors-Firebase. Volontairement en mémoire et non sur disque : le projet n'a
-# pas de base de données, et n'en gagne pas une par la porte de derrière. Un gabarit
+# pas de base de données, et n'en gagne pas une par la porte de derrière. Un template
 # posé sans Firebase vit le temps du processus, ce qui suffit pour travailler la mise
 # en page et pour les tests.
-_memoire: dict[str, Gabarit] = {}
+_memoire: dict[str, Template] = {}
 _verrou = threading.Lock()
 
 
@@ -280,33 +282,33 @@ def _actif() -> bool:
     return get_config().auth_active
 
 
-def lire(uid: str) -> Gabarit | None:
-    """Le gabarit de cet artisan, ou None s'il utilise celui livré."""
+def lire(uid: str) -> Template | None:
+    """Le template de cet artisan, ou None s'il utilise celui livré."""
     if not _actif():
         return _memoire.get(uid)
     try:
         document = _firestore().collection(COLLECTION).document(uid).get()
     except Exception as err:  # noqa: BLE001
         # Firestore injoignable ne doit pas empêcher de sortir un devis : on retombe
-        # sur le gabarit livré, qui est de toute façon celui qu'on sait conforme.
-        logger.warning("  gabarit lecture Firestore impossible (%s) : %r", uid, err)
+        # sur le template livré, qui est de toute façon celui qu'on sait conforme.
+        logger.warning("  template lecture Firestore impossible (%s) : %r", uid, err)
         return None
     if not document.exists:
         return None
     try:
-        return Gabarit(**(document.to_dict() or {}))
+        return Template(**(document.to_dict() or {}))
     except Exception as err:  # noqa: BLE001
-        logger.warning("  gabarit document illisible (%s) : %r", uid, err)
+        logger.warning("  template document illisible (%s) : %r", uid, err)
         return None
 
 
-def enregistrer(uid: str, nom: str, html: str) -> Gabarit:
-    """Valide puis enregistre le gabarit de cet artisan. Lève `GabaritRefuse`."""
+def enregistrer(uid: str, nom: str, html: str) -> Template:
+    """Valide puis enregistre le template de cet artisan. Lève `TemplateRefuse`."""
     propre, _, manquantes = valider(html)
 
-    gabarit = Gabarit(
+    template = Template(
         proprietaire=uid,
-        nom=(nom or "gabarit.html").strip()[:120],
+        nom=(nom or "template.html").strip()[:120],
         html=propre,
         modifie_le=datetime.now(),
         mentions_manquantes=manquantes,
@@ -314,23 +316,23 @@ def enregistrer(uid: str, nom: str, html: str) -> Gabarit:
 
     if not _actif():
         with _verrou:
-            _memoire[uid] = gabarit
-        return gabarit
+            _memoire[uid] = template
+        return template
 
-    donnees = gabarit.model_dump()
-    donnees["modifie_le"] = gabarit.modifie_le.isoformat()
+    donnees = template.model_dump()
+    donnees["modifie_le"] = template.modifie_le.isoformat()
     try:
         _firestore().collection(COLLECTION).document(uid).set(donnees)
     except Exception as err:  # noqa: BLE001
-        logger.error("  gabarit écriture Firestore impossible (%s) : %r", uid, err)
-        raise GabaritRefuse(
-            "Le gabarit n'a pas pu être enregistré : la base est injoignable. Réessayez."
+        logger.error("  template écriture Firestore impossible (%s) : %r", uid, err)
+        raise TemplateRefuse(
+            "Le template n'a pas pu être enregistré : la base est injoignable. Réessayez."
         ) from err
-    return gabarit
+    return template
 
 
 def supprimer(uid: str) -> None:
-    """Revient au gabarit livré. Sans effet si l'artisan n'en avait pas posé."""
+    """Revient au template livré. Sans effet si l'artisan n'en avait pas posé."""
     if not _actif():
         with _verrou:
             _memoire.pop(uid, None)
@@ -338,9 +340,9 @@ def supprimer(uid: str) -> None:
     try:
         _firestore().collection(COLLECTION).document(uid).delete()
     except Exception as err:  # noqa: BLE001
-        logger.error("  gabarit suppression Firestore impossible (%s) : %r", uid, err)
-        raise GabaritRefuse(
-            "Le gabarit n'a pas pu être supprimé : la base est injoignable. Réessayez."
+        logger.error("  template suppression Firestore impossible (%s) : %r", uid, err)
+        raise TemplateRefuse(
+            "Le template n'a pas pu être supprimé : la base est injoignable. Réessayez."
         ) from err
 
 
@@ -357,11 +359,11 @@ def html_pour(uid: str | None) -> str | None:
         return None
     if uid == UID_LOCAL and _actif():
         return None
-    gabarit = lire(uid)
-    return gabarit.html if gabarit else None
+    template = lire(uid)
+    return template.html if template else None
 
 
 def vider_la_memoire() -> None:
-    """Pour les tests, qui ne doivent pas se transmettre de gabarit d'un cas à l'autre."""
+    """Pour les tests, qui ne doivent pas se transmettre de template d'un cas à l'autre."""
     with _verrou:
         _memoire.clear()

@@ -203,7 +203,7 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* Devis sans aucune ligne chiffrable. Le parcours n'y mène pas — le produit
-   refuse d'établir le devis — mais le gabarit ne doit pas casser pour autant. */
+   refuse d'établir le devis — mais le template ne doit pas casser pour autant. */
 .doc-table__vide {
   padding: 22px 0; border-bottom: 1px solid var(--dv-rule-soft);
   font-size: 11px; color: var(--dv-muted);

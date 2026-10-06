@@ -1,4 +1,4 @@
-/* Devis Vocal — compte et gabarit personnel.
+/* Devis Vocal — compte et template personnel.
 
    Ajout hors périmètre d'origine : CLAUDE.md exclut « comptes / auth / multi-tenant ».
    Assumé sur décision explicite, et écrit pour rester amovible — supprimer ce fichier
@@ -18,7 +18,7 @@
      protégée serait une porte peinte sur un mur — pire que rien, puisqu'on croirait
      l'API gardée.
    - **Le compte ne conditionne jamais la dictée.** Il ne sert qu'à retrouver son
-     gabarit. Un artisan non connecté sort son devis exactement comme avant. */
+     template. Un artisan non connecté sort son devis exactement comme avant. */
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js';
 import {
@@ -160,8 +160,8 @@ async function peindreCompte() {
     barre.hidden = true;
     profil = null;
     // Le compte suivant repart d'une barre entière : sans ça, un artisan qui se
-    // déconnecte depuis l'écran de la fiche laisserait « Mon gabarit » caché.
-    $('btn-gabarit').hidden = false;
+    // déconnecte depuis l'écran de la fiche laisserait « Mon template » caché.
+    $('btn-template').hidden = false;
     montrer('connexion');
     return;
   }
@@ -275,9 +275,9 @@ function preparerProfil() {
   $('profil-role-autre').value = '';
   marquerValides();
 
-  // Le gabarit n'a pas de sens tant que l'inscription n'est pas finie ; la
+  // Le template n'a pas de sens tant que l'inscription n'est pas finie ; la
   // déconnexion, elle, reste — c'est la sortie de secours de cet écran.
-  $('btn-gabarit').hidden = true;
+  $('btn-template').hidden = true;
 }
 
 const AUTRE = 'Autre';
@@ -372,7 +372,7 @@ async function envoyerProfil() {
     bouton.textContent = libelle;
   }
 
-  $('btn-gabarit').hidden = false;
+  $('btn-template').hidden = false;
   $('compte-qui').textContent = profil.identite + ' · ' + profil.entreprise;
   $('compte-qui').title = utilisateur.email || '';
   montrer('accueil');
@@ -469,52 +469,52 @@ function brancher() {
   });
   $('profil-role').addEventListener('change', basculerAutre);
 
-  $('btn-gabarit').addEventListener('click', ouvrirGabarit);
-  $('btn-gabarit-retour').addEventListener('click', () => montrer('accueil'));
+  $('btn-template').addEventListener('click', ouvrirTemplate);
+  $('btn-template-retour').addEventListener('click', () => montrer('accueil'));
 
-  brancherGabarit();
+  brancherTemplate();
 }
 
-/* ---- gabarit ------------------------------------------------------------ */
+/* ---- template ----------------------------------------------------------- */
 
 let fichierChoisi = null;
 
-function direGabarit(texte, ton = '') {
-  const zone = $('gabarit-message');
+function direTemplate(texte, ton = '') {
+  const zone = $('template-message');
   zone.textContent = texte;
-  zone.className = 'gabarit__message' + (ton ? ' gabarit__message--' + ton : '');
+  zone.className = 'template__message' + (ton ? ' template__message--' + ton : '');
   zone.hidden = !texte;
 }
 
-async function ouvrirGabarit() {
-  montrer('gabarit');
-  direGabarit('');
+async function ouvrirTemplate() {
+  montrer('template');
+  direTemplate('');
   choisir(null);
   try {
-    peindreGabarit(await (await fetch('/api/gabarit', {
+    peindreTemplate(await (await fetch('/api/template', {
       headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
     })).json());
   } catch (_) {
-    direGabarit("L'état du gabarit n'a pas pu être lu. Le devis sort sur la mise en page livrée.", 'alerte');
+    direTemplate("L'état du template n'a pas pu être lu. Le devis sort sur la mise en page livrée.", 'alerte');
   }
 }
 
-function peindreGabarit(etat) {
-  $('gabarit-nom').textContent = etat.pose ? etat.nom : 'Le gabarit livré';
-  $('btn-gabarit-retirer').hidden = !etat.pose;
+function peindreTemplate(etat) {
+  $('template-nom').textContent = etat.pose ? etat.nom : 'Le template livré';
+  $('btn-template-retirer').hidden = !etat.pose;
 
   if (etat.pose) {
     const pose = new Date(etat.modifie_le);
-    $('gabarit-meta').textContent = 'Posé le ' + pose.toLocaleDateString('fr-FR') +
+    $('template-meta').textContent = 'Posé le ' + pose.toLocaleDateString('fr-FR') +
       ' à ' + pose.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   } else {
-    $('gabarit-meta').textContent = 'Toutes les mentions obligatoires sont garanties.';
+    $('template-meta').textContent = 'Toutes les mentions obligatoires sont garanties.';
   }
 
   const manquantes = etat.pose ? (etat.mentions_manquantes || []) : [];
-  const alerte = $('gabarit-alerte');
+  const alerte = $('template-alerte');
   alerte.hidden = manquantes.length === 0;
-  const liste = $('gabarit-manquantes');
+  const liste = $('template-manquantes');
   liste.textContent = '';
   for (const mention of manquantes) {
     const li = document.createElement('li');
@@ -525,17 +525,17 @@ function peindreGabarit(etat) {
 
 function choisir(fichier) {
   fichierChoisi = fichier;
-  $('gabarit-depot-titre').textContent = fichier ? fichier.name : 'Déposez votre fichier HTML';
-  $('gabarit-depot-aide').textContent = fichier
+  $('template-depot-titre').textContent = fichier ? fichier.name : 'Déposez votre fichier HTML';
+  $('template-depot-aide').textContent = fichier
     ? Math.max(1, Math.round(fichier.size / 1024)) + ' Ko · prêt à être vérifié'
-    : 'ou touchez pour le choisir · un gabarit Jinja, 512 Ko au plus';
-  $('btn-gabarit-apercu').disabled = !fichier;
-  $('btn-gabarit-poser').disabled = !fichier;
+    : 'ou touchez pour le choisir · un template Jinja, 512 Ko au plus';
+  $('btn-template-apercu').disabled = !fichier;
+  $('btn-template-poser').disabled = !fichier;
 }
 
-async function envoyerGabarit(url, methode) {
+async function envoyerTemplate(url, methode) {
   const donnees = new FormData();
-  donnees.append('gabarit', fichierChoisi);
+  donnees.append('template', fichierChoisi);
   const reponse = await fetch(url, {
     method: methode,
     headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
@@ -554,25 +554,25 @@ async function envoyerGabarit(url, methode) {
 
 /* Personne ne pose une mise en page qu'il n'a pas vue sortir en A4. L'aperçu est
    rendu sur un devis d'exemple complet — cinq lignes, deux observations, des prix
-   estimés — donc sur un document qui exerce vraiment le gabarit. */
+   estimés — donc sur un document qui exerce vraiment le template. */
 async function apercu(bouton) {
   const libelle = bouton.textContent;
   bouton.disabled = true;
   bouton.textContent = 'Rendu…';
-  direGabarit('');
+  direTemplate('');
   try {
-    const blob = await (await envoyerGabarit('/api/gabarit/apercu', 'POST')).blob();
+    const blob = await (await envoyerTemplate('/api/template/apercu', 'POST')).blob();
     const url = URL.createObjectURL(blob);
     // Le rendu prend une seconde ou deux : le geste est consommé, et le navigateur
     // peut refuser l'onglet. Dans ce cas on enregistre le fichier plutôt que de
     // laisser quelqu'un devant un bouton qui n'a rien fait.
     if (!window.open(url, '_blank')) {
-      telecharger(blob, 'apercu-gabarit.pdf');
-      direGabarit("L'onglet a été bloqué : l'aperçu a été enregistré à la place.");
+      telecharger(blob, 'apercu-template.pdf');
+      direTemplate("L'onglet a été bloqué : l'aperçu a été enregistré à la place.");
     }
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (err) {
-    direGabarit(err.message, 'alerte');
+    direTemplate(err.message, 'alerte');
   } finally {
     bouton.disabled = false;
     bouton.textContent = libelle;
@@ -583,17 +583,17 @@ async function poser(bouton) {
   const libelle = bouton.textContent;
   bouton.disabled = true;
   bouton.textContent = 'Vérification…';
-  direGabarit('');
+  direTemplate('');
   try {
-    const etat = await (await envoyerGabarit('/api/gabarit', 'PUT')).json();
-    peindreGabarit(etat);
+    const etat = await (await envoyerTemplate('/api/template', 'PUT')).json();
+    peindreTemplate(etat);
     choisir(null);
-    direGabarit(etat.conforme
-      ? 'Gabarit enregistré. Vos prochains devis sortiront dessus.'
-      : 'Gabarit enregistré, mais il lui manque des mentions obligatoires — voir ci-dessus.',
+    direTemplate(etat.conforme
+      ? 'Template enregistré. Vos prochains devis sortiront dessus.'
+      : 'Template enregistré, mais il lui manque des mentions obligatoires — voir ci-dessus.',
       etat.conforme ? 'ok' : 'alerte');
   } catch (err) {
-    direGabarit(err.message, 'alerte');
+    direTemplate(err.message, 'alerte');
   } finally {
     bouton.disabled = false;
     bouton.textContent = libelle;
@@ -601,23 +601,23 @@ async function poser(bouton) {
 }
 
 async function retirer() {
-  direGabarit('');
+  direTemplate('');
   try {
-    const reponse = await fetch('/api/gabarit', {
+    const reponse = await fetch('/api/template', {
       method: 'DELETE',
       headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
     });
     if (!reponse.ok) throw new Error('La suppression a échoué.');
-    peindreGabarit({ pose: false });
-    direGabarit('Vos devis sortent de nouveau sur la mise en page livrée.', 'ok');
+    peindreTemplate({ pose: false });
+    direTemplate('Vos devis sortent de nouveau sur la mise en page livrée.', 'ok');
   } catch (err) {
-    direGabarit(err.message, 'alerte');
+    direTemplate(err.message, 'alerte');
   }
 }
 
-function brancherGabarit() {
-  const depot = $('gabarit-depot');
-  const champ = $('gabarit-fichier');
+function brancherTemplate() {
+  const depot = $('template-depot');
+  const champ = $('template-fichier');
 
   depot.addEventListener('click', () => champ.click());
   depot.addEventListener('keydown', (e) => {
@@ -639,9 +639,9 @@ function brancherGabarit() {
     choisir(e.dataTransfer.files[0] || null);
   });
 
-  $('btn-gabarit-apercu').addEventListener('click', (e) => apercu(e.currentTarget));
-  $('btn-gabarit-poser').addEventListener('click', (e) => poser(e.currentTarget));
-  $('btn-gabarit-retirer').addEventListener('click', retirer);
+  $('btn-template-apercu').addEventListener('click', (e) => apercu(e.currentTarget));
+  $('btn-template-poser').addEventListener('click', (e) => poser(e.currentTarget));
+  $('btn-template-retirer').addEventListener('click', retirer);
 }
 
 demarrer();

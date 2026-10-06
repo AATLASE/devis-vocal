@@ -26,29 +26,29 @@ design poussé du front
 
 **Si une demande déborde de ce périmètre, le signaler au lieu de l'implémenter.**
 
-### Exception assumée : comptes et gabarit par artisan
+### Exception assumée : comptes et template par artisan
 
 « comptes / auth / multi-tenant » et « base de données » figuraient dans la liste
 ci-dessus. Ils en ont été retirés sur décision explicite, après que le conflit a été
 signalé. Ce qui existe désormais : Firebase Auth (Google et e-mail/mot de passe), et
-un gabarit HTML de devis par compte, rangé dans Firestore.
+un template HTML de devis par compte, rangé dans Firestore.
 
 Cette exception ne s'étend pas d'elle-même. Elle couvre l'authentification et le
-gabarit, rien d'autre : ni bibliothèque de prix, ni historique des devis, ni stockage
+template, rien d'autre : ni bibliothèque de prix, ni historique des devis, ni stockage
 du devis lui-même. Le pipeline reste sans état — le devis fait toujours l'aller-retour
 en JSON, et le serveur n'en garde rien.
 
 Deux garde-fous la tiennent, et ils ne sont pas négociables :
 
 - **Sans identifiants Firebase, tout est inactif.** Pas d'écran de connexion, pas de
-  gabarit, comportement d'avant à l'identique. C'est ce qui fait passer `uv run pytest`
+  template, comportement d'avant à l'identique. C'est ce qui fait passer `uv run pytest`
   sans le moindre secret et ce qui garde la démonstration hors-ligne possible.
 - **Le compte ne conditionne jamais la dictée.** Un artisan non connecté dicte et sort
-  son devis exactement comme avant. Le compte ne sert qu'à retrouver son gabarit.
+  son devis exactement comme avant. Le compte ne sert qu'à retrouver son template.
 
-Le coût est réel et documenté : un gabarit téléversé ne garantit plus les mentions
-obligatoires. `app/gabarits.py` le mesure à l'enregistrement — quatorze contrôles sur
-le document rendu — et l'écran affiche ce qui manque. Voir `docs/gabarits.md`.
+Le coût est réel et documenté : un template téléversé ne garantit plus les mentions
+obligatoires. `app/templates.py` le mesure à l'enregistrement — quatorze contrôles sur
+le document rendu — et l'écran affiche ce qui manque. Voir `docs/templates.md`.
 
 Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être impeccable.
 
@@ -60,7 +60,7 @@ Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être
 - **PDF** : Playwright (Chromium headless) rendant `templates/devis.html`
 - **Front** : une page HTML servie par FastAPI, JS vanilla, pas de framework
 - **Comptes** : Firebase Auth, jetons vérifiés par `firebase-admin`, derrière les deux
-  dépendances de `app/authentification.py`. Gabarits dans Firestore. Tout facultatif —
+  dépendances de `app/authentification.py`. Templates dans Firestore. Tout facultatif —
   voir l'exception assumée plus bas.
 - **Déploiement** : Docker sur VPS via Coolify. Docker n'est pas requis pour développer.
 
@@ -80,7 +80,7 @@ développeurs. Toute modification passe par une PR relue à deux.
 
 **Pas de sur-ingénierie.** Pas de queue, pas de cache. Le devis fait l'aller-retour en
 JSON entre le navigateur et l'API ; le serveur ne garde rien. Firestore ne stocke que
-les gabarits — jamais un devis, jamais une transcription.
+les templates — jamais un devis, jamais une transcription.
 
 **L'authentification s'isole derrière deux dépendances.** `utilisateur_requis` et
 `utilisateur_optionnel`, dans `app/authentification.py`. Aucun autre module n'importe
@@ -116,7 +116,7 @@ juste à tous les coups. La qualité de compréhension du vocal se juge à l'œi
 - **Dev A** — `transcription.py`, `structuration.py`, le prompt, `to_devis()`, les fixtures
 - **Dev B** — `pdf.py`, `templates/`, `app/static/` — travaille sur les fixtures, donc sans clé API
 
-L'ajout des comptes traverse les deux moitiés : `authentification.py` et `gabarits.py`
-sont côté données, mais `pdf.render(devis, gabarit)` et l'écran du gabarit sont côté
-rendu. `Gabarit`, dans `models.py`, est le point de couture — donc soumis à la même
+L'ajout des comptes traverse les deux moitiés : `authentification.py` et `templates.py`
+sont côté données, mais `pdf.render(devis, template)` et l'écran du template sont côté
+rendu. `Template`, dans `models.py`, est le point de couture — donc soumis à la même
 règle que le reste du contrat : **PR relue à deux**.

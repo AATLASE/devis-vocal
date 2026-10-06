@@ -157,11 +157,11 @@ class Devis(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Le gabarit de l'artisan
+# Le template de l'artisan
 # ---------------------------------------------------------------------------
 
 
-class Gabarit(BaseModel):
+class Template(BaseModel):
     """La mise en page A4 que l'artisan a téléversée, à la place de `templates/devis.html`.
 
     Ajout hors périmètre d'origine (voir CLAUDE.md § Périmètre), assumé. Le modèle vit
@@ -169,10 +169,10 @@ class Gabarit(BaseModel):
     « données » le stocke et le valide, la moitié « rendu » le consomme dans `pdf.py`.
 
     `mentions_manquantes` est le prix à payer de cette fonctionnalité, et on le rend
-    visible plutôt que de le taire. Le gabarit livré garantit les mentions obligatoires
-    d'un devis français ; un gabarit téléversé ne garantit rien. On vérifie donc, à
+    visible plutôt que de le taire. Le template livré garantit les mentions obligatoires
+    d'un devis français ; un template téléversé ne garantit rien. On vérifie donc, à
     l'enregistrement, que les valeurs qui doivent figurer sur un devis apparaissent
-    bien dans le document rendu, et on liste celles qui manquent. Le gabarit est
+    bien dans le document rendu, et on liste celles qui manquent. Le template est
     accepté quand même — c'est le document de l'artisan — mais l'écran le dit.
     """
 
@@ -195,7 +195,7 @@ class Gabarit(BaseModel):
 class Profil(BaseModel):
     """Qui est l'artisan : son nom, son entreprise, son rôle. Demandé à l'inscription.
 
-    Ajout hors périmètre d'origine, comme le gabarit, et sur la même décision explicite.
+    Ajout hors périmètre d'origine, comme le template, et sur la même décision explicite.
     Une chose doit rester claire, parce qu'elle a été tranchée et qu'elle est
     contre-intuitive : **ce profil n'entre jamais dans le devis.**
 

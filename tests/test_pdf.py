@@ -1,6 +1,6 @@
 """Fumigation du rendu PDF.
 
-Ce qui est protégé ici : la pagination, le formatage français, et le fait que le gabarit
+Ce qui est protégé ici : la pagination, le formatage français, et le fait que le template
 se rende sur chacune des fixtures. Un template cassé se voit dans un test rouge, pas devant
 un client. Aucun appel API, aucun accès réseau — les polices voyagent avec le document.
 """
@@ -47,7 +47,7 @@ def test_le_html_se_rend(nom):
 @pytest.mark.parametrize("nom", noms_fixtures())
 def test_le_html_a_exactement_le_nombre_de_pages_annonce(nom):
     """Une page de plus dans le PDF que dans le HTML signifierait un débordement ;
-    ici on vérifie déjà que le gabarit produit ce que `paginer()` a décidé."""
+    ici on vérifie déjà que le template produit ce que `paginer()` a décidé."""
     devis = devis_de(nom)
     _, _, total_pages = paginer(devis.lignes, devis.notes)
     assert render_html(devis).count('<article class="page">') == total_pages
@@ -71,7 +71,7 @@ async def test_le_pdf_se_genere():
 
 async def test_le_pdf_a_exactement_le_nombre_de_pages_annonce():
     """Le filet de la pagination. `paginer()` raisonne sur des hauteurs mesurées ; si un
-    jour le gabarit change et que ces mesures se périment, le contenu déborde et Chromium
+    jour le template change et que ces mesures se périment, le contenu déborde et Chromium
     ajoute une page blanche — invisible au HTML, bien visible chez le client. Ce test rend
     réellement le PDF et compare. Il tourne sur les six fixtures et sur deux cas placés de
     part et d'autre de la frontière mesurée."""
@@ -138,7 +138,7 @@ def _lignes(n: int) -> list[LigneDevis]:
 @pytest.mark.parametrize(
     "nb, tranches, cloture_sous_le_tableau, total_pages",
     [
-        (0, [0], True, 2),    # devis vide : le gabarit ne doit pas casser pour autant
+        (0, [0], True, 2),    # devis vide : le template ne doit pas casser pour autant
         (4, [4], True, 2),
         (7, [7], True, 2),    # la page 1 est pleine, la clôture y tient encore
         (8, [7, 1], True, 3),

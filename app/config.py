@@ -137,13 +137,13 @@ class Config(BaseSettings):
         """
         return bool(self.firebase_credentials_json or self.firebase_credentials)
 
-    # --- Gabarits de devis ---
+    # --- Templates de devis ---
     # Le HTML que l'artisan téléverse pour remplacer `templates/devis.html`.
-    max_gabarit_ko: int = 512
+    max_template_ko: int = 512
 
     @property
-    def max_gabarit_octets(self) -> int:
-        return self.max_gabarit_ko * 1024
+    def max_template_octets(self) -> int:
+        return self.max_template_ko * 1024
 
     entreprise_settings: EntrepriseSettings = Field(default_factory=EntrepriseSettings)
 

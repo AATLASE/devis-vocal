@@ -1,6 +1,6 @@
 """La fiche de l'artisan : nom, prénom, entreprise, rôle. Stockage et validation.
 
-Hors du périmètre d'origine, comme `gabarits.py`, et sur la même décision explicite.
+Hors du périmètre d'origine, comme `templates.py`, et sur la même décision explicite.
 Ce module en reprend délibérément la construction — Firestore quand Firebase est
 configuré, un dictionnaire en mémoire sinon — pour que les deux se lisent pareil et
 se retirent pareil.
@@ -109,7 +109,7 @@ def _actif() -> bool:
 def lire(uid: str | None) -> Profil | None:
     """La fiche de cet artisan, ou None s'il n'en a pas encore.
 
-    Comme pour les gabarits : quand Firebase est actif, `UID_LOCAL` désigne quelqu'un
+    Comme pour les templates : quand Firebase est actif, `UID_LOCAL` désigne quelqu'un
     qui n'est pas connecté, donc qui ne peut rien posséder. On s'épargne l'aller-retour.
     """
     if not uid:

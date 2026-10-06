@@ -186,12 +186,12 @@ async def utilisateur_optionnel(authorization: str | None = Header(default=None)
         return verifier_jeton(jeton)
     except AuthError:
         # Un jeton expiré ne doit pas faire échouer un devis en cours de dictée : on
-        # retombe sur le gabarit par défaut, ce qui est exactement l'état d'avant.
+        # retombe sur le template par défaut, ce qui est exactement l'état d'avant.
         return UTILISATEUR_LOCAL
 
 
 async def utilisateur_requis(authorization: str | None = Header(default=None)) -> Utilisateur:
-    """L'utilisateur connecté, ou 401. Garde les endpoints du gabarit."""
+    """L'utilisateur connecté, ou 401. Garde les endpoints du template."""
     if not get_config().auth_active:
         return UTILISATEUR_LOCAL
     jeton = _jeton_de_l_entete(authorization)

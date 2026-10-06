@@ -12,16 +12,16 @@ S'y ajoute `POST /api/apercu`, qui rend le même document que `/api/pdf` mais en
 pour l'aperçu A4 affiché pendant la relecture.
 
 Depuis l'ajout des comptes — hors périmètre d'origine, voir CLAUDE.md § Périmètre —
-s'y ajoutent les routes de la fiche et du gabarit personnels de l'artisan :
+s'y ajoutent les routes de la fiche et du template personnels de l'artisan :
 
-    GET    /api/firebase        -> la config publique du SDK navigateur
-    GET    /api/profil          -> la fiche de l'artisan connecté, et `complet`
-    PUT    /api/profil          -> l'enregistrer (les quatre champs sont requis)
-    GET    /api/gabarit         -> le gabarit de l'artisan connecté
-    PUT    /api/gabarit         -> en poser un (validé avant enregistrement)
-    DELETE /api/gabarit         -> revenir au gabarit livré
-    POST   /api/gabarit/apercu  -> le PDF d'un gabarit, avant de l'enregistrer
-    GET    /api/gabarit/modele  -> le gabarit livré, comme point de départ
+    GET    /api/firebase         -> la config publique du SDK navigateur
+    GET    /api/profil           -> la fiche de l'artisan connecté, et `complet`
+    PUT    /api/profil           -> l'enregistrer (les quatre champs sont requis)
+    GET    /api/template         -> le template de l'artisan connecté
+    PUT    /api/template         -> en poser un (validé avant enregistrement)
+    DELETE /api/template         -> revenir au template livré
+    POST   /api/template/apercu  -> le PDF d'un template, avant de l'enregistrer
+    GET    /api/template/modele  -> le template livré, comme point de départ
 
 La fiche ne descend jamais dans le devis : voir `Profil` dans `app/models.py`.
 
@@ -41,17 +41,17 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import gabarits as gabarits_module
 from app import journal
 from app import pdf as pdf_module
 from app import profils as profils_module
 from app import suivi
+from app import templates as templates_module
 from app.authentification import Utilisateur, utilisateur_optionnel, utilisateur_requis
 from app.config import get_config
-from app.gabarits import GabaritRefuse
 from app.models import Devis, to_devis
 from app.profils import ProfilRefuse
 from app.structuration import StructurationError, structure
+from app.templates import TemplateRefuse
 from app.transcription import TranscriptionError, transcribe
 
 logger = logging.getLogger("devis-vocal")
@@ -172,21 +172,21 @@ async def api_pdf(
 ) -> Response:
     # L'authentification est facultative ici, et c'est délibéré : un artisan qui n'est
     # pas connecté doit pouvoir dicter et sortir son devis exactement comme avant. Le
-    # compte ne sert qu'à retrouver son gabarit.
-    gabarit = gabarits_module.html_pour(utilisateur.uid)
+    # compte ne sert qu'à retrouver son template.
+    template = templates_module.html_pour(utilisateur.uid)
 
     try:
-        with suivi.etape("pdf", numero=devis.numero, gabarit=bool(gabarit)) as detail:
-            contenu = await pdf_module.render(devis, gabarit)
+        with suivi.etape("pdf", numero=devis.numero, template=bool(template)) as detail:
+            contenu = await pdf_module.render(devis, template)
             detail["ko"] = len(contenu) / 1024
     except Exception:
-        if gabarit:
-            # Le gabarit a été validé à l'enregistrement, mais sur le devis d'exemple.
+        if template:
+            # Le template a été validé à l'enregistrement, mais sur le devis d'exemple.
             # Un vrai devis peut le mettre en défaut — vingt lignes au lieu de cinq, un
             # champ nul. Plutôt que de renvoyer l'artisan sans document au moment où il
-            # le montre à son client, on rejoue sur le gabarit livré et on le signale.
+            # le montre à son client, on rejoue sur le template livré et on le signale.
             logger.warning(
-                "  pdf    gabarit de %s en échec, repli sur le gabarit livré", utilisateur.uid
+                "  pdf    template de %s en échec, repli sur le template livré", utilisateur.uid
             )
             try:
                 with suivi.etape("pdf-repli", numero=devis.numero) as detail:
@@ -205,11 +205,11 @@ def _reponse_pdf(contenu: bytes, nom: str, *, repli: bool = False, inline: bool 
     entetes = {"Content-Disposition": f'{disposition}; filename="{nom}"'}
     if repli:
         # Lu par le navigateur, qui affiche un avertissement. Un devis sorti sur le
-        # gabarit livré alors que l'artisan croit voir le sien est le genre de
+        # template livré alors que l'artisan croit voir le sien est le genre de
         # substitution silencieuse que ce projet refuse ailleurs — voir le bandeau
         # « mode fixtures » : même principe, même raison.
-        entetes["X-Gabarit-Repli"] = "1"
-        entetes["Access-Control-Expose-Headers"] = "X-Gabarit-Repli"
+        entetes["X-Template-Repli"] = "1"
+        entetes["Access-Control-Expose-Headers"] = "X-Template-Repli"
     return Response(content=contenu, media_type="application/pdf", headers=entetes)
 
 
@@ -220,7 +220,7 @@ async def api_apercu(
 ) -> Response:
     """La feuille A4 en HTML, pour l'aperçu affiché pendant la relecture.
 
-    Le même document que `/api/pdf`, sur le même gabarit, mais rendu par le
+    Le même document que `/api/pdf`, sur le même template, mais rendu par le
     navigateur de l'artisan au lieu de Chromium. Trois raisons de ne pas se
     contenter d'afficher le PDF dans un cadre :
 
@@ -230,23 +230,23 @@ async def api_apercu(
       certaines refusent purement et simplement de s'afficher dans un cadre ;
     - le document s'y redimensionne, ce qu'un PDF encadré ne fait pas.
 
-    Ce que l'artisan voit ici et ce qu'il télécharge sortent du même gabarit et
+    Ce que l'artisan voit ici et ce qu'il télécharge sortent du même template et
     de la même feuille de style : l'aperçu ne peut pas mentir sur le fond. Il
     peut différer d'un cheveu sur le rendu des polices, le PDF étant composé par
     Chromium — c'est la seule liberté qu'il prend.
     """
-    gabarit = gabarits_module.html_pour(utilisateur.uid)
+    template = templates_module.html_pour(utilisateur.uid)
 
-    # Même repli que pour le PDF, et pour la même raison : le gabarit a été validé
+    # Même repli que pour le PDF, et pour la même raison : le template a été validé
     # sur le devis d'exemple, pas sur celui-là. Mieux vaut un aperçu sur la mise en
     # page livrée qu'un cadre vide au moment de relire son devis.
     repli = False
     try:
-        html = pdf_module.render_html(devis, gabarit, polices_inline=False)
+        html = pdf_module.render_html(devis, template, polices_inline=False)
     except Exception:
-        if not gabarit:
+        if not template:
             raise HTTPException(status_code=500, detail="L'aperçu n'a pas pu être produit.") from None
-        logger.warning("  apercu gabarit de %s en échec, repli sur le gabarit livré", utilisateur.uid)
+        logger.warning("  apercu template de %s en échec, repli sur le template livré", utilisateur.uid)
         try:
             html = pdf_module.render_html(devis, polices_inline=False)
             repli = True
@@ -255,8 +255,8 @@ async def api_apercu(
 
     entetes = {}
     if repli:
-        entetes["X-Gabarit-Repli"] = "1"
-        entetes["Access-Control-Expose-Headers"] = "X-Gabarit-Repli"
+        entetes["X-Template-Repli"] = "1"
+        entetes["Access-Control-Expose-Headers"] = "X-Template-Repli"
     return Response(content=html, media_type="text/html; charset=utf-8", headers=entetes)
 
 
@@ -340,83 +340,83 @@ async def api_profil_poser(
 
 
 # ---------------------------------------------------------------------------
-# Le gabarit de l'artisan
+# Le template de l'artisan
 # ---------------------------------------------------------------------------
 
 
-def _gabarit_json(gabarit) -> dict:
-    if gabarit is None:
+def _template_json(template) -> dict:
+    if template is None:
         return {"pose": False}
     return {
         "pose": True,
-        "nom": gabarit.nom,
-        "modifie_le": gabarit.modifie_le.isoformat(),
-        "conforme": gabarit.conforme,
-        "mentions_manquantes": gabarit.mentions_manquantes,
-        "html": gabarit.html,
+        "nom": template.nom,
+        "modifie_le": template.modifie_le.isoformat(),
+        "conforme": template.conforme,
+        "mentions_manquantes": template.mentions_manquantes,
+        "html": template.html,
     }
 
 
-@app.get("/api/gabarit")
-async def api_gabarit_lire(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
-    return _gabarit_json(gabarits_module.lire(utilisateur.uid))
+@app.get("/api/template")
+async def api_template_lire(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
+    return _template_json(templates_module.lire(utilisateur.uid))
 
 
-@app.put("/api/gabarit")
-async def api_gabarit_poser(
-    gabarit: UploadFile,
+@app.put("/api/template")
+async def api_template_poser(
+    template: UploadFile,
     utilisateur: Utilisateur = Depends(utilisateur_requis),
 ) -> dict:
-    """Valide et enregistre le gabarit. Un gabarit qui ne rend pas est refusé ici,
+    """Valide et enregistre le template. Un template qui ne rend pas est refusé ici,
     pas au moment où l'artisan veut son PDF devant un client."""
-    html = await _lire_le_html(gabarit)
+    html = await _lire_le_html(template)
     try:
-        pose = gabarits_module.enregistrer(utilisateur.uid, gabarit.filename or "", html)
-    except GabaritRefuse as err:
+        pose = templates_module.enregistrer(utilisateur.uid, template.filename or "", html)
+    except TemplateRefuse as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     logger.info(
-        "  gabarit posé par %s : %s (%d mentions manquantes)",
+        "  template posé par %s : %s (%d mentions manquantes)",
         utilisateur.uid, pose.nom, len(pose.mentions_manquantes),
     )
-    return _gabarit_json(pose)
+    return _template_json(pose)
 
 
-@app.delete("/api/gabarit")
-async def api_gabarit_retirer(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
+@app.delete("/api/template")
+async def api_template_retirer(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
     try:
-        gabarits_module.supprimer(utilisateur.uid)
-    except GabaritRefuse as err:
+        templates_module.supprimer(utilisateur.uid)
+    except TemplateRefuse as err:
         raise HTTPException(status_code=502, detail=str(err)) from err
     return {"pose": False}
 
 
-@app.post("/api/gabarit/apercu")
-async def api_gabarit_apercu(
-    gabarit: UploadFile,
+@app.post("/api/template/apercu")
+async def api_template_apercu(
+    template: UploadFile,
     utilisateur: Utilisateur = Depends(utilisateur_requis),
 ) -> Response:
-    """Le PDF d'un gabarit sur un devis d'exemple, **avant** de l'enregistrer.
+    """Le PDF d'un template sur un devis d'exemple, **avant** de l'enregistrer.
 
     C'est la moitié utile de la fonctionnalité : personne ne pose une mise en page
     qu'il n'a pas vue sortir en A4.
     """
-    html = await _lire_le_html(gabarit)
+    html = await _lire_le_html(template)
     try:
-        propre, _, _ = gabarits_module.valider(html)
-    except GabaritRefuse as err:
+        propre, _, _ = templates_module.valider(html)
+    except TemplateRefuse as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 
     try:
-        contenu = await pdf_module.render(gabarits_module.devis_exemple(), propre)
+        contenu = await pdf_module.render(templates_module.devis_exemple(), propre)
     except Exception:
         raise HTTPException(status_code=500, detail="L'aperçu n'a pas pu être produit.") from None
 
-    return _reponse_pdf(contenu, "apercu-gabarit.pdf", inline=True)
+    return _reponse_pdf(contenu, "apercu-template.pdf", inline=True)
 
 
-@app.get("/api/gabarit/modele")
-async def api_gabarit_modele() -> FileResponse:
-    """Le gabarit livré, à télécharger comme point de départ.
+@app.get("/api/template/modele")
+async def api_template_modele() -> FileResponse:
+    """Le template livré, à télécharger comme point de départ.
 
     Partir d'une page blanche pour écrire un devis conforme n'a aucun sens : celui-ci
     passe déjà les quatorze contrôles de mentions obligatoires."""
@@ -431,11 +431,11 @@ async def _lire_le_html(fichier: UploadFile) -> str:
     """Le contenu du fichier téléversé, décodé. Le garde-fou de taille est appliqué
     ici aussi : lire deux cents mégaoctets en mémoire avant de les refuser serait absurde."""
     config = get_config()
-    contenu = await fichier.read(config.max_gabarit_octets + 1)
-    if len(contenu) > config.max_gabarit_octets:
+    contenu = await fichier.read(config.max_template_octets + 1)
+    if len(contenu) > config.max_template_octets:
         raise HTTPException(
             status_code=400,
-            detail=f"Le fichier dépasse {config.max_gabarit_ko} Ko.",
+            detail=f"Le fichier dépasse {config.max_template_ko} Ko.",
         )
     try:
         return contenu.decode("utf-8")

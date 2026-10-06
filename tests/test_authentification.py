@@ -72,7 +72,7 @@ def test_la_config_publique_seule_n_active_rien(monkeypatch):
 
 
 async def test_sans_firebase_l_endpoint_garde_laisse_passer():
-    """Poser un gabarit reste possible sur un poste local sans compte."""
+    """Poser un template reste possible sur un poste local sans compte."""
     assert (await utilisateur_requis(authorization=None)).uid == UID_LOCAL
 
 
@@ -160,7 +160,7 @@ async def test_un_jeton_expire_ne_casse_pas_le_devis(firebase_configure, monkeyp
     """Le point le plus important du fichier. La structuration prend quarante
     secondes : un jeton peut expirer entre la dictée et le PDF. Faire échouer le
     devis à ce moment-là ferait perdre à l'artisan sa dictée et la démonstration.
-    On retombe sur l'anonyme, donc sur le gabarit livré — l'état d'avant."""
+    On retombe sur l'anonyme, donc sur le template livré — l'état d'avant."""
     def expire(_jeton):
         raise AuthError("Votre session a expiré. Reconnectez-vous.")
 
@@ -175,7 +175,7 @@ async def test_sans_jeton_le_devis_passe_quand_meme(firebase_configure):
 
 
 async def test_un_jeton_valide_identifie_le_devis(firebase_configure, monkeypatch):
-    """C'est ce qui permet de retrouver son gabarit au moment du PDF."""
+    """C'est ce qui permet de retrouver son template au moment du PDF."""
     monkeypatch.setattr(authentification, "verifier_jeton", lambda _: ARTISAN)
 
     assert (await utilisateur_optionnel(authorization="Bearer bon-jeton")).uid == "uid-artisan"
