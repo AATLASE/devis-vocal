@@ -10,6 +10,7 @@ pas de « et si le modèle rajoutait du texte autour ».
 from __future__ import annotations
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,6 +19,8 @@ import anthropic
 from app import suivi
 from app.config import RACINE, get_config
 from app.models import DevisExtraction
+
+logger = logging.getLogger("devis-vocal")
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "structuration.md"
 FIXTURES = RACINE / "tests" / "fixtures"
@@ -90,33 +93,84 @@ def _structure_compatible_openai(
     from openai import OpenAI, OpenAIError
 
     if not api_key:
-        raise StructurationError(f"Clé API absente : impossible de chiffrer via {fournisseur}.")
+        # OpenAI est le repli quand aucune clé n'est trouvée : ce message est celui
+        # qu'on lit en premier sur un poste neuf, il doit dire quoi faire.
+        raise StructurationError(
+            f"Clé API absente : impossible de chiffrer via {fournisseur}. Renseigne-la "
+            "dans le .env, ou passe USE_FIXTURES=true pour travailler sur les "
+            "extractions enregistrées."
+        )
 
     client = OpenAI(api_key=api_key, base_url=base_url)
-    try:
-        reponse = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _prompt_systeme()},
-                {"role": "user", "content": transcript},
-            ],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": "devis", "schema": _schema_strict(), "strict": True},
-            },
-        )
-    except OpenAIError as err:
-        raise StructurationError(f"Appel {fournisseur} en échec : {err}") from err
 
-    usage = getattr(reponse, "usage", None)
-    suivi.appel(fournisseur, model,
-                getattr(usage, "prompt_tokens", None),
-                getattr(usage, "completion_tokens", None))
+    # Parler le format OpenAI ne veut pas dire accepter les mêmes sorties contraintes.
+    # OpenAI et Groq gèrent `json_schema` strict ; DeepSeek ou un Ollama local n'ont
+    # que `json_object`. On demande le plus contraint et on redescend d'un cran s'il
+    # est refusé. Pydantic reste le filet : un modèle qui divague échoue franchement
+    # au lieu de produire un devis à moitié faux.
+    schema = _schema_strict()
+    tentatives = (
+        ("json_schema",
+         {"type": "json_schema",
+          "json_schema": {"name": "devis", "schema": schema, "strict": True}},
+         None),
+        ("json_object",
+         {"type": "json_object"},
+         "Réponds uniquement par un objet JSON conforme à ce schéma, sans texte autour : "
+         + json.dumps(schema, ensure_ascii=False)),
+    )
 
-    contenu = reponse.choices[0].message.content
-    if not contenu:
-        raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
-    return DevisExtraction.model_validate_json(contenu)
+    derniere: Exception | None = None
+    for mode, format_sortie, consigne in tentatives:
+        messages = [
+            {"role": "system", "content": _prompt_systeme()},
+            {"role": "user", "content": transcript},
+        ]
+        if consigne:
+            # Le schéma part dans un message à lui : le prompt de référence ne bouge
+            # pas, et la comparaison entre fournisseurs reste honnête.
+            messages.insert(1, {"role": "system", "content": consigne})
+
+        try:
+            reponse = client.chat.completions.create(
+                model=model, messages=messages, response_format=format_sortie,
+            )
+        except OpenAIError as err:
+            derniere = err
+            # Un 400 trahit en général un `response_format` non supporté. Tout le
+            # reste — clé invalide, crédit épuisé, panne — échouerait pareil au
+            # second essai : inutile de le payer deux fois.
+            if getattr(err, "status_code", None) != 400:
+                break
+            logger.warning("%s refuse le mode %s : %s", fournisseur, mode, str(err)[:200])
+            continue
+
+        # Ce qu'a coûté l'appel, tel que le fournisseur le rapporte. Posé ici et
+        # pas après la boucle : un essai refusé n'a rien consommé, seul celui qui
+        # aboutit compte. Le mode retenu part dans la ligne suivante.
+        usage = getattr(reponse, "usage", None)
+        suivi.appel(fournisseur, model,
+                    getattr(usage, "prompt_tokens", None),
+                    getattr(usage, "completion_tokens", None))
+
+        contenu = reponse.choices[0].message.content
+        if not contenu:
+            raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
+        if mode != "json_schema":
+            # Ça doit se voir : le schéma n'est plus imposé par l'API, seulement
+            # demandé au modèle. La sortie est moins sûre qu'elle en a l'air.
+            logger.warning(
+                "%s a chiffré en mode %s : schéma non imposé par l'API.", fournisseur, mode,
+            )
+        return DevisExtraction.model_validate_json(contenu)
+
+    # Le message du fournisseur porte son URL, ses noms de modèles et parfois des
+    # détails de compte. Il a sa place dans le journal du serveur, pas dans une
+    # réponse HTTP que n'importe qui peut provoquer.
+    logger.error("Appel %s en échec : %s", fournisseur, derniere)
+    raise StructurationError(
+        "Le service de chiffrage n'a pas répondu. Réessayez dans un instant."
+    ) from derniere
 
 
 def structure(transcript: str) -> DevisExtraction:
@@ -147,6 +201,22 @@ def structure(transcript: str) -> DevisExtraction:
             fournisseur="OpenAI",
         )
 
+    if config.structuration_provider == "autre":
+        if not config.structuration_base_url or not config.model_structuration_autre:
+            raise StructurationError(
+                "STRUCTURATION_PROVIDER=autre exige STRUCTURATION_BASE_URL et "
+                "MODEL_STRUCTURATION_AUTRE dans le .env."
+            )
+        return _structure_compatible_openai(
+            transcript,
+            api_key=config.structuration_api_key,
+            base_url=config.structuration_base_url,
+            model=config.model_structuration_autre,
+            # Le nom du fournisseur est son URL : c'est ce qui identifie vraiment
+            # qui a chiffré, et ça se retrouve tel quel dans les logs.
+            fournisseur=config.structuration_base_url,
+        )
+
     if not config.anthropic_api_key:
         raise StructurationError(
             "ANTHROPIC_API_KEY absente. Renseigne-la dans le .env, ou passe USE_FIXTURES=true "
@@ -163,7 +233,10 @@ def structure(transcript: str) -> DevisExtraction:
             output_format=DevisExtraction,
         )
     except anthropic.APIError as err:  # clé invalide, crédit épuisé, surcharge...
-        raise StructurationError(f"Appel Anthropic en échec : {err}") from err
+        logger.error("Appel Anthropic en échec : %s", err)
+        raise StructurationError(
+            "Le service de chiffrage n'a pas répondu. Réessayez dans un instant."
+        ) from err
 
     suivi.appel("anthropic", config.model_structuration,
                 reponse.usage.input_tokens, reponse.usage.output_tokens)

@@ -2,6 +2,42 @@ services:
   devis-vocal:
     build: .
     ports:
-      - "8000:8000"
+      # Boucle locale seulement, et c'est un défaut délibéré : sur un serveur, publier
+      # 8000 sur toutes les interfaces exposerait l'application en clair à côté de sa
+      # propre façade HTTPS. Il faut vouloir l'ouvrir pour l'ouvrir.
+      #
+      # Compose FUSIONNE les listes `ports` entre fichiers au lieu de les remplacer —
+      # une surcouche ne peut donc pas refermer ce qu'on aurait ouvert ici. C'est
+      # pour ça que la valeur sûre est celle par défaut.
+      #
+      # Pour atteindre le conteneur depuis un autre appareil du réseau local, lancer
+      # ponctuellement : docker compose run --service-ports -p 8000:8000 devis-vocal
+      - "127.0.0.1:8000:8000"
     env_file: .env
     restart: unless-stopped
+
+    # Ce que le conteneur ne doit pas perdre en se recréant.
+    volumes:
+      # Les compteurs de dépense. Sans ce volume, chaque déploiement remet les
+      # plafonds à zéro — et un plafond qu'on annule en redéployant ne protège de rien.
+      - ./var:/app/var
+      # Les vocaux réels des rendez-vous, quand JOURNAL=true. Ce sont eux qui font
+      # progresser le prompt, et ils ne se rejouent pas : un artisan ne redicte pas.
+      - ./journal:/app/journal
+
+    # `--proxy-headers` fait lire l'adresse réelle de l'appelant dans X-Forwarded-For,
+    # sans quoi la limitation de débit compte une seule adresse pour tout le monde —
+    # celle du proxy — et se déclenche pour tous dès qu'une personne insiste.
+    #
+    # Mais cet en-tête est écrit par le client. `--forwarded-allow-ips` dit à qui on
+    # accorde le droit de l'écrire, et la valeur par défaut ci-dessous ne fait
+    # confiance qu'à la machine elle-même. Un `*` rendrait la limitation inutile :
+    # n'importe qui se forgerait une adresse neuve à chaque requête.
+    #
+    # Avec un proxy dans un autre conteneur, poser FORWARDED_ALLOW_IPS sur SON adresse
+    # — et seulement après avoir fermé le port 8000 au monde extérieur.
+    command: >
+      python -m uvicorn app.main:app
+      --host 0.0.0.0 --port 8000
+      --proxy-headers
+      --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}

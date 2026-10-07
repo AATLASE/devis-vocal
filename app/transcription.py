@@ -5,8 +5,12 @@ quel fournisseur est derrière — c'est ce qui permet d'en changer sans rien ca
 
 Par défaut : OpenAI (gpt-4o-transcribe), avec la même clé que le chiffrage. Groq
 (whisper-large-v3-turbo) reste disponible via TRANSCRIPTION_PROVIDER=groq : endpoint
-compatible OpenAI, très rapide, tier gratuit. Une alternative 100 % locale est décrite
-en bas de fichier.
+compatible OpenAI, très rapide, tier gratuit.
+
+L'appel ne connaît que trois choses — une URL, une clé, un modèle — donc n'importe quel
+fournisseur parlant le format OpenAI le remplace sans toucher au code : Fireworks, ou un
+Whisper servi en local. Voir TRANSCRIPTION_PROVIDER=autre et les variables
+TRANSCRIPTION_* du .env. Une alternative 100 % locale est décrite en bas de fichier.
 """
 
 from __future__ import annotations
@@ -49,22 +53,17 @@ def transcribe(audio: bytes, filename: str) -> str:
             f"Formats acceptés : {', '.join(sorted(EXTENSIONS_ACCEPTEES))}."
         )
 
-    # Les deux fournisseurs parlent le même protocole : seuls la clé, l'URL et le
-    # modèle changent.
+    # Tous les fournisseurs parlent le même protocole : seuls la clé, l'URL et le
+    # modèle changent, et la configuration les a déjà choisis.
     fournisseur = config.transcription_provider
-    modele = config.modele_transcription_actif
-    if fournisseur == "groq":
-        cle, variable, base_url = config.groq_api_key, "GROQ_API_KEY", config.groq_base_url
-    else:
-        cle, variable, base_url = config.openai_api_key, "OPENAI_API_KEY", None  # api.openai.com
-
+    cle, modele = config.transcription_key, config.modele_transcription_actif
     if not cle:
         raise TranscriptionError(
-            f"{variable} absente. Renseigne-la dans le .env, ou colle directement une "
-            "transcription dans le champ texte de la page."
+            f"{config.transcription_variable} absente. Renseigne-la dans le .env, ou "
+            "colle directement une transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=cle, base_url=base_url)
+    client = OpenAI(api_key=cle, base_url=config.transcription_url)
 
     fichier = io.BytesIO(audio)
     # Le SDK s'appuie sur l'extension pour typer l'envoi, et « .opus » n'est pas dans

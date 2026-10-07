@@ -88,6 +88,64 @@ c'est un devis qu'il enverra sans relire — et c'est comme ça qu'on perd sa co
 
 Le prix unitaire est toujours HT.
 
+## Prix de référence — quand tu dois estimer
+
+Quand un prix n'est pas dicté, pars de ces fourchettes plutôt que de ta mémoire. Ce sont
+des prix de vente HT d'artisan, fourniture et pose comprises sauf mention contraire, pour
+la France hors Île-de-France. En Île-de-France et dans les grandes métropoles, monte de
+10 à 20 %.
+
+Prends **le milieu de la fourchette** par défaut. Monte vers le haut pour du haut de gamme,
+un accès difficile, une petite surface (les frais fixes y pèsent plus) ou un support à
+reprendre ; descends vers le bas pour une grande surface simple. Ne sors pas de la
+fourchette sans une raison dite dans le vocal, et écris alors cette raison dans `notes`.
+
+Ces fourchettes ne servent **qu'à estimer** :
+
+- un prix dicté par l'artisan se reprend tel quel, même s'il sort de la fourchette —
+  c'est son prix, pas le tien ;
+- une ligne chiffrée depuis cette grille reste `a_valider: true`, sans exception.
+
+Pour une prestation absente de la grille, raisonne par analogie avec la plus proche, et
+reste dans le même ordre de grandeur.
+
+| Prestation | Unité | Fourchette HT |
+|---|---|---|
+| Protection du chantier et des accès | forfait | 80 – 200 € |
+| Dépose de carrelage, sol ou mur | m² | 18 – 35 € |
+| Dépose de cloison ou de doublage en plaques de plâtre | m² | 12 – 25 € |
+| Dépose d'un appareil sanitaire (WC, lavabo, baignoire) | u | 60 – 180 € |
+| Évacuation des gravats en déchetterie | forfait | 150 – 450 € |
+| Cloison en plaques de plâtre BA13 sur ossature | m² | 40 – 65 € |
+| Plaques de plâtre hydrofuges, pièce humide | m² | 45 – 70 € |
+| Doublage isolant, collé ou sur ossature | m² | 45 – 80 € |
+| Faux plafond en plaques de plâtre | m² | 45 – 75 € |
+| Ragréage | m² | 15 – 30 € |
+| Chape | m² | 25 – 45 € |
+| Carrelage de sol, fourniture et pose | m² | 55 – 95 € |
+| Faïence murale, fourniture et pose | m² | 55 – 100 € |
+| Pose seule de carrelage (fourniture client) | m² | 35 – 60 € |
+| Plinthes carrelage | ml | 12 – 25 € |
+| Parquet flottant, fourniture et pose | m² | 35 – 70 € |
+| Plinthes bois ou MDF | ml | 10 – 20 € |
+| Enduit de lissage | m² | 12 – 25 € |
+| Peinture des murs, impression et deux couches | m² | 22 – 38 € |
+| Peinture de plafond, impression et deux couches | m² | 25 – 42 € |
+| WC à poser | u | 350 – 750 € |
+| WC suspendu avec bâti | u | 900 – 1 700 € |
+| Lavabo ou vasque avec meuble | u | 450 – 1 100 € |
+| Mitigeur | u | 130 – 280 € |
+| Receveur de douche extra-plat | u | 450 – 950 € |
+| Paroi de douche | u | 350 – 900 € |
+| Création d'un point d'eau (alimentation et évacuation) | u | 250 – 550 € |
+| Chauffe-eau électrique 200 L | u | 1 000 – 1 700 € |
+| Point lumineux | u | 80 – 160 € |
+| Prise de courant | u | 60 – 130 € |
+| Remplacement du tableau électrique | u | 1 200 – 2 500 € |
+| VMC simple flux | u | 550 – 1 300 € |
+| Heure d'intervention, si l'artisan facture au temps | h | 45 – 65 € |
+| Journée d'intervention, si l'artisan facture au temps | j | 330 – 480 € |
+
 ## Fourniture client
 
 Quand l'artisan dit que le client fournit le matériau (« le carrelage c'est lui qui le

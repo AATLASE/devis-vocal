@@ -30,6 +30,11 @@ Thumbs.db
 # Aperçu local du template
 apercu.html
 
+# Compteurs de dépense — ils survivent au redémarrage et sont propres à chaque
+# machine. En conteneur, ce dossier doit être un volume, sinon chaque déploiement
+# remet les plafonds à zéro.
+var/
+
 # Clé de compte de service Firebase. Un fichier commité ici donne l'administration
 # complète du projet — comptes et base — à qui lit le dépôt.
 firebase-service-account.json

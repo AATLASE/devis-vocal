@@ -72,6 +72,26 @@ def test_la_cle_reclamee_est_celle_du_fournisseur_choisi(monkeypatch):
         transcribe(b"x" * 100, "vocal.m4a")
 
 
+def test_sans_fournisseur_nomme_une_cle_groq_seule_transcrit_chez_groq(monkeypatch):
+    monkeypatch.delenv("TRANSCRIPTION_PROVIDER")
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    get_config.cache_clear()
+    config = get_config()
+    assert config.transcription_provider == "groq"
+    assert config.transcription_url == config.groq_base_url
+
+
+def test_sans_fournisseur_nomme_la_cle_openai_l_emporte_partout(monkeypatch):
+    """OpenAI est le défaut : quand plusieurs clés cohabitent, c'est lui qui sert."""
+    monkeypatch.delenv("TRANSCRIPTION_PROVIDER")
+    for variable in ("OPENAI_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.setenv(variable, "cle")
+    get_config.cache_clear()
+    config = get_config()
+    assert config.transcription_provider == "openai"
+    assert config.structuration_provider == "openai"
+
+
 @pytest.mark.skipif(not (SAMPLES / "vocal_synthese.wav").exists(), reason="échantillon absent")
 def test_l_echantillon_de_synthese_passe_les_controles():
     audio = (SAMPLES / "vocal_synthese.wav").read_bytes()

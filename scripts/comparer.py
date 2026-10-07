@@ -35,7 +35,9 @@ from app.models import DevisExtraction  # noqa: E402
 from app.structuration import StructurationError, structure  # noqa: E402
 
 FIXTURES = RACINE / "tests" / "fixtures"
-FOURNISSEURS = ("anthropic", "openai", "groq")
+# `autre` désigne ce qui est branché sur STRUCTURATION_BASE_URL — c'est ainsi qu'on
+# mesure un fournisseur inconnu contre la référence avant de lui faire confiance.
+FOURNISSEURS = ("anthropic", "openai", "groq", "autre")
 
 
 def total(extraction: DevisExtraction, *, estimees: bool | None = None) -> Decimal:

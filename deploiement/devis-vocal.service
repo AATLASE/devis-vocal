@@ -1,0 +1,69 @@
+# Service systemd — l'application sans Docker.
+#
+# Aucun des deux développeurs n'utilise Docker, et le seul vrai obstacle qu'il
+# résolvait — les dépendances système de Chromium — est levé par une commande
+# Playwright (`playwright install --with-deps chromium`). C'est ce qui avait déjà fait
+# abandonner WeasyPrint, dont les libs GTK et Pango s'installaient à la main.
+#
+# Installation :
+#     sudo cp deploiement/devis-vocal.service /etc/systemd/system/
+#     sudo systemctl daemon-reload
+#     sudo systemctl enable --now devis-vocal
+#
+# Les journaux :  journalctl -u devis-vocal -f
+#
+# Voir la procédure complète dans le README, section « Sur un serveur, sans Docker ».
+
+[Unit]
+Description=Devis Vocal — démonstrateur
+# Le réseau doit être là : la transcription et le chiffrage appellent des API.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+
+# À adapter à ton serveur. Surtout pas root : l'application rend du HTML tiers dans
+# Chromium, et rien ici ne justifie les droits d'administration.
+User=devis
+Group=devis
+WorkingDirectory=/opt/devis-vocal
+
+# Les clés API et la configuration. Le fichier n'est lisible que par cet utilisateur :
+#     sudo chown devis:devis /opt/devis-vocal/.env && sudo chmod 600 /opt/devis-vocal/.env
+EnvironmentFile=/opt/devis-vocal/.env
+
+# `--proxy-headers` fait lire l'adresse réelle de l'appelant derrière Caddy, sans quoi
+# la limitation de débit compte une seule adresse pour tout le monde — celle du proxy —
+# et se déclenche pour tous dès qu'une personne insiste.
+#
+# `--forwarded-allow-ips` dit à qui on accorde le droit d'écrire cet en-tête. Caddy
+# tourne sur la même machine, donc 127.0.0.1 suffit. Ne jamais mettre `*` ici : cet
+# en-tête est écrit par le client, et n'importe qui s'inventerait alors une adresse
+# neuve à chaque requête.
+#
+# Un seul worker, et c'est délibéré : chaque processus lance son propre Chromium. Deux
+# workers, c'est deux navigateurs en mémoire — ce qui manque en premier sur un petit
+# serveur. Les compteurs de dépense, eux, resteraient corrects : ils sont sur disque.
+ExecStart=/opt/devis-vocal/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1
+
+Restart=always
+RestartSec=5
+
+# Le démarrage lance Chromium : laisser le temps qu'il faut avant de déclarer l'échec.
+TimeoutStartSec=90
+
+# Durcissement raisonnable. On ne va pas plus loin volontairement : Chromium a besoin
+# de /dev/shm et d'un espace temporaire, et un `ProtectSystem=strict` mal réglé produit
+# une panne de rendu incompréhensible — au pire moment, devant un artisan.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+# Sauf le dossier de l'application, où il faut écrire : compteurs, journal, logs.
+ReadWritePaths=/opt/devis-vocal
+
+[Install]
+WantedBy=multi-user.target
