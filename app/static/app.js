@@ -1290,6 +1290,13 @@ function peindreVide(d) {
 
 const LARGEUR_A4 = 794;
 const ETROIT = window.matchMedia('(max-width: 1180px)');
+/* Le menu latéral du compte, ouvert, pousse la page de 272px : dans cette plage de
+   fenêtre il ne reste plus la place des deux colonnes. Même règle, mêmes bornes,
+   dans la section « Adaptation » d'app.css. Sans compte, la classe n'est jamais
+   posée et seul `ETROIT` compte, comme avant. */
+const ETROIT_AVEC_MENU = window.matchMedia('(min-width: 1181px) and (max-width: 1452px)');
+const estEtroit = () => ETROIT.matches ||
+  (ETROIT_AVEC_MENU.matches && document.body.classList.contains('menu-ouvert'));
 let vueRelecture = 'detail';
 
 function viderApercu() {
@@ -1402,7 +1409,7 @@ function ajusterApercu() {
    étroit — sur un large écran, cacher la moitié du contenu au lecteur d'écran
    alors qu'elle est à l'image serait un mensonge. */
 function appliquerVue() {
-  const etroit = ETROIT.matches;
+  const etroit = estEtroit();
   const surApercu = vueRelecture === 'apercu';
 
   $('vue-detail').hidden = etroit && surApercu;
@@ -1709,6 +1716,7 @@ new ResizeObserver(() => ajusterApercu()).observe($('apercu-bureau'));
 // Franchir le seuil des deux colonnes change ce qui est affiché, pas seulement
 // la taille : les deux vues se séparent ou se rejoignent.
 ETROIT.addEventListener('change', appliquerVue);
+ETROIT_AVEC_MENU.addEventListener('change', appliquerVue);
 appliquerVue();
 
 /* Le devis n'a pas pu être établi, mais les observations, elles, valent le

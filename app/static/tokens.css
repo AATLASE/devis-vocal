@@ -203,6 +203,12 @@
 
   --dv-entete-h: 58px;   /* l'ossature persistante, réservée en tête de page */
 
+  /* Le menu latéral du compte. Ouvert sur un grand écran, il pousse la page de
+     cette largeur : le seuil des deux colonnes de la relecture, dans `app.css` et
+     `app.js`, est décalé d'autant (1180 + 272 = 1452px). Changer l'un sans l'autre
+     ferait tenir deux colonnes dans la place d'une. */
+  --dv-menu-l: 272px;
+
   /* ---- Cibles tactiles ------------------------------------------------ */
   /* 44px est le minimum d'Apple, 48 celui de Material. On prend le plus     */
   /* grand : la cible, ici, c'est un pouce ganté sur un chantier.            */

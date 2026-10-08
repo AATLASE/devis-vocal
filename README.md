@@ -241,7 +241,8 @@ assurance décennale, IBAN. N'y faire remonter que la raison sociale produirait 
 affichant un nom d'entreprise qui ne correspond plus à son SIRET : pas seulement
 inutile, mais moins bon que de ne rien faire. Le devis continue donc de sortir sur
 l'`Entreprise` de la configuration, et la fiche ne sert qu'à savoir qui est connecté —
-la barre de compte affiche « Camille Durand · Bâti Rénov » à la place de l'adresse.
+le menu latéral affiche « Camille Durand », son rôle et « Bâti Rénov » au-dessus de
+l'adresse. « Paramètres », dans ce même menu, rouvre la fiche pour la corriger.
 
 Le jour où le devis devra vraiment porter l'entreprise de l'artisan, c'est
 `Entreprise` qu'il faudra collecter en entier, pas `Profil` qu'il faudra brancher.

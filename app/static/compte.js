@@ -47,7 +47,7 @@ let utilisateur = null;
 
 /* L'artisan qui a choisi « Continuer sans compte » ne doit plus retomber sur la
    connexion à chaque chargement : ce serait remettre le mur qu'on vient d'ouvrir.
-   Le choix est gardé sur l'appareil ; « Se connecter », dans l'en-tête, le défait.
+   Le choix est gardé sur l'appareil ; « Se connecter », dans le menu, le défait.
    Stockage bloqué : le choix vaut pour la page en cours, ce qui suffit à dicter. */
 const CLE_SANS_COMPTE = 'devis-vocal.sans-compte';
 
@@ -171,32 +171,106 @@ async function demarrer() {
   brancher();
 }
 
-/* La barre de compte a deux visages : celui du compte connecté, et le seul bouton
-   « Se connecter » pour qui a choisi de s'en passer. */
-function peindreBarre(connecte) {
-  $('compte-qui').hidden = !connecte;
-  $('btn-template').hidden = !connecte;
+/* ---- le menu latéral ---------------------------------------------------- */
+/* Il dit en haut qui est connecté et pour quelle entreprise, et range en bas ce
+   qu'on peut y faire. Une icône le masque, la même le rouvre.
+
+   Sur un grand écran il pousse la page et reste ouvert tant qu'on ne le masque pas ;
+   ce choix-là est gardé sur l'appareil. En dessous de 1100px il passe par-dessus la
+   page : il s'ouvre le temps d'un geste et ne se retient pas. Les deux seuils sont
+   ceux d'app.css. */
+
+const CLE_MENU = 'devis-vocal.menu-masque';
+const GRAND_ECRAN = window.matchMedia('(min-width: 1100px)');
+
+let menuMasque = false;
+try { menuMasque = localStorage.getItem(CLE_MENU) === '1'; } catch (_) { /* bloqué */ }
+
+let menuOuvert = GRAND_ECRAN.matches && !menuMasque;
+
+function appliquerMenu() {
+  const ouvert = menuOuvert && !$('menu').hidden;
+  document.body.classList.toggle('menu-ouvert', ouvert);
+  // L'icône de la barre n'existe que menu fermé : ouvert, c'est celle du menu.
+  $('btn-menu').hidden = $('menu').hidden || ouvert;
+  // La relecture tient en deux colonnes ou en une selon la place que le menu laisse.
+  appliquerVue();
+}
+
+function basculerMenu(ouvert) {
+  // Le glissement ne vaut que pour un geste : voir `body.menu-anime` dans app.css.
+  document.body.classList.add('menu-anime');
+  menuOuvert = ouvert;
+  if (GRAND_ECRAN.matches) {
+    menuMasque = !ouvert;
+    try {
+      if (menuMasque) localStorage.setItem(CLE_MENU, '1');
+      else localStorage.removeItem(CLE_MENU);
+    } catch (_) { /* vaut pour la page en cours */ }
+  }
+  appliquerMenu();
+  // Le focus suit le geste : sans ça, il resterait sur une icône qui vient de
+  // disparaître, et la touche suivante repartirait du haut de la page.
+  $(ouvert ? 'btn-menu-fermer' : 'btn-menu').focus({ preventScroll: true });
+}
+
+/* Par-dessus la page, le menu s'efface dès qu'on y a choisi quelque chose : il
+   cacherait sinon l'écran qu'on vient de demander. */
+function refermerSiPardessus() {
+  if (GRAND_ECRAN.matches || !menuOuvert) return;
+  document.body.classList.add('menu-anime');
+  menuOuvert = false;
+  appliquerMenu();
+}
+
+/* Le menu a trois visages : la fiche complète, le compte dont l'inscription n'est
+   pas finie — une adresse et la déconnexion, rien d'autre —, et le seul lien
+   « Se connecter » pour qui a choisi de se passer de compte. */
+function peindreMenu() {
+  const connecte = !!utilisateur;
+  const fiche = connecte && profil && profil.complet ? profil : null;
+  const enInscription = connecte && !!profil && !profil.complet;
+
+  $('menu').hidden = !(connecte || sansCompte);
+
+  const email = connecte ? (utilisateur.email || '') : '';
+  const nom = fiche ? fiche.identite
+    : connecte ? (utilisateur.displayName || email || 'Connecté')
+    : 'Sans compte';
+  // Sans fiche, l'adresse tient déjà lieu de nom : la redire dessous ne dirait rien.
+  const sousNom = connecte ? (email === nom ? '' : email)
+    : 'Vous dictez sans être connecté.';
+
+  $('menu-nom').textContent = nom;
+  $('menu-role').textContent = fiche ? fiche.role : '';
+  $('menu-role').hidden = !fiche;
+  $('menu-email').textContent = sousNom;
+  $('menu-email').hidden = !sousNom;
+  $('menu-entreprise').textContent = fiche ? fiche.entreprise : '';
+  $('menu-entreprise-bloc').hidden = !fiche;
+
+  // « Paramètres » rouvre la fiche : sans fiche lue, il n'y a rien à rouvrir. Le
+  // template, lui, n'a pas de sens tant que l'inscription n'est pas finie ; la
+  // déconnexion reste — c'est la sortie de secours de cet écran.
+  $('btn-parametres').hidden = !fiche;
+  $('btn-template').hidden = !connecte || enInscription;
   $('btn-deconnexion').hidden = !connecte;
   $('btn-connexion').hidden = connecte;
+
+  appliquerMenu();
 }
 
 async function peindreCompte() {
-  const barre = $('compte');
   if (!utilisateur) {
     profil = null;
+    peindreMenu();
     if (sansCompte) {
-      barre.hidden = false;
-      peindreBarre(false);
       // Pas de retour forcé à l'accueil : l'artisan est peut-être en pleine relecture.
       if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active')) {
         montrer('accueil');
       }
       return;
     }
-    barre.hidden = true;
-    // Le compte suivant repart d'une barre entière : sans ça, un artisan qui se
-    // déconnecte depuis l'écran de la fiche laisserait « Mon template » caché.
-    peindreBarre(true);
     montrer('connexion');
     return;
   }
@@ -204,27 +278,22 @@ async function peindreCompte() {
   // Connecté : le choix « sans compte » n'a plus d'objet, et ne doit pas survivre à
   // une déconnexion ultérieure.
   choisirSansCompte(false);
-  barre.hidden = false;
-  peindreBarre(true);
-  $('compte-qui').textContent = utilisateur.email || utilisateur.displayName || 'Connecté';
+  // Le menu d'abord, avec l'adresse seule : la fiche met un aller-retour à arriver.
+  peindreMenu();
 
   // La fiche décide de l'écran : tant qu'elle manque, l'inscription n'est pas finie.
   // C'est le même chemin pour les deux façons de s'inscrire — on regarde ce que
   // l'artisan a, pas comment il est arrivé. Un compte Google passe donc ici aussi,
   // à sa première connexion, avec son nom déjà rempli.
   profil = await lireProfil();
+  // La fiche remplace l'adresse : « Camille Durand », son rôle et son entreprise
+  // disent qui est connecté mieux qu'une adresse, qui passe en dessous.
+  peindreMenu();
 
   if (profil && !profil.complet) {
     preparerProfil();
     montrer('profil');
     return;
-  }
-
-  if (profil) {
-    // La fiche remplace l'adresse e-mail : « Camille Durand · Bâti Rénov » dit qui
-    // est connecté mieux qu'une adresse, et l'adresse reste en infobulle.
-    $('compte-qui').textContent = profil.identite + ' · ' + profil.entreprise;
-    $('compte-qui').title = utilisateur.email || '';
   }
 
   // On ne ramène pas de force à l'accueil : un rafraîchissement du jeton en plein
@@ -284,8 +353,29 @@ function couperLeNom(complet) {
   return [mots[0], mots.slice(1).join(' ')];
 }
 
-function preparerProfil() {
+/* Le même formulaire sert deux fois : à l'inscription, où il est la dernière étape,
+   et rouvert depuis « Paramètres », où il ne fait que corriger une fiche qui existe.
+   Seuls les mots autour changent, et la présence d'un retour. */
+function modeProfil(edition) {
+  $('profil-label').textContent = edition ? 'Paramètres' : 'Dernière étape';
+  $('profil-titre').textContent = edition ? 'Votre fiche' : 'Qui établit ces devis ?';
+  $('btn-profil').textContent = edition ? 'Enregistrer' : "Terminer l'inscription";
+  $('btn-profil-retour').hidden = !edition;
+}
+
+function ouvrirParametres() {
+  if (!profil || !profil.complet) return;
+  preparerProfil(profil);
+  montrer('profil');
+  // `montrer` écrit « Inscription » au fil de la barre : ce n'en est plus une.
+  $('entete-fil').textContent = 'Paramètres';
+}
+
+/* `existante` : la fiche à corriger. Absente, c'est une inscription, et le
+   formulaire part de ce que Google sait du nom. */
+function preparerProfil(existante = null) {
   direProfil('');
+  modeProfil(!!existante);
 
   // La liste des rôles vient du serveur : c'est lui qui en tient la référence, et
   // elle n'a pas à être écrite deux fois. « Autre » n'y est pas — c'est la porte de
@@ -305,18 +395,25 @@ function preparerProfil() {
     option.textContent = role;
     liste.append(option);
   }
-  basculerAutre();
 
-  const [prenom, nom] = couperLeNom(utilisateur && utilisateur.displayName);
-  $('profil-prenom').value = prenom;
-  $('profil-nom').value = nom;
-  $('profil-entreprise').value = '';
-  $('profil-role-autre').value = '';
+  if (existante) {
+    // Un rôle saisi en texte libre n'est pas dans la liste : il revient par la
+    // porte par laquelle il est entré, « Autre » et son champ.
+    const connu = roles.includes(existante.role);
+    liste.value = connu ? existante.role : AUTRE;
+    $('profil-prenom').value = existante.prenom;
+    $('profil-nom').value = existante.nom;
+    $('profil-entreprise').value = existante.entreprise;
+    $('profil-role-autre').value = connu ? '' : existante.role;
+  } else {
+    const [prenom, nom] = couperLeNom(utilisateur && utilisateur.displayName);
+    $('profil-prenom').value = prenom;
+    $('profil-nom').value = nom;
+    $('profil-entreprise').value = '';
+    $('profil-role-autre').value = '';
+  }
+  $('profil-autre').hidden = liste.value !== AUTRE;
   marquerValides();
-
-  // Le template n'a pas de sens tant que l'inscription n'est pas finie ; la
-  // déconnexion, elle, reste — c'est la sortie de secours de cet écran.
-  $('btn-template').hidden = true;
 }
 
 const AUTRE = 'Autre';
@@ -411,9 +508,7 @@ async function envoyerProfil() {
     bouton.textContent = libelle;
   }
 
-  $('btn-template').hidden = false;
-  $('compte-qui').textContent = profil.identite + ' · ' + profil.entreprise;
-  $('compte-qui').title = utilisateur.email || '';
+  peindreMenu();
   montrer('accueil');
 }
 
@@ -518,9 +613,35 @@ function brancher() {
     envoyerProfil();
   });
   $('profil-role').addEventListener('change', basculerAutre);
+  $('btn-profil-retour').addEventListener('click', () => montrer('accueil'));
 
-  $('btn-template').addEventListener('click', ouvrirTemplate);
+  $('btn-parametres').addEventListener('click', () => {
+    refermerSiPardessus();
+    ouvrirParametres();
+  });
+  $('btn-template').addEventListener('click', () => {
+    refermerSiPardessus();
+    ouvrirTemplate();
+  });
   $('btn-template-retour').addEventListener('click', () => montrer('accueil'));
+
+  $('btn-menu').addEventListener('click', () => basculerMenu(true));
+  $('btn-menu-fermer').addEventListener('click', () => basculerMenu(false));
+  $('menu-voile').addEventListener('click', () => basculerMenu(false));
+  // Échap ne referme que le menu posé par-dessus la page : sur un grand écran il
+  // fait partie de la page, et rien n'est à fermer.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menuOuvert && !GRAND_ECRAN.matches && !$('menu').hidden) {
+      basculerMenu(false);
+    }
+  });
+  // Franchir le seuil change la nature du menu, pas seulement sa taille : on repart
+  // de l'état voulu de ce côté-là — ouvert sur grand écran sauf choix contraire,
+  // fermé en dessous.
+  GRAND_ECRAN.addEventListener('change', () => {
+    menuOuvert = GRAND_ECRAN.matches && !menuMasque;
+    appliquerMenu();
+  });
 
   brancherTemplate();
 }

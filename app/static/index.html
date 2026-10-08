@@ -62,6 +62,23 @@
   <symbol id="i-croix" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
     <path d="m6.5 6.5 11 11M17.5 6.5l-11 11"></path>
   </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2"></rect>
+    <path d="M9.5 4.5v15"></path>
+  </symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7.5h9M17 7.5h3M4 16.5h3M11 16.5h9"></path>
+    <circle cx="15" cy="7.5" r="2"></circle>
+    <circle cx="9" cy="16.5" r="2"></circle>
+  </symbol>
+  <symbol id="i-sortie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 3.5H6.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2H10"></path>
+    <path d="M15.5 8 19.5 12l-4 4M19.5 12H9.5"></path>
+  </symbol>
+  <symbol id="i-entree" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 3.5h3.5a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H14"></path>
+    <path d="M10.5 8l4 4-4 4M14.5 12h-10"></path>
+  </symbol>
 </svg>
 
 <!-- Le premier élément focalisable de la page : un artisan au clavier, ou sur
@@ -103,36 +120,82 @@
 <!-- L'ossature persistante.                                                 -->
 <!--                                                                         -->
 <!-- Avant, chaque écran se redécouvrait : la marque était peinte deux fois   -->
-<!-- — dans l'accueil et dans la connexion — la barre de compte flottait      -->
-<!-- au-dessus sans appartenir à rien, et le template ouvrait une page sans    -->
-<!-- retour visible. Une seule barre porte désormais les trois : où l'on est, -->
-<!-- qui l'on est, comment on revient. Elle ne bouge plus d'un écran à        -->
-<!-- l'autre, ce qui est tout l'intérêt.                                      -->
+<!-- — dans l'accueil et dans la connexion — et le template ouvrait une page   -->
+<!-- sans retour visible. La barre porte où l'on est et comment on revient ;  -->
+<!-- le menu latéral, juste dessous, porte qui l'on est. Ni l'une ni l'autre  -->
+<!-- ne bouge d'un écran à l'autre, ce qui est tout l'intérêt.                -->
 <!-- ======================================================================= -->
 <header class="entete" id="entete">
   <div class="entete__inner">
+    <!-- L'icône qui rouvre le menu. Elle n'existe que menu fermé : ouvert, c'est la
+         même icône, dans le menu, qui le referme — une seule à la fois à l'écran. -->
+    <button class="menu__bascule" id="btn-menu" type="button" hidden
+            aria-label="Afficher le menu" aria-controls="menu" aria-expanded="false">
+      <svg aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+
     <!-- La marque et l'état du parcours, à gauche. Le fil dit sur quel écran on est ;
          il disparaît sur l'accueil, où la question ne se pose pas. -->
     <button class="marque" id="marque" type="button" aria-label="Revenir à l'accueil">
       <span class="marque__nom">Devis&nbsp;Vocal</span>
     </button>
     <div class="entete__fil" id="entete-fil" hidden></div>
-
-    <div class="entete__espace"></div>
-
-    <!-- La barre de compte. Cachée tant que Firebase n'est pas configuré : sans
-         vérification côté serveur, un bouton « Se connecter » serait une porte peinte
-         sur un mur. C'est /api/firebase qui tranche, pas le front. -->
-    <div class="compte" id="compte" hidden>
-      <span class="compte__qui" id="compte-qui"></span>
-      <button class="compte__lien" id="btn-template">Mon template</button>
-      <button class="compte__lien" id="btn-deconnexion">Se déconnecter</button>
-      <!-- Seul bouton de la barre pour qui a choisi de continuer sans compte : le
-           chemin du retour vers la connexion, sans rien imposer. -->
-      <button class="compte__lien" id="btn-connexion" hidden>Se connecter</button>
-    </div>
   </div>
 </header>
+
+<!-- Le menu latéral du compte. Caché tant que Firebase n'est pas configuré : sans
+     vérification côté serveur, un bouton « Se connecter » serait une porte peinte
+     sur un mur. C'est /api/firebase qui tranche, pas le front — et sans lui, la page
+     est exactement celle d'avant, sans menu ni icône.
+
+     En haut, qui est connecté et pour quelle entreprise ; en bas, ce qu'on peut y
+     faire. Le milieu reste vide exprès : le sujet de cette page est le devis. -->
+<aside class="menu" id="menu" aria-label="Votre compte" hidden>
+  <div class="menu__tete">
+    <div class="label">Compte</div>
+    <button class="menu__bascule" id="btn-menu-fermer" type="button"
+            aria-label="Masquer le menu" aria-controls="menu" aria-expanded="true">
+      <svg aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+  </div>
+
+  <div class="menu__qui">
+    <div class="menu__nom" id="menu-nom"></div>
+    <div class="menu__role" id="menu-role" hidden></div>
+    <div class="menu__email" id="menu-email" hidden></div>
+    <div class="menu__entreprise" id="menu-entreprise-bloc" hidden>
+      <div class="label">Entreprise</div>
+      <div class="menu__entreprise-nom" id="menu-entreprise"></div>
+    </div>
+  </div>
+
+  <div class="menu__espace"></div>
+
+  <nav class="menu__liens" aria-label="Compte">
+    <button class="menu__lien" id="btn-template" type="button">
+      <svg aria-hidden="true"><use href="#i-document"/></svg>
+      <span>Mon template</span>
+    </button>
+    <button class="menu__lien" id="btn-parametres" type="button">
+      <svg aria-hidden="true"><use href="#i-reglages"/></svg>
+      <span>Paramètres</span>
+    </button>
+    <button class="menu__lien" id="btn-deconnexion" type="button">
+      <svg aria-hidden="true"><use href="#i-sortie"/></svg>
+      <span>Se déconnecter</span>
+    </button>
+    <!-- Seul lien du menu pour qui a choisi de continuer sans compte : le chemin du
+         retour vers la connexion, sans rien imposer. -->
+    <button class="menu__lien" id="btn-connexion" type="button" hidden>
+      <svg aria-hidden="true"><use href="#i-entree"/></svg>
+      <span>Se connecter</span>
+    </button>
+  </nav>
+</aside>
+
+<!-- Sur un écran étroit le menu passe par-dessus la page : ce voile la met en
+     retrait, et la toucher referme le menu. -->
+<div class="menu-voile" id="menu-voile"></div>
 
 <main id="principal">
 
@@ -202,8 +265,11 @@
      Voir `Profil` dans app/models.py. -->
 <section class="screen profil" id="ecran-profil" aria-label="Votre fiche">
   <div class="profil__inner">
-    <div class="label label--accent">Dernière étape</div>
-    <h1 class="profil__titre">Qui établit&nbsp;ces devis ?</h1>
+    <!-- Ces deux lignes et le bouton du bas changent quand l'écran est rouvert
+         depuis « Paramètres » : même formulaire, mais ce n'est plus une inscription.
+         Voir `modeProfil` dans compte.js. -->
+    <div class="label label--accent" id="profil-label">Dernière étape</div>
+    <h1 class="profil__titre" id="profil-titre">Qui établit&nbsp;ces devis ?</h1>
     <p class="profil__baseline">
       Votre nom et votre entreprise servent à vous reconnaître dans l'application.
       Ils n'apparaissent pas sur le devis, qui garde ses mentions légales.
@@ -248,6 +314,9 @@
       </div>
 
       <button class="btn btn--large" type="submit" id="btn-profil">Terminer l'inscription</button>
+      <!-- Depuis « Paramètres » seulement : à l'inscription, la sortie de cet écran
+           est la déconnexion, pas un retour vers un accueil qu'on n'a pas encore. -->
+      <button class="btn btn--ghost btn--large" type="button" id="btn-profil-retour" hidden>Retour</button>
     </form>
 
     <p class="connexion__erreur" id="profil-erreur" role="alert" hidden></p>
@@ -656,14 +725,16 @@
 <section class="screen template" id="ecran-template" aria-label="Template de devis">
   <div class="template__inner">
     <div class="template__head">
-      <div>
-        <div class="label label--accent">Mise en page</div>
-        <h2>Votre template de devis</h2>
-      </div>
+      <!-- Le retour d'abord, à gauche : c'est là que l'œil et le pouce le cherchent,
+           du côté du menu d'où l'on vient. -->
       <button class="btn btn--ghost" id="btn-template-retour">
         <svg aria-hidden="true"><use href="#i-retour"/></svg>
         <span>Retour</span>
       </button>
+      <div>
+        <div class="label label--accent">Mise en page</div>
+        <h2>Votre template de devis</h2>
+      </div>
     </div>
 
     <p class="template__lede">

@@ -83,7 +83,8 @@ img, svg, iframe { display: block; max-width: 100%; }
 /* Toute icône du produit fait 20px et suit la couleur de son texte. Une seule
    taille par défaut : les écarts sont déclarés là où ils ont une raison. */
 svg use { color: inherit; }
-.btn svg, .compte__lien svg, .template__pied svg, .paste-toggle svg {
+.btn svg, .compte__lien svg, .menu__lien svg, .menu__bascule svg,
+.template__pied svg, .paste-toggle svg {
   width: 20px; height: 20px; flex: none;
 }
 
@@ -184,7 +185,6 @@ body.compte-inconnu .screen { visibility: hidden; }
   padding: 0 var(--dv-marge);
   display: flex; align-items: center; gap: var(--dv-s-4);
 }
-.entete__espace { flex: 1; }
 
 .marque {
   display: flex; align-items: center;
@@ -215,17 +215,157 @@ body.compte-inconnu .screen { visibility: hidden; }
   white-space: nowrap;
 }
 
-/* ---- le compte --------------------------------------------------------- */
-/* Discret par construction : le sujet de cette page est le devis. */
+/* ---- le menu latéral du compte ----------------------------------------- */
+/* Discret par construction : le sujet de cette page est le devis. Une colonne à
+   gauche, qui dit en haut qui est connecté et range en bas ce qu'on peut y faire.
 
-.compte { display: flex; align-items: center; gap: var(--dv-s-4); }
-.compte__qui {
-  font-family: var(--dv-mono);
-  font-size: var(--dv-t-label);
-  color: var(--dv-faint);
-  max-width: 22ch;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+   Deux comportements, selon la place :
+
+   - à partir de 1100px, ouvert, il pousse la page de sa largeur — rien ne passe
+     dessous, et il peut rester ouvert pendant qu'on travaille ;
+   - en dessous, il glisse par-dessus la page derrière un voile, et se referme dès
+     qu'on a choisi.
+
+   1100 et pas moins : la page poussée garde ainsi plus de 820px, donc aucun des
+   seuils de la section « Adaptation » ne se retrouve faussé — sauf celui des deux
+   colonnes de la relecture, redit plus bas pour ce cas. */
+
+.menu {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 30;
+  width: var(--dv-menu-l);
+  max-width: 86vw;
+  display: flex; flex-direction: column;
+  background: var(--dv-bg-alt);
+  border-right: 1px solid var(--dv-rule);
+  overflow-y: auto;
+  /* Fermé, il est hors écran et hors du parcours au clavier : `visibility` retire
+     ses liens de la tabulation, ce qu'une simple translation ne ferait pas. */
+  transform: translateX(-100%);
+  visibility: hidden;
 }
+body.menu-ouvert .menu { transform: none; visibility: visible; }
+
+.menu__tete {
+  flex: none;
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: var(--dv-entete-h);
+  padding: 0 var(--dv-s-3) 0 var(--dv-s-7);
+  border-bottom: 1px solid var(--dv-rule);
+}
+
+/* L'icône qui masque et rouvre le menu. La même des deux côtés : c'est un seul
+   geste, il n'a pas à changer de dessin selon l'état. */
+.menu__bascule {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: var(--dv-cible); height: var(--dv-cible);
+  border: none; background: none; cursor: pointer;
+  color: var(--dv-muted);
+  border-radius: var(--dv-radius);
+  transition: color var(--dv-duree-vite) var(--dv-sortie),
+              background var(--dv-duree-vite) var(--dv-sortie);
+}
+.menu__bascule:hover { color: var(--dv-accent); background: var(--dv-accent-tint); }
+/* Dans la barre, l'icône s'aligne sur la gouttière : c'est son dessin qui doit
+   tomber sous le texte de la page, pas le bord de sa cible de 48px. */
+.entete .menu__bascule { margin-left: calc(var(--dv-s-5) * -1); }
+
+.menu__qui { padding: var(--dv-s-8) var(--dv-s-7) var(--dv-s-7); }
+.menu__nom {
+  font-family: var(--dv-serif);
+  font-size: var(--dv-t-h3);
+  font-weight: 600;
+  line-height: var(--dv-lh-snug);
+  letter-spacing: var(--dv-track-tight);
+  color: var(--dv-ink);
+  overflow-wrap: anywhere;
+}
+.menu__role {
+  margin-top: var(--dv-s-1);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-muted);
+}
+.menu__email {
+  margin-top: var(--dv-s-3);
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-xs);
+  line-height: var(--dv-lh-snug);
+  color: var(--dv-faint);
+  overflow-wrap: anywhere;
+}
+.menu__entreprise {
+  margin-top: var(--dv-s-7);
+  padding-top: var(--dv-s-6);
+  border-top: 1px solid var(--dv-rule);
+}
+.menu__entreprise-nom {
+  margin-top: var(--dv-s-2);
+  font-weight: 500;
+  line-height: var(--dv-lh-snug);
+  color: var(--dv-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+/* Ce qui pousse les liens tout en bas, quelle que soit la hauteur de la fenêtre. */
+.menu__espace { flex: 1; min-height: var(--dv-s-8); }
+
+.menu__liens {
+  flex: none;
+  display: flex; flex-direction: column;
+  padding: var(--dv-s-4) var(--dv-s-4) max(var(--dv-s-4), env(safe-area-inset-bottom));
+  border-top: 1px solid var(--dv-rule);
+}
+.menu__lien {
+  display: flex; align-items: center; gap: var(--dv-s-4);
+  width: 100%;
+  min-height: var(--dv-cible);
+  padding: 0 var(--dv-s-4);
+  border: none; background: none; cursor: pointer;
+  font-family: var(--dv-sans);
+  font-size: var(--dv-t-body);
+  text-align: left;
+  color: var(--dv-text);
+  border-radius: var(--dv-radius);
+  transition: color var(--dv-duree-vite) var(--dv-sortie),
+              background var(--dv-duree-vite) var(--dv-sortie);
+}
+.menu__lien:hover { color: var(--dv-accent); background: var(--dv-accent-tint); }
+
+.menu-voile {
+  position: fixed; inset: 0; z-index: 25;
+  background: var(--dv-voile);
+  opacity: 0;
+  visibility: hidden;
+}
+
+@media (min-width: 1100px) {
+  body.menu-ouvert { padding-left: var(--dv-menu-l); }
+}
+@media (max-width: 1099px) {
+  body.menu-ouvert .menu { box-shadow: var(--dv-ombre-3); }
+  body.menu-ouvert .menu-voile { opacity: 1; visibility: visible; }
+}
+
+/* Le glissement. Posé par `compte.js` après le premier affichage seulement : au
+   chargement, le menu doit être là, pas arriver — sans quoi toute la page se
+   décalerait sous les yeux à chaque ouverture de l'application. */
+body.menu-anime { transition: padding-left var(--dv-duree) var(--dv-sortie); }
+body.menu-anime .menu {
+  transition: transform var(--dv-duree) var(--dv-entree),
+              visibility 0s linear var(--dv-duree);
+}
+body.menu-anime.menu-ouvert .menu {
+  transition: transform var(--dv-duree) var(--dv-sortie), visibility 0s;
+}
+body.menu-anime .menu-voile {
+  transition: opacity var(--dv-duree) var(--dv-sortie),
+              visibility 0s linear var(--dv-duree);
+}
+body.menu-anime.menu-ouvert .menu-voile {
+  transition: opacity var(--dv-duree) var(--dv-sortie), visibility 0s;
+}
+
+/* Le lien discret, hors du menu : « Revenir au template livré ». */
 .compte__lien {
   display: inline-flex; align-items: center; gap: var(--dv-s-2);
   min-height: var(--dv-cible);
@@ -1291,7 +1431,7 @@ body.compte-inconnu .screen { visibility: hidden; }
 .template__inner { width: 100%; max-width: var(--dv-mesure); margin: 0 auto; }
 
 .template__head {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--dv-s-8);
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--dv-s-7);
   margin-bottom: var(--dv-s-6);
 }
 .template__head h2 {
@@ -1406,6 +1546,19 @@ body.compte-inconnu .screen { visibility: hidden; }
   .apercu__bureau { height: min(70vh, 760px); }
 }
 
+/* Le même seuil, menu latéral ouvert. Il pousse la page de 272px (`--dv-menu-l`) :
+   entre 1181 et 1452px de fenêtre, il ne reste donc plus la place des deux
+   colonnes, alors que la requête ci-dessus, qui mesure la fenêtre, croit que si.
+   `estEtroit()`, dans app.js, applique la même règle au `hidden` des deux vues. */
+@media (min-width: 1181px) and (max-width: 1452px) {
+  body.menu-ouvert .bascule { display: flex; }
+  body.menu-ouvert .relecture__corps { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  body.menu-ouvert .relecture__inner { max-width: var(--dv-mesure-large); }
+  body.menu-ouvert .relecture__corps > [hidden] { display: none; }
+  body.menu-ouvert .relecture__apercu { position: static; }
+  body.menu-ouvert .apercu__bureau { height: min(70vh, 760px); }
+}
+
 /* ---- 820px : observations et totaux en une colonne ---------------------- */
 @media (max-width: 820px) {
   .foot { grid-template-columns: minmax(0, 1fr); gap: var(--dv-s-8); }
@@ -1414,8 +1567,6 @@ body.compte-inconnu .screen { visibility: hidden; }
   .relecture__head { flex-direction: column; gap: var(--dv-s-6); }
   .relecture__actions { width: 100%; }
   .relecture__actions .btn { flex: 1; }
-
-  .template__head { flex-direction: column; gap: var(--dv-s-5); }
 }
 
 /* ---- 640px : le tableau s'empile ---------------------------------------- */
@@ -1460,7 +1611,6 @@ body.compte-inconnu .screen { visibility: hidden; }
 
   .relu__actions { flex-direction: column; }
 
-  .compte__qui { display: none; }   /* l'adresse e-mail mangerait toute la barre */
   .entete__fil { display: none; }
 
   .traitement__head { flex-direction: column-reverse; align-items: flex-start; gap: var(--dv-s-4); }
