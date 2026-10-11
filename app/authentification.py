@@ -63,6 +63,9 @@ class AuthError(Exception):
 _verrou = threading.Lock()
 _application = None
 
+# Au-delà, on ne recopie plus FIREBASE_CREDENTIALS dans un message d'erreur.
+MAX_CHEMIN_AFFICHE = 200
+
 
 def _credentials():
     """Le compte de service, depuis la variable d'environnement ou le fichier."""
@@ -80,11 +83,23 @@ def _credentials():
         return credentials.Certificate(donnees)
 
     chemin = config.firebase_credentials
-    if chemin and chemin.exists():
+    try:
+        present = bool(chemin) and chemin.exists()
+    except OSError:
+        # Une valeur qui n'est pas un chemin — trop longue, caractères interdits — fait
+        # lever `exists()` au lieu de répondre non, et l'erreur du système recopie la
+        # valeur entière. Si c'est un secret collé de travers, il finit dans le log.
+        present = False
+    if present:
         return credentials.Certificate(str(chemin))
 
+    # Même précaution pour notre propre message : un chemin se lit en une ligne, et ce
+    # qui est plus long n'en est pas un.
+    montre = str(chemin)
+    if len(montre) > MAX_CHEMIN_AFFICHE:
+        montre = f"une valeur de {len(montre)} caractères, qui n'est pas un chemin"
     raise AuthError(
-        f"Le fichier de compte de service Firebase est introuvable : {chemin}. "
+        f"Le fichier de compte de service Firebase est introuvable : {montre}. "
         "Renseigne FIREBASE_CREDENTIALS ou FIREBASE_CREDENTIALS_JSON."
     )
 

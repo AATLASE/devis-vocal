@@ -228,6 +228,30 @@ class Config(BaseSettings):
         """
         return bool(self.firebase_credentials_json or self.firebase_credentials)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _ranger_le_compte_de_service(cls, valeurs):
+        """Un JSON collé dans FIREBASE_CREDENTIALS est rangé dans FIREBASE_CREDENTIALS_JSON.
+
+        Les deux variables portent presque le même nom, et l'erreur a été faite en
+        production : le contenu du compte de service dans celle qui attend un chemin.
+        Rien ne le signalait — `auth_active` était vrai, l'écran de connexion
+        s'affichait — mais chaque jeton était refusé, et le « chemin » introuvable,
+        clé privée comprise, partait dans le log à chaque tentative.
+
+        Un chemin ne commence jamais par une accolade : on tranche sans risque. Et on
+        tranche avant la validation, parce que `Path` normalise ce qu'on lui confie et
+        écrase les `//` des URL du compte de service.
+        """
+        if not isinstance(valeurs, dict):
+            return valeurs
+        brut = valeurs.get("firebase_credentials")
+        if isinstance(brut, str) and brut.lstrip().startswith("{"):
+            valeurs = {**valeurs, "firebase_credentials": None}
+            if not valeurs.get("firebase_credentials_json"):
+                valeurs["firebase_credentials_json"] = brut
+        return valeurs
+
     # --- Templates de devis ---
     # Le HTML que l'artisan téléverse pour remplacer `templates/devis.html`.
     max_template_ko: int = 512

@@ -202,3 +202,39 @@ def test_un_fichier_de_service_absent_est_signale(monkeypatch, tmp_path):
 
     with pytest.raises(AuthError, match="introuvable"):
         authentification._credentials()
+
+
+def test_un_json_colle_dans_la_variable_du_chemin_est_reconnu(monkeypatch):
+    """Observé en production : le contenu du compte de service collé dans
+    FIREBASE_CREDENTIALS, qui attend un chemin. Tous les jetons étaient refusés. Les
+    URL servent de témoin — `Path` les aurait ramenées à `https:/`."""
+    colle = '{ "type": "service_account", "token_uri": "https://oauth2.googleapis.com/token" }'
+    monkeypatch.setenv("FIREBASE_CREDENTIALS", colle)
+    get_config.cache_clear()
+
+    config = get_config()
+    assert config.firebase_credentials is None
+    assert config.firebase_credentials_json == colle
+    assert config.auth_active is True
+
+
+def test_la_variable_json_garde_la_main_sur_un_json_mal_range(monkeypatch):
+    monkeypatch.setenv("FIREBASE_CREDENTIALS", '{"type": "service_account", "project_id": "ancien"}')
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"type": "service_account"}')
+    get_config.cache_clear()
+
+    config = get_config()
+    assert config.firebase_credentials is None
+    assert config.firebase_credentials_json == '{"type": "service_account"}'
+
+
+def test_une_valeur_qui_n_est_pas_un_chemin_ne_part_pas_dans_le_message(monkeypatch):
+    """Ce que l'erreur recopie finit dans le log. Un secret collé de travers ne doit
+    pas y arriver, quelle que soit la façon dont le système refuse de le lire."""
+    secret = "cle-privee-" + "x" * 5000
+    monkeypatch.setenv("FIREBASE_CREDENTIALS", secret)
+    get_config.cache_clear()
+
+    with pytest.raises(AuthError, match="introuvable") as erreur:
+        authentification._credentials()
+    assert "cle-privee" not in str(erreur.value)
