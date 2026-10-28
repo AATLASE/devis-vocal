@@ -183,3 +183,49 @@ def test_l_appel_au_fournisseur_est_borne(monkeypatch, faux_client):
     assert faux_client.construits[0]["timeout"] == 240
     assert faux_client.construits[0]["max_retries"] == 1
 
+
+# ---------------------------------------------------------------------------
+# Le plafond de dépense
+# ---------------------------------------------------------------------------
+
+
+def test_la_transcription_consomme_son_plafond_avant_l_appel(monkeypatch):
+    """La transcription est facturée à la minute d'audio. Elle échappait aux plafonds :
+    un script pouvait l'appeler en boucle pendant que /health annonçait zéro devis.
+
+    Comptée avant l'appel : un appel qui échoue chez le fournisseur a été payé quand
+    même, et compte. Au plafond, plus rien ne part.
+    """
+    from starlette.testclient import TestClient
+
+    from app import main, securite
+    from app.transcription import TranscriptionError
+
+    monkeypatch.setenv("DEVIS_PAR_JOUR", "2")
+    get_config.cache_clear()
+
+    appels = []
+
+    def fournisseur_en_panne(audio, nom):
+        appels.append(nom)
+        raise TranscriptionError("Le service de transcription n'a pas répondu.")
+
+    monkeypatch.setattr(main, "transcribe", fournisseur_en_panne)
+    client = TestClient(main.app)
+
+    def envoyer():
+        return client.post("/api/transcribe", files={"audio": ("vocal.m4a", b"x" * 100)})
+
+    assert envoyer().status_code == 400
+    assert envoyer().status_code == 400
+    assert securite.compteurs()["transcriptions_du_jour"] == 2   # comptées malgré l'échec
+
+    refus = envoyer()
+    assert refus.status_code == 429
+    assert "transcriptions" in refus.json()["detail"]
+    assert len(appels) == 2, "un appel payant est parti au-delà du plafond"
+
+    # Un compteur à elle : le plafond des devis n'a pas bougé.
+    assert securite.compteurs()["devis_du_jour"] == 0
+    sante = client.get("/health").json()
+    assert sante["transcriptions_du_jour"] == "2"

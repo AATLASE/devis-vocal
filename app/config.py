@@ -194,6 +194,9 @@ class Config(BaseSettings):
     # Deux échelles, parce qu'une seule ne suffit pas : un plafond journalier de 80
     # laisse passer 2 400 devis dans le mois, ce qui n'est plus un démonstrateur mais
     # une facture. Le mensuel attrape la fuite lente que le journalier laisse filer.
+    #
+    # Les transcriptions, payantes elles aussi chez OpenAI, sont comptées à part sous
+    # les mêmes plafonds : 80 devis et 80 transcriptions par jour.
     devis_par_jour: int = 80
     devis_par_mois: int = 400
 

@@ -168,7 +168,8 @@ def verifier_debit(request: Request) -> None:
 
 
 def _neuf() -> dict:
-    return {"jour": "", "devis_jour": 0, "mois": "", "devis_mois": 0}
+    return {"jour": "", "devis_jour": 0, "transcriptions_jour": 0,
+            "mois": "", "devis_mois": 0, "transcriptions_mois": 0}
 
 
 def _charger() -> dict:
@@ -217,12 +218,32 @@ def consommer_devis() -> None:
     """Plafonds de dépense. C'est le garde-fou du portefeuille.
 
     Le code d'accès protège du passant ; celui-ci protège du code qui a circulé, du
-    script laissé en boucle et de l'erreur de manipulation. Il compte les devis parce
-    que c'est l'opération qui coûte de l'argent — une transcription chez Groq est
-    gratuite, un chiffrage ne l'est pas.
+    script laissé en boucle et de l'erreur de manipulation. Il compte les opérations
+    qui coûtent de l'argent : le chiffrage ici, la transcription juste en dessous.
 
     Deux échelles : le jour attrape l'emballement, le mois attrape la fuite lente
     qu'un plafond journalier laisse passer sans jamais broncher.
+    """
+    _consommer("devis", "de devis autorisés")
+
+
+def consommer_transcription() -> None:
+    """Même garde-fou pour la transcription, sur son propre compteur.
+
+    Elle a longtemps échappé aux plafonds, sur l'idée qu'une transcription chez Groq
+    est gratuite. Elle passe maintenant par OpenAI, facturée à la minute d'audio, et un
+    script pouvait l'appeler en boucle pendant que /health annonçait zéro devis. Un
+    compteur à elle plutôt que celui des devis : une dictée en coûterait sinon deux, et
+    le plafond annoncé ne voudrait plus rien dire.
+    """
+    _consommer("transcriptions", "de transcriptions autorisées")
+
+
+def _consommer(quoi: str, libelle: str) -> None:
+    """Compte une opération payante, ou la refuse si le plafond est atteint.
+
+    Appelée avant l'appel au fournisseur, jamais après : la dépense est engagée dès
+    que la requête part, qu'elle aboutisse ou non.
     """
     config = get_config()
     etat = _charger()
@@ -231,28 +252,28 @@ def consommer_devis() -> None:
     jour = aujourd_hui.isoformat()
     mois = aujourd_hui.strftime("%Y-%m")
 
+    # Le jour et le mois sont communs aux deux compteurs : quand ils tournent, tout repart.
     if etat["jour"] != jour:
-        etat["jour"], etat["devis_jour"] = jour, 0
+        etat["jour"], etat["devis_jour"], etat["transcriptions_jour"] = jour, 0, 0
     if etat["mois"] != mois:
-        etat["mois"], etat["devis_mois"] = mois, 0
+        etat["mois"], etat["devis_mois"], etat["transcriptions_mois"] = mois, 0, 0
 
     for plafond, consomme, echelle, reprise in (
-        (config.devis_par_jour, etat["devis_jour"], "aujourd'hui", "demain"),
-        (config.devis_par_mois, etat["devis_mois"], "ce mois-ci", "le mois prochain"),
+        (config.devis_par_jour, etat[f"{quoi}_jour"], "aujourd'hui", "demain"),
+        (config.devis_par_mois, etat[f"{quoi}_mois"], "ce mois-ci", "le mois prochain"),
     ):
         if plafond > 0 and consomme >= plafond:
             logger.error(
-                "Plafond atteint (%d devis %s). Aucun appel payant ne partira avant %s.",
-                plafond, echelle, reprise,
+                "Plafond atteint (%d %s %s). Aucun appel payant ne partira avant %s.",
+                plafond, quoi, echelle, reprise,
             )
             raise HTTPException(
                 status_code=429,
-                detail=f"Le nombre de devis autorisés {echelle} est atteint. "
-                       f"Réessayez {reprise}.",
+                detail=f"Le nombre {libelle} {echelle} est atteint. Réessayez {reprise}.",
             )
 
-    etat["devis_jour"] += 1
-    etat["devis_mois"] += 1
+    etat[f"{quoi}_jour"] += 1
+    etat[f"{quoi}_mois"] += 1
     _sauver()
 
 
@@ -261,11 +282,15 @@ def compteurs() -> dict[str, int]:
     config = get_config()
     etat = _charger()
     aujourd_hui = date.today()
+    du_jour = etat["jour"] == aujourd_hui.isoformat()
+    du_mois = etat["mois"] == aujourd_hui.strftime("%Y-%m")
     return {
-        "devis_du_jour": etat["devis_jour"] if etat["jour"] == aujourd_hui.isoformat() else 0,
+        "devis_du_jour": etat["devis_jour"] if du_jour else 0,
         "plafond_jour": config.devis_par_jour,
-        "devis_du_mois": etat["devis_mois"] if etat["mois"] == aujourd_hui.strftime("%Y-%m") else 0,
+        "devis_du_mois": etat["devis_mois"] if du_mois else 0,
         "plafond_mois": config.devis_par_mois,
+        "transcriptions_du_jour": etat["transcriptions_jour"] if du_jour else 0,
+        "transcriptions_du_mois": etat["transcriptions_mois"] if du_mois else 0,
         "adresses_suivies": len(_fenetres),
     }
 

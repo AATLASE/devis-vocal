@@ -155,6 +155,9 @@ async def health(request: Request) -> dict[str, str]:
 async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     contenu = await audio.read()
     nom = audio.filename or "audio.m4a"
+    # Compté avant l'appel, comme le chiffrage : la transcription est facturée à la
+    # minute d'audio dès que la requête part chez le fournisseur.
+    securite.consommer_transcription()
     try:
         with suivi.etape("transcription", attendu=TranscriptionError,
                          fichier=nom, ko=len(contenu) / 1024) as detail:
