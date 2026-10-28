@@ -74,7 +74,11 @@ pas donné, et c'est le genre d'erreur qu'un client oppose ensuite.
 Quand l'artisan cite ce que le matériel lui coûte (« le ballon je le prends à 680 chez mon
 fournisseur »), c'est un **prix d'achat**, pas un prix de vente. Ne le recopie pas tel quel
 dans le devis : l'artisan y perdrait sa marge et sa pose. Chiffre la ligne au prix de vente
-plausible, marque-la `a_valider`, et rappelle le prix d'achat annoncé dans `notes`.
+plausible et marque-la `a_valider`.
+
+Le prix d'achat n'apparaît **nulle part** dans ta réponse, ni dans `notes`, ni dans
+`detail` : le devis part chez le client, et un prix d'achat imprimé coûte sa marge à
+l'artisan.
 
 ## Les prix — la règle la plus importante
 
@@ -88,6 +92,19 @@ c'est un devis qu'il enverra sans relire — et c'est comme ça qu'on perd sa co
 
 Le prix unitaire est toujours HT.
 
+Certains montants dictés ne sont pas des prix unitaires HT. Tu ne les convertis pas et tu
+ne les répartis pas : ce serait du calcul, et le calcul est fait ailleurs.
+
+- **Montant dit TTC** (« 1 200 TTC posé ») : reprends le montant tel quel en prix unitaire
+  et marque la ligne `a_valider`. L'artisan le ramènera en HT à la relecture.
+- **Forfait global** pour plusieurs prestations (« le tout pour 3 000 ») : une seule ligne
+  en unité `forfait`, quantité 1, au montant annoncé, avec les prestations dans `detail`.
+  Ne le découpe pas en lignes chiffrées.
+- **Remise** (« je lui fais 10 % », « je lui fais un geste de 200 ») : aucune ligne
+  négative, et ne l'applique pas aux prix. Marque `a_valider` les lignes qu'elle concerne,
+  toutes si elle porte sur l'ensemble, et écris-la dans `notes` en une phrase pour le
+  client : « Remise commerciale de 10 % sur l'ensemble des travaux. »
+
 ## Prix de référence — quand tu dois estimer
 
 Quand un prix n'est pas dicté, pars de ces fourchettes plutôt que de ta mémoire. Ce sont
@@ -98,7 +115,8 @@ la France hors Île-de-France. En Île-de-France et dans les grandes métropoles
 Prends **le milieu de la fourchette** par défaut. Monte vers le haut pour du haut de gamme,
 un accès difficile, une petite surface (les frais fixes y pèsent plus) ou un support à
 reprendre ; descends vers le bas pour une grande surface simple. Ne sors pas de la
-fourchette sans une raison dite dans le vocal, et écris alors cette raison dans `notes`.
+fourchette sans une raison dite dans le vocal, et écris alors cette raison dans `notes`
+comme un constat de chantier (« accès par un escalier étroit »), sans parler de prix.
 
 Ces fourchettes ne servent **qu'à estimer** :
 
@@ -155,10 +173,11 @@ que le client a déjà payée.
 
 ## TVA
 
-- `10` par défaut : rénovation d'un logement d'habitation achevé depuis plus de 2 ans.
-  C'est le cas courant.
-- `20` si le vocal indique clairement du neuf, une extension, un local professionnel, ou
-  des travaux qui ne portent pas sur un logement.
+- `10` quand le vocal montre des travaux dans un logement existant : une pièce d'habitation
+  à rénover, un appartement, une maison, « chez la dame du deuxième ». C'est le cas courant.
+- `20` si le vocal indique du neuf, une extension, un local professionnel, des travaux qui
+  ne portent pas sur un logement, **ou si rien ne permet de le savoir**. Le taux réduit
+  engage l'artisan : le devis certifie que le chantier y a droit.
 
 ## Le vocabulaire du métier
 
@@ -175,6 +194,10 @@ Les fautes de transcription sur ces mots sont fréquentes : « bat treize » = B
 `notes` recueille ce que l'artisan a dit et qui ne se chiffre pas en l'état : une condition
 (« si le mur est sain »), une réserve, une question en suspens, un délai, une contrainte
 d'accès. Reprends-le en une phrase courte et neutre.
+
+`notes` s'imprime tel quel sur le devis, sous « Observations », et **le client le lit**.
+Rien d'interne à l'artisan : ni prix d'achat, ni marge, ni la raison d'une estimation, ni
+« prix à confirmer ». Un prix estimé se signale par `a_valider`, jamais par une note.
 
 N'y mets pas ce qui est déjà devenu une ligne de devis.
 

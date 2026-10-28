@@ -235,6 +235,70 @@ def test_le_mode_fixtures_refuse_une_transcription_inconnue(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Le garde-fou des prix estimés
+# ---------------------------------------------------------------------------
+
+
+def _extraction(*lignes: tuple[float, bool]) -> DevisExtraction:
+    return DevisExtraction(
+        client_nom=None, client_adresse=None, client_telephone=None, type_travaux=None,
+        duree_estimee=None, taux_tva_suggere=TauxTVA.REDUIT, notes=[],
+        lignes=[
+            LigneExtraction(designation=f"Ligne {i}", detail=None, quantite=1, unite=Unite.U,
+                            prix_unitaire_ht=prix, a_valider=a_valider)
+            for i, (prix, a_valider) in enumerate(lignes)
+        ],
+    )
+
+
+def test_un_prix_absent_du_vocal_passe_a_valider():
+    """Le modèle a vendu le ballon 1 150 € en le disant dicté : seul 680 a été prononcé."""
+    from app.structuration import _signaler_les_prix_non_dictes
+
+    extraction = _signaler_les_prix_non_dictes(
+        _extraction((1150, False)), "Le ballon je le prends à 680 chez mon fournisseur."
+    )
+    assert extraction.lignes[0].a_valider is True
+
+
+@pytest.mark.parametrize("dit, prix", [
+    ("le tableau à 890", 890),
+    ("les portes à 95 € pièce", 95),
+    ("1 150 le ballon posé", 1150),
+    ("1 150 le ballon posé", 1150),
+    ("1.150 le ballon posé", 1150),
+    ("12,50 le mètre", 12.5),
+])
+def test_un_prix_dicte_reste_dicte(dit, prix):
+    from app.structuration import _signaler_les_prix_non_dictes
+
+    extraction = _signaler_les_prix_non_dictes(_extraction((prix, False)), dit)
+    assert extraction.lignes[0].a_valider is False
+
+
+def test_le_garde_fou_ne_retire_jamais_un_signalement():
+    """Un prix estimé qui tombe sur un nombre du vocal reste une estimation."""
+    from app.structuration import _signaler_les_prix_non_dictes
+
+    extraction = _signaler_les_prix_non_dictes(_extraction((200, True)), "un ballon de 200 litres")
+    assert extraction.lignes[0].a_valider is True
+
+
+@pytest.mark.parametrize("nom", noms_fixtures())
+def test_le_garde_fou_ne_touche_pas_aux_prix_dictes_des_fixtures(nom):
+    from app.structuration import _signaler_les_prix_non_dictes
+
+    transcript = (FIXTURES / f"{nom}.txt").read_text(encoding="utf-8")
+    assert _signaler_les_prix_non_dictes(charge(nom), transcript) == charge(nom)
+
+
+def test_aucune_fixture_n_imprime_de_prix_d_achat():
+    """`notes` part chez le client : un prix d'achat imprimé coûte sa marge à l'artisan."""
+    for nom in noms_fixtures():
+        assert not any("achat" in note.lower() for note in charge(nom).notes), nom
+
+
+# ---------------------------------------------------------------------------
 # Le vrai appel API — hors du lot par défaut
 # ---------------------------------------------------------------------------
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -173,12 +174,52 @@ def _structure_compatible_openai(
     ) from derniere
 
 
+# Un nombre tel qu'une transcription l'écrit : « 48 », « 12,50 », et les milliers groupés
+# « 1 150 » ou « 1.150 ».
+_NOMBRE = re.compile(r"\d+(?:[.,]\d+)?")
+_MILLIERS = re.compile(r"\d{1,3}(?:[   .]\d{3})+(?:,\d+)?")
+
+
+def _nombres_dits(transcript: str) -> set[float]:
+    """Tous les nombres de la transcription, lus de toutes les façons plausibles.
+
+    On lit large exprès : un nombre en trop ne fait que rater un signalement, alors qu'un
+    nombre manqué ferait relire un prix que l'artisan a bien dicté.
+    """
+    dits = {round(float(m.group().replace(",", ".")), 2) for m in _NOMBRE.finditer(transcript)}
+    for m in _MILLIERS.finditer(transcript):
+        dits.add(round(float(re.sub(r"[   .]", "", m.group()).replace(",", ".")), 2))
+    return dits
+
+
+def _signaler_les_prix_non_dictes(extraction: DevisExtraction, transcript: str) -> DevisExtraction:
+    """Marque `a_valider` toute ligne « dictée » dont le prix n'apparaît pas dans le vocal.
+
+    Le prompt l'exige déjà ; ceci le garantit. Le garde-fou ajoute des signalements, il
+    n'en retire jamais : au pire il fait relire un prix dicté en toutes lettres, jamais il
+    ne fait passer une estimation pour un prix confirmé.
+    """
+    dits = _nombres_dits(transcript)
+    for ligne in extraction.lignes:
+        if not ligne.a_valider and round(ligne.prix_unitaire_ht, 2) not in dits:
+            logger.warning(
+                "Prix %s absent de la transcription : « %s » passe à valider.",
+                ligne.prix_unitaire_ht, ligne.designation,
+            )
+            ligne.a_valider = True
+    return extraction
+
+
 def structure(transcript: str) -> DevisExtraction:
     """Transforme une transcription en devis structuré, non chiffré."""
     transcript = transcript.strip()
     if not transcript:
         raise StructurationError("Transcription vide.")
+    return _signaler_les_prix_non_dictes(_extraire(transcript), transcript)
 
+
+def _extraire(transcript: str) -> DevisExtraction:
+    """Confie la transcription au fournisseur configuré, ou la rejoue depuis les fixtures."""
     config = get_config()
     if config.use_fixtures:
         return _depuis_fixture(transcript)
