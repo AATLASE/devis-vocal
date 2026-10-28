@@ -409,8 +409,52 @@ let msAcquis = 0;
 let debutSegment = 0;
 let dicteeAnnulee = false;
 let dicteeDirecte = false;
+// Le micro est en train de s'ouvrir. Entre l'appui et l'autorisation, il se passe
+// jusqu'à une demi-seconde sans rien à l'écran : un second appui — des gants, un doigt
+// qui insiste — ouvrait un second micro qu'aucun arrêt ne refermait.
+let demarrage = false;
+// Pourquoi la dictée s'est arrêtée sans qu'on le demande ; dit sous la réécoute.
+let interruption = '';
 
 const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+
+/* ---- l'écran reste allumé ---------------------------------------------- */
+/* Une dictée dure une à deux minutes, téléphone à la main, sans toucher l'écran : le
+   verrouillage automatique tombe en plein milieu, et sur iPhone la capture d'une page
+   masquée est coupée ou rendue muette. On demande donc à garder l'écran allumé le temps
+   de la dictée. Refusé — batterie faible, navigateur ancien —, on dicte sans. */
+
+let verrouEcran = null;
+
+async function garderEcranAllume() {
+  if (!navigator.wakeLock || (verrouEcran && !verrouEcran.released)) return;
+  try {
+    const verrou = await navigator.wakeLock.request('screen');
+    // La dictée a pu s'arrêter pendant la demande : on ne garde pas l'écran pour rien.
+    if (enregistreur) verrouEcran = verrou;
+    else verrou.release().catch(() => {});
+  } catch (_) { /* refusé : la dictée continue sans */ }
+}
+
+function libererEcran() {
+  if (verrouEcran) verrouEcran.release().catch(() => {});
+  verrouEcran = null;
+}
+
+/* L'écran s'éteint quand même — l'artisan l'a verrouillé, ou il est passé à une autre
+   application. La capture d'une page masquée n'est pas garantie : on met en pause, ce
+   qui garde tout ce qui a été dit, et on le dit au retour. Reprendre est un geste. */
+function suspendreDictee(raison) {
+  if (!enregistreur || enregistreur.state !== 'recording') return;
+  basculerPause();
+  $('dictee-aide').replaceChildren(noeud('span', 'dictee__point'), document.createTextNode(raison));
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    suspendreDictee('En pause : l’écran s’est éteint ou vous avez changé d’application. Touchez « Reprendre ».');
+  }
+});
 
 /* ---- ce que le micro entend -------------------------------------------- */
 /* Le chronomètre dit que l'enregistrement tourne ; il ne dit pas que le micro
@@ -603,6 +647,7 @@ function basculerPause() {
     enregistreur.resume();
     debutSegment = Date.now();
     peindrePause(false);
+    garderEcranAllume();   // le verrou tombe de lui-même quand la page est masquée
   }
 }
 
@@ -624,6 +669,7 @@ function raisonMicro(err) {
 
 function fermerMicro() {
   fermerNiveau();
+  libererEcran();
   // Sans ça, le navigateur laisse le voyant d'enregistrement allumé.
   if (micro) micro.getTracks().forEach((t) => t.stop());
   micro = null;
@@ -666,7 +712,30 @@ async function demarrerDictee() {
     if (e.data && e.data.size) morceaux.push(e.data);
   });
 
+  // Le micro peut lâcher sans qu'on le demande : iOS qui le reprend, un appel qui
+  // arrive. Muet, on met en pause ; coupé, l'enregistrement s'arrête là, et on le dit.
+  micro.getAudioTracks().forEach((piste) => {
+    piste.addEventListener('mute', () =>
+      suspendreDictee('En pause : le micro s’est interrompu. Touchez « Reprendre ».'));
+    piste.addEventListener('ended', () => {
+      if (enregistreur !== recorder) return;
+      interruption = 'Le micro s’est coupé : l’enregistrement s’arrête là. Réécoutez avant d’envoyer.';
+      arreterDictee(false);
+    });
+  });
+
   recorder.addEventListener('stop', () => {
+    // Arrêté par le navigateur et non par un geste : le chronomètre tourne encore, et
+    // il réécrirait le titre de la carte pendant la réécoute.
+    if (enregistreur === recorder) {
+      clearInterval(chronoDictee);
+      chronoDictee = null;
+      enregistreur = null;
+      interruption = interruption ||
+        'L’enregistrement s’est arrêté de lui-même. Réécoutez avant d’envoyer.';
+    }
+    const raison = interruption;
+    interruption = '';
     const blob = new Blob(morceaux, { type: recorder.mimeType || type });
     const secondes = secondesDictee;
     const pic = picNiveau;
@@ -703,7 +772,10 @@ async function demarrerDictee() {
     // « Générer le devis » pendant la dictée : l'artisan a choisi d'envoyer sans
     // réécouter. Les deux refus ci-dessus s'appliquent quand même.
     if (directe) lancer(fichier, null, secondes);
-    else montrerRelu(fichier, secondes);
+    else {
+      montrerRelu(fichier, secondes);
+      if (raison) $('dictee-aide').textContent = raison;
+    }
   });
 
   recorder.start();
@@ -711,6 +783,7 @@ async function demarrerDictee() {
   msAcquis = 0;
   debutSegment = Date.now();
   peindreDictee(true);
+  garderEcranAllume();
   chronoDictee = setInterval(() => {
     // L'intervalle tourne pendant la pause — c'est lui qui dit à `basculerDictee`
     // qu'une dictée est en cours — mais il ne compte que ce qui s'enregistre.
