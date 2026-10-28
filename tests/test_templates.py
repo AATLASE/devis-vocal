@@ -32,6 +32,16 @@ def etat_neuf():
     templates.vider_la_memoire()
 
 
+@pytest.fixture
+def firebase_simule(monkeypatch):
+    """Firebase allumé pour la configuration, le stockage restant en mémoire. Sans
+    Firebase, aucun template ne s'applique : c'est ce qu'il faut pour voir `html_pour`
+    retrouver celui d'un artisan."""
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"type": "service_account"}')
+    get_config.cache_clear()
+    monkeypatch.setattr(templates, "_actif", lambda: False)
+
+
 # Un template minimal mais honnête : il imprime les quatorze mentions attendues.
 # Sert de témoin — quand un test échoue, il doit être clair que c'est le sujet du
 # test qui a bougé, pas le template d'appui.
@@ -244,26 +254,37 @@ def test_le_template_pose_revient_a_son_proprietaire():
     assert pose.conforme
 
 
-def test_deux_artisans_ne_se_partagent_pas_leur_template():
+def test_deux_artisans_ne_se_partagent_pas_leur_template(firebase_simule):
     """Le seul intérêt d'avoir introduit des comptes. S'il ne tient pas, la
     fonctionnalité entière est à retirer."""
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME)
 
     assert templates.lire("artisan-2") is None
     assert templates.html_pour("artisan-2") is None
+    assert templates.html_pour("artisan-1") is not None
 
 
-def test_sans_template_pose_on_rend_sur_celui_livre():
+def test_sans_template_pose_on_rend_sur_celui_livre(firebase_simule):
     """`None` et pas une chaîne vide : c'est ce que `pdf.render` attend pour reprendre
     le template livré."""
     assert templates.html_pour("artisan-jamais-vu") is None
 
 
-def test_retirer_son_template_rend_la_mise_en_page_livree():
+def test_retirer_son_template_rend_la_mise_en_page_livree(firebase_simule):
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME)
 
     templates.supprimer("artisan-1")
 
+    assert templates.html_pour("artisan-1") is None
+
+
+def test_sans_firebase_aucun_template_ne_s_applique():
+    """« Sans identifiants Firebase, tout est inactif… pas de gabarit. » Tout le monde
+    y est l'utilisateur local : un template posé par l'un s'imprimait sur les devis de
+    tous les autres, sans bandeau, puisque rien n'échouait."""
+    templates.enregistrer("local", "pirate.html", TEMPLATE_CONFORME + "<p>IBAN PIRATE</p>")
+
+    assert templates.html_pour("local") is None
     assert templates.html_pour("artisan-1") is None
 
 
@@ -279,7 +300,7 @@ def test_les_mentions_manquantes_sont_conservees_avec_le_template():
     assert pose.mentions_manquantes == ["Le numéro SIRET"]
 
 
-def test_le_html_enregistre_est_celui_qui_a_ete_nettoye():
+def test_le_html_enregistre_est_celui_qui_a_ete_nettoye(firebase_simule):
     """Ce qu'on stocke est ce qu'on rendra : le nettoyage ne doit pas être une
     politesse d'affichage refaite à chaque PDF."""
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME + "<script>alert(1)</script>")

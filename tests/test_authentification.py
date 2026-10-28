@@ -71,9 +71,14 @@ def test_la_config_publique_seule_n_active_rien(monkeypatch):
     assert get_config().auth_active is False
 
 
-async def test_sans_firebase_l_endpoint_garde_laisse_passer():
-    """Poser un template reste possible sur un poste local sans compte."""
-    assert (await utilisateur_requis(authorization=None)).uid == UID_LOCAL
+async def test_sans_firebase_les_routes_du_compte_n_existent_pas():
+    """« Sans identifiants Firebase, tout est inactif. » Laisser passer l'utilisateur
+    local ouvrait la fiche et le template à tous les visiteurs à la fois : le template
+    posé par l'un s'imprimait sur les devis de tous les autres."""
+    with pytest.raises(HTTPException) as refus:
+        await utilisateur_requis(authorization=None)
+
+    assert refus.value.status_code == 404
 
 
 async def test_sans_firebase_le_devis_reste_anonyme():

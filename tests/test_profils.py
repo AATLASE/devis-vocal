@@ -176,14 +176,15 @@ def test_sans_firebase_la_fiche_vit_en_memoire_et_pas_sur_disque():
 # Le contrat HTTP
 # ---------------------------------------------------------------------------
 #
-# Sans Firebase, `utilisateur_requis` renvoie l'utilisateur local : les deux routes
-# sont donc joignables sans jeton, et c'est exactement l'état dans lequel la suite
-# tourne. Ce qu'on vérifie ici n'est pas l'authentification — testée ailleurs — mais
-# la forme des réponses, celle dont dépend l'écran d'inscription.
+# Sans Firebase, les routes de la fiche n'existent pas (404, testé dans
+# `test_api.py`). On simule donc un Firebase : un jeton que la couture
+# `verifier_jeton` accepte, et le stockage en mémoire plutôt que Firestore. Ce qu'on
+# vérifie ici n'est pas l'authentification — testée ailleurs — mais la forme des
+# réponses, celle dont dépend l'écran d'inscription.
 
 
 @pytest.fixture
-async def client():
+async def client(monkeypatch):
     """Un client HTTP sur l'application, sans démarrer Chromium.
 
     `TestClient` déclenche le `lifespan`, donc le lancement du navigateur : une
@@ -192,10 +193,19 @@ async def client():
     """
     import httpx
 
+    from app import authentification
+    from app.authentification import Utilisateur
     from app.main import app
 
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"type": "service_account"}')
+    get_config.cache_clear()
+    monkeypatch.setattr(authentification, "verifier_jeton",
+                        lambda _jeton: Utilisateur(uid="artisan-1"))
+    monkeypatch.setattr(profils, "_actif", lambda: False)
+
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test",
+                                 headers={"Authorization": "Bearer jeton"}) as c:
         yield c
 
 

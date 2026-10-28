@@ -3,10 +3,10 @@
 Hors du périmètre d'origine (`CLAUDE.md` exclut « base de données » et « comptes /
 auth / multi-tenant »), ajouté sur décision explicite. Le module tient trois rôles :
 
-1. **Stocker** le HTML téléversé — Firestore quand Firebase est configuré, un simple
-   dictionnaire en mémoire sinon. Le repli n'est pas une commodité : c'est ce qui fait
-   passer `uv run pytest` sans le moindre secret, et ce qui garde le démonstrateur
-   utilisable hors-ligne.
+1. **Stocker** le HTML téléversé, dans Firestore. Sans Firebase, aucun template
+   n'existe : les routes répondent 404 et `html_pour` renvoie toujours None, comme
+   l'exige `CLAUDE.md`. Le dictionnaire en mémoire qui reste ne sert qu'aux tests, qui
+   passent sans le moindre secret.
 2. **Valider** avant d'enregistrer, jamais au moment du rendu. Un template qui explose
    pendant la démonstration, devant l'artisan, est exactement ce qu'on ne peut pas se
    permettre : on refuse donc à l'enregistrement ce qui ne rend pas.
@@ -267,10 +267,10 @@ def valider(html: str) -> tuple[str, str, list[str]]:
 # Stockage
 # ---------------------------------------------------------------------------
 
-# Le repli hors-Firebase. Volontairement en mémoire et non sur disque : le projet n'a
-# pas de base de données, et n'en gagne pas une par la porte de derrière. Un template
-# posé sans Firebase vit le temps du processus, ce qui suffit pour travailler la mise
-# en page et pour les tests.
+# Le repli hors-Firebase, pour les tests seulement : sans Firebase, les routes du
+# template répondent 404 et `html_pour` n'en lit aucun. Volontairement en mémoire et
+# non sur disque : le projet n'a pas de base de données, et n'en gagne pas une par la
+# porte de derrière.
 _memoire: dict[str, Template] = {}
 _verrou = threading.Lock()
 
@@ -353,15 +353,17 @@ def supprimer(uid: str) -> None:
 def html_pour(uid: str | None) -> str | None:
     """Le HTML à passer à `pdf.render()` pour cet artisan, ou None pour celui livré.
 
+    Sans Firebase, toujours None : « pas de gabarit », dit `CLAUDE.md`. Tout le monde
+    y est le même utilisateur local, et un template posé par l'un s'imprimait sur les
+    devis de tous les autres.
+
     Appelée à chaque PDF, y compris pour les visiteurs non connectés — ce sont eux la
     majorité des rendus en démonstration. D'où le court-circuit : quand Firebase est
     actif, `UID_LOCAL` désigne quelqu'un qui n'est pas connecté, donc qui ne peut rien
     posséder. Interroger Firestore pour un document qui n'existera jamais coûterait un
     aller-retour réseau sur le chemin le plus chaud du produit.
     """
-    if not uid:
-        return None
-    if uid == UID_LOCAL and _actif():
+    if not uid or uid == UID_LOCAL or not get_config().auth_active:
         return None
     template = lire(uid)
     return template.html if template else None

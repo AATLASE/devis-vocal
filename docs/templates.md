@@ -8,6 +8,11 @@ Par défaut, tous les devis sortent sur `templates/devis.html` — la mise en pa
 celle qui porte les mentions obligatoires et dont la pagination est calée au pixel. Un
 artisan connecté peut la remplacer par la sienne depuis **Mon template**.
 
+Sans Firebase configuré sur le serveur, la fonctionnalité n'existe pas : les routes
+`/api/template*` et `/api/profil` répondent 404, et tous les devis sortent sur le
+template livré. Sans comptes, tout le monde serait le même utilisateur, et le template
+posé par l'un s'imprimerait sur les devis de tous les autres.
+
 ## Ce que vous perdez en faisant ça
 
 Une phrase, et elle est importante : **le template livré garantit la conformité du devis,

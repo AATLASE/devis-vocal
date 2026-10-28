@@ -517,7 +517,11 @@ async def api_template_modele() -> FileResponse:
     """Le template livré, à télécharger comme point de départ.
 
     Partir d'une page blanche pour écrire un devis conforme n'a aucun sens : celui-ci
-    passe déjà les quatorze contrôles de mentions obligatoires."""
+    passe déjà les quatorze contrôles de mentions obligatoires.
+
+    Sans Firebase, pas de template : la route n'existe pas plus que les autres."""
+    if not get_config().auth_active:
+        raise HTTPException(status_code=404, detail="Not Found")
     return FileResponse(
         pdf_module.TEMPLATES / "devis.html",
         media_type="text/html",

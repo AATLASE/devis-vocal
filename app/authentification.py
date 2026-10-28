@@ -206,9 +206,14 @@ async def utilisateur_optionnel(authorization: str | None = Header(default=None)
 
 
 async def utilisateur_requis(authorization: str | None = Header(default=None)) -> Utilisateur:
-    """L'utilisateur connecté, ou 401. Garde les endpoints du template."""
+    """L'utilisateur connecté, ou 401. Garde les routes du compte : fiche et template.
+
+    Sans Firebase, ces routes n'existent pas : 404, comme avant l'ajout des comptes.
+    Laisser passer l'utilisateur local les ouvrait à tous les visiteurs à la fois — et
+    un template posé par l'un s'imprimait sur les devis de tous les autres.
+    """
     if not get_config().auth_active:
-        return UTILISATEUR_LOCAL
+        raise HTTPException(status_code=404, detail="Not Found")
     jeton = _jeton_de_l_entete(authorization)
     if not jeton:
         raise HTTPException(status_code=401, detail="Connectez-vous pour accéder à cette page.")

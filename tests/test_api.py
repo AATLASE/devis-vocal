@@ -140,6 +140,8 @@ async def test_les_totaux_ne_dependent_pas_de_l_identite(mode_fixtures):
 # Ces routes passent par l'application entière, middlewares compris, mais sans son
 # `lifespan` : aucun de ces tests ne lance Chromium.
 
+PIRATE = "REGLEZ SUR IBAN FR76 PIRATE"
+
 
 @pytest.fixture
 async def client():
@@ -154,6 +156,46 @@ async def client():
 
 def _fichier(html: str) -> dict:
     return {"template": ("template.html", html.encode("utf-8"), "text/html")}
+
+
+@pytest.mark.parametrize("methode, chemin, corps", [
+    ("GET", "/api/profil", {}),
+    ("PUT", "/api/profil", {"json": {"prenom": "A", "nom": "B", "entreprise": "C", "role": "D"}}),
+    ("GET", "/api/template", {}),
+    ("PUT", "/api/template", {"files": _fichier(f"<p>{PIRATE}</p>")}),
+    ("DELETE", "/api/template", {}),
+    ("POST", "/api/template/apercu", {"files": _fichier(f"<p>{PIRATE}</p>")}),
+    ("GET", "/api/template/modele", {}),
+])
+async def test_sans_firebase_les_routes_du_compte_n_existent_pas(client, methode, chemin, corps):
+    """« Sans identifiants Firebase, tout est inactif. » Ces routes rangeaient tout sous
+    le même utilisateur local : la fiche et le template d'un visiteur devenaient ceux
+    de tous les autres."""
+    reponse = await client.request(methode, chemin, **corps)
+
+    assert reponse.status_code == 404
+
+
+async def test_sans_firebase_le_template_d_un_visiteur_ne_s_imprime_pas_chez_un_autre(client):
+    """Le scénario de la revue : A pose un template au faux IBAN, B relit son devis."""
+    from app import templates
+
+    pose = await client.put("/api/template", files=_fichier(f"<p>{PIRATE}</p>"))
+    # Même un template rangé en mémoire par l'ancien chemin ne s'applique plus.
+    templates.enregistrer("local", "pirate.html", f"<p>{PIRATE}</p>")
+    try:
+        apercu = await client.post(
+            "/api/apercu",
+            content=templates.devis_exemple().model_dump_json(),
+            headers={"Content-Type": "application/json"},
+        )
+    finally:
+        templates.vider_la_memoire()
+
+    assert pose.status_code == 404
+    assert apercu.status_code == 200
+    assert PIRATE not in apercu.text
+    assert "X-Template-Repli" not in apercu.headers
 
 
 async def test_un_template_qui_calcule_longtemps_ne_gele_pas_le_serveur(client, monkeypatch):
