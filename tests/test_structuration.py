@@ -155,6 +155,24 @@ def test_le_libelle_de_tva_est_a_la_francaise():
     assert devis_de("sdb", tva_forcee=Decimal("0.055")).taux_tva_libelle == "5,5"
 
 
+def test_le_taux_de_5_5_pourcent_suggere_est_applique():
+    """Amélioration énergétique (art. 278-0 bis A) : 80 m² d'isolation à 30 € font
+    2 400 € HT, soit 132 € de TVA, et non 240 € au taux de 10 %."""
+    extraction = DevisExtraction(
+        client_nom=None, client_adresse=None, client_telephone=None,
+        type_travaux="Isolation des combles perdus", duree_estimee=None,
+        lignes=[LigneExtraction(designation="Isolation des combles perdus", detail=None,
+                                quantite=80, unite=Unite.M2, prix_unitaire_ht=30,
+                                a_valider=False)],
+        taux_tva_suggere=TauxTVA.ENERGIE, notes=[],
+    )
+    devis = to_devis(extraction, entreprise=ENTREPRISE, maintenant=INSTANT)
+
+    assert devis.taux_tva == Decimal("0.055")
+    assert devis.montant_tva == Decimal("132.00")
+    assert devis.total_ttc == Decimal("2532.00")
+
+
 @pytest.mark.parametrize("tva_forcee", [None, Decimal("0.10"), Decimal("0.20")])
 def test_en_franchise_aucune_tva_n_est_facturee(tva_forcee):
     """Une micro-entreprise en franchise (art. 293 B du CGI) qui facture la TVA la doit

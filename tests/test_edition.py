@@ -166,8 +166,17 @@ def test_un_devis_sans_ligne_ou_trop_long_est_refuse():
 
 def test_un_taux_de_tva_inconnu_est_refuse():
     devis = devis_sdb()
-    with pytest.raises(EditionRefusee, match="10 % ou 20 %"):
-        recalculer(devis, corrections_depuis(devis, taux_tva="0.055"), max_lignes=60)
+    with pytest.raises(EditionRefusee, match="5,5 %, 10 % ou 20 %"):
+        recalculer(devis, corrections_depuis(devis, taux_tva="0.07"), max_lignes=60)
+
+
+def test_le_taux_de_5_5_pourcent_est_accepte():
+    """Isolation, pompe à chaleur : le taux de l'article 278-0 bis A se choisit à l'écran."""
+    devis = devis_sdb()
+    corrige = recalculer(devis, corrections_depuis(devis, taux_tva="0.055"), max_lignes=60)
+    assert corrige.taux_tva == Decimal("0.055")
+    assert corrige.montant_tva == (devis.total_ht * Decimal("0.055")).quantize(Decimal("0.01"))
+    assert corrige.taux_tva_libelle == "5,5"
 
 
 def test_un_taux_nul_est_refuse_hors_franchise():

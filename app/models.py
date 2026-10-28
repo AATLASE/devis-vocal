@@ -48,6 +48,9 @@ class Unite(str, Enum):
 
 
 class TauxTVA(str, Enum):
+    # Amélioration énergétique d'un logement achevé depuis plus de 2 ans (278-0 bis A).
+    # Ajouté après coup : les extractions déjà enregistrées restent valides.
+    ENERGIE = "5.5"
     REDUIT = "10"  # rénovation d'un logement achevé depuis plus de 2 ans
     NORMAL = "20"  # neuf, local professionnel, ou cas non qualifié
 

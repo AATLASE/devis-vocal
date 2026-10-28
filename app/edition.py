@@ -35,11 +35,15 @@ from app.models import (
     to_devis,
 )
 
-# Les deux taux que le devis sait justifier : le gabarit imprime l'attestation du taux
-# réduit quand il s'applique. Un 5,5 % saisi à la main sortirait sans sa mention.
-# La franchise en base n'est pas un taux qu'on choisit ici : elle vient de l'entreprise,
-# et `to_devis` l'applique d'elle-même.
-TAUX_ACCEPTES = {Decimal("0.10"), Decimal("0.20")}
+# Les taux que le devis sait justifier : le template imprime, pour chacun, l'article
+# qui le fonde (278-0 bis A, 279-0 bis, taux normal). Un autre taux sortirait sans
+# mention. La franchise en base n'est pas un taux qu'on choisit ici : elle vient de
+# l'entreprise, et `to_devis` l'applique d'elle-même.
+TAUX_ACCEPTES = {
+    Decimal("0.055"): TauxTVA.ENERGIE,
+    Decimal("0.10"): TauxTVA.REDUIT,
+    Decimal("0.20"): TauxTVA.NORMAL,
+}
 
 # Au-delà, ce n'est plus une faute de frappe qu'on laisse passer mais un devis absurde.
 QUANTITE_MAX = Decimal("100000")
@@ -93,7 +97,7 @@ def verifier(corrections: Corrections, *, max_lignes: int, franchise: bool = Fal
     if len(corrections.lignes) > max_lignes:
         raise EditionRefusee(f"Un devis ne peut pas dépasser {max_lignes} lignes.")
     if not franchise and corrections.taux_tva not in TAUX_ACCEPTES:
-        raise EditionRefusee("Le taux de TVA doit être 10 % ou 20 %.")
+        raise EditionRefusee("Le taux de TVA doit être 5,5 %, 10 % ou 20 %.")
 
     for numero, ligne in enumerate(corrections.lignes, start=1):
         if not ligne.designation.strip():
@@ -130,7 +134,7 @@ def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> De
         ],
         # Sans effet : le taux choisi est forcé juste en dessous. Le champ est exigé
         # par le schéma de l'extraction, on lui donne la valeur qui correspond.
-        taux_tva_suggere=TauxTVA.NORMAL if corrections.taux_tva == Decimal("0.20") else TauxTVA.REDUIT,
+        taux_tva_suggere=TAUX_ACCEPTES.get(corrections.taux_tva, TauxTVA.NORMAL),
         notes=[note.strip() for note in corrections.notes if note.strip()],
     )
 

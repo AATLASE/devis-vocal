@@ -44,6 +44,7 @@ from app.models import Devis, LigneDevis
 TEMPLATES = RACINE / "templates"
 STATIQUE = RACINE / "app" / "static"
 TAUX_REDUIT = Decimal("0.10")
+TAUX_RENOVATION_ENERGETIQUE = Decimal("0.055")
 
 # Espace fine insécable (U+202F). C'est celle que demande le design, et la bonne en
 # typographie française : ni coupure entre les milliers, ni avant le symbole €, et un
@@ -382,6 +383,7 @@ def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
         "devis": devis,
         "e": devis.entreprise,
         "taux_reduit": TAUX_REDUIT,
+        "taux_renovation_energetique": TAUX_RENOVATION_ENERGETIQUE,
         "pages": pages,
         "cloture_sur_derniere": cloture_sur_derniere,
         "total_pages": total_pages,

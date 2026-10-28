@@ -76,6 +76,20 @@ def test_en_franchise_la_mention_293_b_remplace_la_tva():
     assert "TVA 10" not in html and "Total TTC" not in html
 
 
+def test_a_5_5_pourcent_le_devis_cite_l_article_278_0_bis_a():
+    """Un 5,5 % sous la mention du taux normal ou du 279-0 bis imprimerait un fondement
+    faux sous la signature du client."""
+    from decimal import Decimal
+
+    extraction = DevisExtraction.model_validate_json((FIXTURES / "sdb.json").read_text(encoding="utf-8"))
+    html = render_html(to_devis(extraction, entreprise=ENTREPRISE, maintenant=INSTANT,
+                                tva_forcee=Decimal("0.055")))
+
+    assert "TVA 5,5" in html
+    assert "278-0 bis A" in html
+    assert "279-0 bis" not in html and "taux normal" not in html
+
+
 def test_les_prix_estimes_sont_signales_dans_le_html():
     # Sur le papier, le signal est le dague : c'est ce qui survit à une imprimante
     # noir et blanc, là où la teinte brique disparaît.

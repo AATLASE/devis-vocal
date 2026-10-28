@@ -168,7 +168,7 @@
       <div class="doc-label">Objet des travaux</div>
       <p>
         {{ devis.type_travaux or 'Nature des travaux à préciser' }}.
-        {%- if devis.taux_tva == taux_reduit %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
+        {%- if devis.taux_tva in (taux_reduit, taux_renovation_energetique) %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
       </p>
     </div>
   </section>
@@ -252,6 +252,11 @@
       {%- if e.franchise_tva %}
       <p>TVA non applicable, art. 293 B du CGI. L'entreprise relève de la franchise en
       base de TVA : les montants du présent devis s'entendent sans TVA.</p>
+      {%- elif devis.taux_tva == taux_renovation_energetique %}
+      <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
+      l'article 278-0 bis A du Code général des impôts, les travaux portant sur l'amélioration
+      de la qualité énergétique d'un local à usage d'habitation achevé depuis plus de deux ans.
+      En signant le présent devis, le client atteste que ces conditions sont remplies.</p>
       {%- elif devis.taux_tva == taux_reduit %}
       <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
       l'article 279-0 bis du Code général des impôts, les travaux portant sur un local à usage
@@ -259,7 +264,7 @@
       atteste que cette condition est remplie.</p>
       {%- else %}
       <p>TVA au taux normal de {{ devis.taux_tva_libelle }}&#8239;%, les travaux ne relevant
-      pas des cas d'application du taux réduit prévus à l'article 279-0 bis du Code général
+      pas des taux réduits prévus aux articles 278-0 bis A et 279-0 bis du Code général
       des impôts.</p>
       {%- endif %}
     </div>

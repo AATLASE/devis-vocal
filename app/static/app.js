@@ -1203,7 +1203,9 @@ function ouvrirEdition() {
   const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
   $('ed-tva-franchise').hidden = $('ed-tva-franchise').disabled = !franchise;
   $('ed-tva').disabled = franchise;
-  $('ed-tva').value = franchise ? '0' : Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
+  $('ed-tva').value = franchise ? '0'
+    : Number(d.taux_tva) > 0.15 ? '0.20'
+    : Number(d.taux_tva) < 0.08 ? '0.055' : '0.10';
   $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
   $('ed-notes').value = d.notes.join('\n');
   $('ed-erreur').textContent = '';
