@@ -121,6 +121,20 @@ def test_un_client_professionnel_n_a_ni_formulaire_ni_acompte_differe():
     assert "l221-3" in texte
 
 
+def test_le_mediateur_est_nomme_ou_a_completer():
+    """R616-1 : ses coordonnées et son site. Sans eux, « à compléter » plutôt qu'une
+    phrase qui paraît conforme."""
+    sans = _texte_imprime(devis_de("elec"))
+    assert "médiateur à compléter, site internet à compléter" in sans
+
+    devis = devis_de("elec").model_copy(deep=True)
+    devis.entreprise.mediateur = "Médiateur Exemple, 3 rue des Arbitres, 75009 Paris"
+    devis.entreprise.mediateur_site = "mediateur.example"
+    avec = _texte_imprime(devis)
+    assert "médiateur exemple, 3 rue des arbitres, 75009 paris, mediateur.example" in avec
+    assert "à compléter" not in avec.split("médiation de la consommation")[1].split("réserves")[0]
+
+
 def test_les_prix_estimes_sont_signales_dans_le_html():
     # Sur le papier, le signal est le dague : c'est ce qui survit à une imprimante
     # noir et blanc, là où la teinte brique disparaît.

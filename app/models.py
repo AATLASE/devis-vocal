@@ -109,6 +109,10 @@ class Entreprise(BaseModel):
     # l'assureur, ses coordonnées, et la zone que couvre le contrat, telle que saisie.
     assurance_coordonnees: str = ""
     assurance_couverture: str = ""
+    # Le médiateur de la consommation auquel l'entreprise a adhéré : ses coordonnées et
+    # l'adresse de son site (art. L616-1 et R616-1 du Code de la consommation).
+    mediateur: str = ""
+    mediateur_site: str = ""
 
 
 class Client(BaseModel):

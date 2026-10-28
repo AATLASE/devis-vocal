@@ -943,6 +943,16 @@
             <label for="e-assurance_couverture">Couverture géographique <span class="champ__note">telle qu'écrite au contrat</span></label>
             <input id="e-assurance_couverture" autocomplete="off">
           </div>
+          <!-- Obligatoire dès que le client est un particulier : celui auquel
+               l'entreprise a adhéré, souvent par sa fédération ou sa chambre de métiers. -->
+          <div class="champ champ--large">
+            <label for="e-mediateur">Médiateur de la consommation <span class="champ__note">nom et adresse</span></label>
+            <input id="e-mediateur" autocomplete="off">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-mediateur_site">Site internet du médiateur</label>
+            <input id="e-mediateur_site" inputmode="url" autocomplete="off" spellcheck="false">
+          </div>
           <div class="champ champ--large">
             <label for="e-iban">IBAN <span class="champ__note">pour l'acompte</span></label>
             <input id="e-iban" class="num" autocomplete="off">

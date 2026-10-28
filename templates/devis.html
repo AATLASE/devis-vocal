@@ -314,9 +314,12 @@
     </div>
     <div class="doc-mention">
       <h4>Médiation de la consommation</h4>
+      {#- Nommé, avec son site (art. R616-1) : une phrase sur « le médiateur dont relève
+          l'entreprise » paraît conforme et ne dit au client à qui s'adresser. #}
       <p>En cas de litige n'ayant pas trouvé d'issue amiable, le client peut recourir
-      gratuitement au médiateur de la consommation dont relève l'entreprise, conformément à
-      l'article L612-1 du Code de la consommation.</p>
+      gratuitement au médiateur de la consommation dont relève l'entreprise :
+      {{ e.mediateur or 'médiateur à compléter' }}, {{ e.mediateur_site or 'site internet à compléter' }}
+      (art. L612-1 et R616-1 du Code de la consommation).</p>
     </div>
     <div class="doc-mention">
       <h4>Réserves</h4>

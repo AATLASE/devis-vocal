@@ -387,6 +387,8 @@ class EntrepriseSaisie(BaseModel):
     franchise_tva: bool = False
     assurance_coordonnees: str | None = None
     assurance_couverture: str | None = None
+    mediateur: str | None = None
+    mediateur_site: str | None = None
 
     def fusionner(self, defaut: Entreprise) -> Entreprise:
         """L'identité saisie, sans rien emprunter à celle du serveur.
