@@ -136,11 +136,15 @@ devant un client — dans quatre cas :
 Deux choses sont retirées sans que le template soit refusé :
 
 - **le JavaScript** — balises `<script>` et attributs `onclick`, `onload`… Un devis est
-  un document, pas une application. Un script ferait dépendre le PDF du réseau au moment
-  précis où vous le montrez ;
+  un document, pas une application ;
 - **l'accès aux internes de Python** — le template est rendu dans un bac à sable Jinja.
   `{% include %}` et `{% extends %}` échouent : aucun template ne lira un fichier du
   serveur.
+
+Et quoi que contienne le template, le PDF est imprimé par un Chromium **sans JavaScript
+et sans réseau**. Une image, une police, une feuille de style ou un cadre désignés par
+une URL ne sont pas chargés : tout ce que le document affiche doit voyager avec lui, en
+URI `data:`. C'est déjà le cas des polices de `{{ css }}`.
 
 ## Le filet, en production
 

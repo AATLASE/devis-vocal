@@ -340,10 +340,17 @@ async def demarrer() -> None:
         return
     _playwright = await async_playwright().start()
     _navigateur = await _playwright.chromium.launch(
-        # Dans un conteneur, /dev/shm fait 64 Mo par défaut : Chromium le sature en
-        # plein rendu et meurt sans rien dire. L'option le fait écrire sur le disque —
-        # un peu plus lent, mais le PDF sort. Sans effet hors conteneur.
-        args=["--disable-dev-shm-usage"],
+        args=[
+            # Dans un conteneur, /dev/shm fait 64 Mo par défaut : Chromium le sature en
+            # plein rendu et meurt sans rien dire. L'option le fait écrire sur le disque —
+            # un peu plus lent, mais le PDF sort. Sans effet hors conteneur.
+            "--disable-dev-shm-usage",
+            # Le second verrou du réseau, sous l'interception de `_rendre` : tout ce que
+            # Chromium irait chercher part vers un proxy où rien n'écoute, boucle locale
+            # comprise. `<link rel="prefetch">`, lui, échappe à l'interception.
+            "--proxy-server=http://127.0.0.1:9",
+            "--proxy-bypass-list=<-loopback>",
+        ],
     )
 
 
@@ -375,8 +382,22 @@ async def render(devis: Devis, template: str | None = None) -> bytes:
 
 async def _rendre(devis: Devis, template: str | None) -> bytes:
     assert _navigateur is not None
-    page = await _navigateur.new_page()
+    # Ni JavaScript ni réseau. Ce Chromium tourne sur le serveur, d'où le réseau interne
+    # du conteneur, la boucle locale et l'adresse de métadonnées de l'hébergeur sont
+    # joignables : une iframe vers l'un d'eux s'imprimerait dans le PDF renvoyé à qui a
+    # téléversé le template. Le devis n'a besoin d'aucune ressource extérieure — polices
+    # et images voyagent en URI `data:` — et un script n'a rien à y faire. Couper l'un et
+    # l'autre ici est la vraie barrière ; le nettoyage de `templates.py` n'est qu'hygiène.
+    page = await _navigateur.new_page(java_script_enabled=False)
+
+    async def hors_reseau(route) -> None:
+        if route.request.url.startswith(("data:", "about:")):
+            await route.continue_()
+        else:
+            await route.abort()
+
     try:
+        await page.route("**/*", hors_reseau)
         await page.set_content(render_html(devis, template), wait_until="load")
         # `load` ne dit rien des polices. Sans cette attente, Chromium imprime par
         # intermittence en police de repli — le document est alors juste, mais ce n'est
