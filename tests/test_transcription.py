@@ -141,7 +141,9 @@ def test_par_defaut_une_seule_cle_suffit(monkeypatch, faux_client):
     get_config.cache_clear()
 
     assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
-    assert faux_client.construits == [{"api_key": "cle-openai", "base_url": None}]
+    assert faux_client.construits == [
+        {"api_key": "cle-openai", "base_url": None, "timeout": 60, "max_retries": 1}
+    ]
     assert faux_client.appels[0]["model"] == "gpt-4o-transcribe"
     assert faux_client.appels[0]["language"] == "fr"
 
@@ -154,7 +156,8 @@ def test_avec_groq_la_transcription_part_chez_groq(monkeypatch, faux_client):
 
     assert transcribe(b"x" * 100, "vocal.m4a") == "Bonjour, c'est pour la salle de bain."
     assert faux_client.construits == [
-        {"api_key": "cle-groq", "base_url": "https://api.groq.com/openai/v1"}
+        {"api_key": "cle-groq", "base_url": "https://api.groq.com/openai/v1",
+         "timeout": 60, "max_retries": 1}
     ]
     assert faux_client.appels[0]["model"] == "whisper-large-v3-turbo"
 
@@ -167,3 +170,16 @@ def test_un_vocal_whatsapp_est_envoye_sous_un_nom_que_le_fournisseur_accepte(mon
 
     transcribe(b"x" * 100, "PTT-20260901-WA0003.opus")
     assert faux_client.appels[0]["file"].name == "PTT-20260901-WA0003.ogg"
+
+
+def test_l_appel_au_fournisseur_est_borne(monkeypatch, faux_client):
+    """Sans délai, le SDK attend 600 s et réessaie deux fois : une demi-heure devant
+    une barre de progression, et un fil d'exécution du serveur tenu tout ce temps."""
+    monkeypatch.setenv("OPENAI_API_KEY", "cle-openai")
+    monkeypatch.setenv("DELAI_TRANSCRIPTION_S", "240")   # un Whisper local, lent
+    get_config.cache_clear()
+
+    transcribe(b"x" * 100, "vocal.m4a")
+    assert faux_client.construits[0]["timeout"] == 240
+    assert faux_client.construits[0]["max_retries"] == 1
+

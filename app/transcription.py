@@ -63,7 +63,10 @@ def transcribe(audio: bytes, filename: str) -> str:
             "colle directement une transcription dans le champ texte de la page."
         )
 
-    client = OpenAI(api_key=cle, base_url=config.transcription_url)
+    # Un délai et une seule nouvelle tentative : par défaut le SDK attend 600 s et
+    # réessaie deux fois, soit une demi-heure pour un fournisseur qui traîne.
+    client = OpenAI(api_key=cle, base_url=config.transcription_url,
+                    timeout=config.delai_transcription_s, max_retries=1)
 
     fichier = io.BytesIO(audio)
     # Le SDK s'appuie sur l'extension pour typer l'envoi, et « .opus » n'est pas dans

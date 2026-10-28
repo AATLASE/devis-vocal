@@ -55,6 +55,84 @@ async def test_health_distingue_le_mode_reel(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Un chiffrage en cours ne gèle pas le serveur
+# ---------------------------------------------------------------------------
+
+
+async def test_health_repond_pendant_un_chiffrage(monkeypatch):
+    """Le client du fournisseur est synchrone. Appelé dans la boucle, il gelait tout le
+    serveur pendant les vingt à quarante secondes d'un chiffrage : la page, l'aperçu,
+    le PDF et la dictée des autres artisans, et le healthcheck Docker avec.
+
+    `structure()` est remplacée par une attente de 3 s, que le test lève dès que
+    /health a répondu. Serveur gelé, /health ne passerait qu'au bout des 3 s.
+    """
+    import asyncio
+    import threading
+    import time
+
+    import httpx
+
+    from app import main
+    from app.models import DevisExtraction
+
+    extraction = DevisExtraction.model_validate_json(
+        (FIXTURES / "plomberie.json").read_text(encoding="utf-8")
+    )
+    commence, libere = threading.Event(), threading.Event()
+
+    def chiffrage_lent(transcription):
+        commence.set()
+        libere.wait(timeout=3)
+        return extraction
+
+    monkeypatch.setattr(main, "structure", chiffrage_lent)
+
+    # ASGITransport ne déclenche pas le `lifespan` : pas de Chromium.
+    transport = httpx.ASGITransport(app=main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        # Le chrono part avec le devis : une boucle gelée le serait pendant la pause
+        # qui suit, et /health partirait ensuite sur un serveur redevenu libre.
+        debut = time.perf_counter()
+        devis = asyncio.create_task(client.post("/api/devis", json={"transcription": "x"}))
+        await asyncio.sleep(0.2)
+        sante = await client.get("/health")
+        duree = time.perf_counter() - debut
+        libere.set()
+
+        assert commence.is_set(), "le chiffrage n'avait pas commencé"
+        assert sante.status_code == 200
+        assert duree < 1.5, f"/health a attendu {duree:.1f} s derrière le chiffrage"
+        assert (await devis).status_code == 200
+
+
+def test_le_chiffrage_est_borne_dans_le_temps(monkeypatch):
+    """Sans délai, le SDK attend 600 s et réessaie deux fois. Un modèle local lent
+    (Ollama) se règle par DELAI_CHIFFRAGE_S plutôt qu'en retirant la borne."""
+    import openai
+
+    from app.structuration import structure
+
+    construits = []
+
+    class Construit(Exception):
+        pass
+
+    def faux_client(**options):
+        construits.append(options)
+        raise Construit
+
+    monkeypatch.setenv("STRUCTURATION_PROVIDER", "openai")
+    monkeypatch.setenv("OPENAI_API_KEY", "cle")
+    monkeypatch.setattr(openai, "OpenAI", faux_client)
+
+    with pytest.raises(Construit):
+        structure("Pose d'un lavabo.")
+    assert construits[0]["timeout"] == 90
+    assert construits[0]["max_retries"] == 1
+
+
+# ---------------------------------------------------------------------------
 # L'identité de l'artisan
 # ---------------------------------------------------------------------------
 #

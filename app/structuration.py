@@ -101,7 +101,10 @@ def _structure_compatible_openai(
             "extractions enregistrées."
         )
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    # Un délai et une seule nouvelle tentative : par défaut le SDK attend 600 s et
+    # réessaie deux fois, soit une demi-heure pour un fournisseur qui traîne.
+    client = OpenAI(api_key=api_key, base_url=base_url,
+                    timeout=get_config().delai_chiffrage_s, max_retries=1)
 
     # Parler le format OpenAI ne veut pas dire accepter les mêmes sorties contraintes.
     # OpenAI et Groq gèrent `json_schema` strict ; DeepSeek ou un Ollama local n'ont
@@ -223,7 +226,8 @@ def structure(transcript: str) -> DevisExtraction:
             "pour travailler sur les extractions enregistrées."
         )
 
-    client = anthropic.Anthropic(api_key=config.anthropic_api_key)
+    client = anthropic.Anthropic(api_key=config.anthropic_api_key,
+                                 timeout=config.delai_chiffrage_s, max_retries=1)
     try:
         reponse = client.messages.parse(
             model=config.model_structuration,

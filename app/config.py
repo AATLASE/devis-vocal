@@ -178,6 +178,13 @@ class Config(BaseSettings):
     devis_par_jour: int = 80
     devis_par_mois: int = 400
 
+    # Délai maximal d'un appel au fournisseur, en secondes, avec une seule nouvelle
+    # tentative. Sans eux, le SDK attend jusqu'à 600 s et réessaie deux fois : une
+    # demi-heure devant une barre de progression. À relever pour un modèle local lent
+    # (Ollama, Whisper sur processeur).
+    delai_chiffrage_s: float = 90
+    delai_transcription_s: float = 60
+
     # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
     # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en
     # relançant l'application ne protège de rien.
