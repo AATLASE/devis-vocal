@@ -1985,6 +1985,7 @@ const CHAMPS_ENTREPRISE = [
   'telephone', 'email', 'siret', 'code_ape', 'tva_intracom',
   'assurance', 'assurance_police', 'iban',
   'assurance_coordonnees', 'assurance_couverture', 'mediateur', 'mediateur_site',
+  'immatriculation',
 ];
 
 const CLE_ENTREPRISE = 'devis-vocal.entreprise';
@@ -2026,6 +2027,7 @@ const MENTIONS_REQUISES = [
   ['adresse', 'adresse'],
   ['code_postal_ville', 'code postal et ville'],
   ['siret', 'SIRET'],
+  ['immatriculation', 'immatriculation (RCS ou RM)'],
   ['tva_intracom', 'n° de TVA'],
   ['telephone', 'téléphone'],
   ['email', 'e-mail'],

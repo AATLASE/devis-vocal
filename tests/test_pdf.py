@@ -121,6 +121,18 @@ def test_un_client_professionnel_n_a_ni_formulaire_ni_acompte_differe():
     assert "l221-3" in texte
 
 
+def test_l_immatriculation_est_imprimee_a_cote_du_siret():
+    """RCS et ville du greffe (art. R123-237 du Code de commerce), ou répertoire des
+    métiers : à côté du SIRET, et dans le pied de la page des conditions."""
+    assert "immatriculation à compléter" in _texte_imprime(devis_de("elec"))
+
+    devis = devis_de("elec").model_copy(deep=True)
+    devis.entreprise.immatriculation = "RCS Lyon"
+    texte = _texte_imprime(devis)
+    assert f"siret {ENTREPRISE.siret} · rcs lyon" in texte
+    assert f"{ENTREPRISE.forme_juridique.lower()} · rcs lyon · siret" in texte
+
+
 def test_le_mediateur_est_nomme_ou_a_completer():
     """R616-1 : ses coordonnées et son site. Sans eux, « à compléter » plutôt qu'une
     phrase qui paraît conforme."""

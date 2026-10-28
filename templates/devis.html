@@ -144,7 +144,9 @@
         {{ e.telephone or 'Téléphone à compléter' }} · {{ e.email or 'e-mail à compléter' }}
       </div>
       <div class="doc-head__legal">
-        SIRET {{ e.siret or 'à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
+        {#- L'immatriculation (RCS et ville du greffe, ou répertoire des métiers) n'est
+            dans aucun champ de l'annuaire : c'est l'artisan qui la saisit. #}
+        SIRET {{ e.siret or 'à compléter' }} · {{ e.immatriculation or 'immatriculation à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
         {#- En franchise, pas de numéro de TVA : l'annuaire en calcule un pour toute
             entreprise, y compris celle qui n'est pas redevable de la taxe. #}
         {% if e.franchise_tva %}TVA non applicable, art. 293 B du CGI{% else %}TVA {{ e.tva_intracom or 'à compléter' }}{% endif %}<br>
@@ -353,7 +355,7 @@
   {%- endif %}
 
   <footer class="doc-runfoot doc-runfoot--rule push">
-    <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }} · SIRET {{ e.siret or 'à compléter' }}</div>
+    <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }}{% if e.immatriculation %} · {{ e.immatriculation }}{% endif %} · SIRET {{ e.siret or 'à compléter' }}</div>
     <div>Page {{ total_pages }} / {{ total_pages }}</div>
   </footer>
 </article>

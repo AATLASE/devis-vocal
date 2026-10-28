@@ -385,6 +385,7 @@ class EntrepriseSaisie(BaseModel):
     assurance_police: str | None = None
     iban: str | None = None
     franchise_tva: bool = False
+    immatriculation: str | None = None
     assurance_coordonnees: str | None = None
     assurance_couverture: str | None = None
     mediateur: str | None = None
