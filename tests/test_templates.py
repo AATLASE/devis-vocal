@@ -11,11 +11,12 @@ mémoire et `render_html` n'a besoin de rien d'autre que Jinja.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 
 import pytest
 
-from app import templates
+from app import pdf, templates
 from app.config import get_config
 from app.templates import TemplateRefuse
 from app.pdf import render_html
@@ -29,6 +30,16 @@ def etat_neuf():
     yield
     get_config.cache_clear()
     templates.vider_la_memoire()
+
+
+@pytest.fixture
+def firebase_simule(monkeypatch):
+    """Firebase allumé pour la configuration, le stockage restant en mémoire. Sans
+    Firebase, aucun template ne s'applique : c'est ce qu'il faut pour voir `html_pour`
+    retrouver celui d'un artisan."""
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"type": "service_account"}')
+    get_config.cache_clear()
+    monkeypatch.setattr(templates, "_actif", lambda: False)
 
 
 # Un template minimal mais honnête : il imprime les quatorze mentions attendues.
@@ -109,6 +120,69 @@ def test_les_insecables_du_formatage_ne_masquent_pas_un_total():
     assert "Le total HT" not in templates.controler_les_mentions(rendu, exemple)
 
 
+@pytest.mark.parametrize("cachette", [
+    "<head><title>Devis {{ devis.numero }}</title></head>",
+    "<head><style>/* {{ devis.numero }} */</style></head>",
+    "<style>.n::after { content: '{{ devis.numero }}' }</style>",
+    "<template><p>{{ devis.numero }}</p></template>",
+    "<!-- {{ devis.numero }} -->",
+    "<svg><title>{{ devis.numero }}</title></svg>",
+])
+def test_le_texte_qui_ne_s_imprime_pas_ne_compte_pas(cachette):
+    """Le template livré met le numéro dans `<title>`. Un artisan qui le retirait du
+    corps gardait « conforme », alors que le PDF n'avait plus de numéro."""
+    cache = TEMPLATE_CONFORME.replace("<h1>Devis {{ devis.numero }}</h1>", cachette)
+
+    _, _, manquantes = templates.valider(cache)
+
+    assert manquantes == ["Le numéro du devis"]
+
+
+def test_un_texte_pose_nu_dans_head_compte_car_chromium_l_imprime():
+    """Le navigateur déplace dans le corps un texte posé hors de tout élément de
+    `<head>`, et l'imprime. Le contrôle suit Chromium, pas la lettre du fichier."""
+    nu = TEMPLATE_CONFORME.replace(
+        "<html><body>\n<h1>Devis {{ devis.numero }}</h1>",
+        "<html><head>Devis {{ devis.numero }}</head><body>",
+    )
+
+    _, _, manquantes = templates.valider(nu)
+
+    assert manquantes == []
+
+
+def test_l_assurance_exige_l_assureur_et_la_police():
+    """Avec l'identité de la configuration, la police « 000 000 000 » se lisait dans
+    le SIRET : tout template qui imprimait le SIRET passait pour assuré."""
+    sans_assurance = TEMPLATE_CONFORME.replace(
+        "<p>{{ e.assurance }} — police {{ e.assurance_police }}</p>", "")
+    police_seule = TEMPLATE_CONFORME.replace("{{ e.assurance }} — ", "")
+
+    assert templates.valider(sans_assurance)[2] == ["L'assurance professionnelle"]
+    assert templates.valider(police_seule)[2] == ["L'assurance professionnelle"]
+
+
+def test_les_valeurs_de_l_identite_d_exemple_ne_se_recouvrent_pas():
+    """Le contrôle cherche des valeurs : il ne vaut que si aucune n'est contenue dans
+    une autre."""
+    e = templates.ENTREPRISE_EXEMPLE
+    valeurs = [e.nom, e.adresse, e.code_postal_ville, e.siret, e.tva_intracom,
+               e.assurance, e.assurance_police, e.telephone, e.email, e.iban]
+
+    for valeur in valeurs:
+        autres = [autre for autre in valeurs if autre is not valeur]
+        assert not any(valeur.lower() in autre.lower() for autre in autres), valeur
+
+
+def test_le_controle_reste_lineaire_sur_un_document_hostile():
+    """L'ancienne expression régulière repartait vers la fin du document à chaque
+    `<` resté sans `>` : deux minutes pour 512 Ko, dans la boucle du serveur."""
+    debut = time.perf_counter()
+    templates.controler_les_mentions("<" * 512 * 1024, templates.devis_exemple())
+
+    assert time.perf_counter() - debut < 5
+
+
 # ---------------------------------------------------------------------------
 # Ce qui est refusé — avant l'enregistrement, jamais devant l'artisan
 # ---------------------------------------------------------------------------
@@ -169,6 +243,58 @@ def test_le_javascript_est_retire_du_document(template):
     assert "onload" not in propre.lower()
 
 
+@pytest.mark.parametrize("motif", ["<script>", "<script "])
+def test_le_nettoyage_reste_lineaire_sur_des_scripts_jamais_refermes(motif):
+    """L'ancienne expression repartait vers la fin du fichier à chaque ouverture sans
+    fermeture : deux minutes de calcul pour 512 Ko, dans la boucle du serveur."""
+    hostile = motif * (512 * 1024 // len(motif))
+
+    debut = time.perf_counter()
+    propre = templates.nettoyer(hostile)
+
+    assert time.perf_counter() - debut < 2
+    assert "script" not in propre.lower()
+
+
+def test_un_script_jamais_referme_emporte_la_suite_comme_dans_un_navigateur():
+    """Un navigateur lit tout ce qui suit un `<script>` non refermé comme du script :
+    le retirer avec la suite ne change rien à ce qui s'imprime."""
+    assert templates.nettoyer("<p>avant</p><script src='x.js'/><p>après</p>") == "<p>avant</p>"
+
+
+@pytest.mark.parametrize("template", [
+    # Deux boucles imbriquées : 10^10 tours, des minutes de calcul.
+    "{% set r = range(100000) %}{% for i in r %}{% for j in r %}{% endfor %}{% endfor %}",
+    # Une macro qui s'appelle deux fois : 2^40 appels.
+    "{% macro m(n) %}{% if n %}{{ m(n - 1) }}{{ m(n - 1) }}{% endif %}{% endmacro %}{{ m(40) }}",
+])
+def test_un_template_qui_calcule_sans_fin_est_coupe(monkeypatch, template):
+    """Le bac à sable plafonne chaque `range`, pas leur imbrication. Sans délai, ce
+    template tenait le serveur des minutes — trois boucles, des jours."""
+    monkeypatch.setattr(pdf, "DELAI_JINJA_S", 0.5)
+
+    debut = time.perf_counter()
+    with pytest.raises(TemplateRefuse, match="dépassé"):
+        templates.valider(template)
+
+    assert time.perf_counter() - debut < 5
+
+
+@pytest.mark.parametrize("template", [
+    "{{ 10 ** (10 ** 9) }}",                     # un entier de plusieurs centaines de Mo
+    "{{ 'x' * 1000000000 }}",                    # un Go de texte
+    "{% for i in range(100000) %}{{ 'x' * 1000 }}{% endfor %}",  # cent millions de caractères
+])
+def test_un_template_demesure_est_refuse_sans_calculer(template):
+    """Ces calculs-là tournent en C, là où le délai ne peut pas interrompre : on les
+    refuse avant de les faire."""
+    debut = time.perf_counter()
+    with pytest.raises(TemplateRefuse, match="démesur"):
+        templates.valider(template)
+
+    assert time.perf_counter() - debut < 5
+
+
 def test_le_nettoyage_epargne_le_contenu_legitime():
     """Un filtre qui emporterait la mise en page avec les scripts serait pire que le
     problème qu'il règle."""
@@ -191,26 +317,37 @@ def test_le_template_pose_revient_a_son_proprietaire():
     assert pose.conforme
 
 
-def test_deux_artisans_ne_se_partagent_pas_leur_template():
+def test_deux_artisans_ne_se_partagent_pas_leur_template(firebase_simule):
     """Le seul intérêt d'avoir introduit des comptes. S'il ne tient pas, la
     fonctionnalité entière est à retirer."""
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME)
 
     assert templates.lire("artisan-2") is None
     assert templates.html_pour("artisan-2") is None
+    assert templates.html_pour("artisan-1") is not None
 
 
-def test_sans_template_pose_on_rend_sur_celui_livre():
+def test_sans_template_pose_on_rend_sur_celui_livre(firebase_simule):
     """`None` et pas une chaîne vide : c'est ce que `pdf.render` attend pour reprendre
     le template livré."""
     assert templates.html_pour("artisan-jamais-vu") is None
 
 
-def test_retirer_son_template_rend_la_mise_en_page_livree():
+def test_retirer_son_template_rend_la_mise_en_page_livree(firebase_simule):
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME)
 
     templates.supprimer("artisan-1")
 
+    assert templates.html_pour("artisan-1") is None
+
+
+def test_sans_firebase_aucun_template_ne_s_applique():
+    """« Sans identifiants Firebase, tout est inactif… pas de gabarit. » Tout le monde
+    y est l'utilisateur local : un template posé par l'un s'imprimait sur les devis de
+    tous les autres, sans bandeau, puisque rien n'échouait."""
+    templates.enregistrer("local", "pirate.html", TEMPLATE_CONFORME + "<p>IBAN PIRATE</p>")
+
+    assert templates.html_pour("local") is None
     assert templates.html_pour("artisan-1") is None
 
 
@@ -226,7 +363,7 @@ def test_les_mentions_manquantes_sont_conservees_avec_le_template():
     assert pose.mentions_manquantes == ["Le numéro SIRET"]
 
 
-def test_le_html_enregistre_est_celui_qui_a_ete_nettoye():
+def test_le_html_enregistre_est_celui_qui_a_ete_nettoye(firebase_simule):
     """Ce qu'on stocke est ce qu'on rendra : le nettoyage ne doit pas être une
     politesse d'affichage refaite à chaque PDF."""
     templates.enregistrer("artisan-1", "a.html", TEMPLATE_CONFORME + "<script>alert(1)</script>")

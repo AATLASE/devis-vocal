@@ -8,6 +8,11 @@ Par défaut, tous les devis sortent sur `templates/devis.html` — la mise en pa
 celle qui porte les mentions obligatoires et dont la pagination est calée au pixel. Un
 artisan connecté peut la remplacer par la sienne depuis **Mon template**.
 
+Sans Firebase configuré sur le serveur, la fonctionnalité n'existe pas : les routes
+`/api/template*` et `/api/profil` répondent 404, et tous les devis sortent sur le
+template livré. Sans comptes, tout le monde serait le même utilisateur, et le template
+posé par l'un s'imprimerait sur les devis de tous les autres.
+
 ## Ce que vous perdez en faisant ça
 
 Une phrase, et elle est importante : **le template livré garantit la conformité du devis,
@@ -30,7 +35,7 @@ Les quatorze mentions cherchées, dans le document **rendu** :
 | L'adresse de l'entreprise | `e.adresse`, `e.code_postal_ville` |
 | Le numéro SIRET | `e.siret` |
 | Le numéro de TVA intracommunautaire | `e.tva_intracom` |
-| L'assurance professionnelle | `e.assurance`, `e.assurance_police` |
+| L'assurance professionnelle | `e.assurance` **et** `e.assurance_police` |
 | Le nom du client | `devis.client.nom` |
 | Le détail des prestations | `devis.lignes` |
 | Le total HT | `devis.total_ht` |
@@ -40,7 +45,14 @@ Les quatorze mentions cherchées, dans le document **rendu** :
 
 Le contrôle cherche les **valeurs**, pas les libellés : écrire `SIRET :` sans imprimer
 `{{ e.siret }}` ne compte pas. C'est délibéré — un intitulé sans valeur ne rend pas un
-devis conforme.
+devis conforme. Pour que ces valeurs ne se confondent pas entre elles, le devis
+d'exemple est établi au nom d'une entreprise fictive, l'« Atelier Exemple ».
+
+Seul compte le texte que le PDF imprime : pas celui de `<title>`, de `<style>`, de
+`<script>`, de `<template>`, ni d'un commentaire. Le template livré met le numéro du
+devis dans son `<title>` ; si vous le retirez du corps, le contrôle le signale. Une
+limite, en revanche : le contrôle lit le HTML, pas le CSS. Un texte masqué par
+`display: none` compte encore comme imprimé.
 
 ## Par où commencer
 
@@ -51,7 +63,8 @@ Modifiez-le plutôt que de repartir de zéro.
 Puis, toujours dans cet ordre :
 
 1. **Voir l'aperçu** — le template est rendu en PDF sur un devis d'exemple complet
-   (cinq lignes, deux observations, des prix estimés). Rien n'est enregistré.
+   (cinq lignes, deux observations, des prix estimés), au nom de l'entreprise fictive.
+   Rien n'est enregistré.
 2. **Enregistrer ce template** — une fois que l'A4 vous convient.
 
 ## Le langage
@@ -126,21 +139,28 @@ d'architecture centrale du projet : un total faux devant un artisan tue la démo
 ## Ce qui est refusé, et pourquoi
 
 Le template est refusé à l'enregistrement — jamais au moment où vous voulez votre PDF
-devant un client — dans quatre cas :
+devant un client — dans cinq cas :
 
 - **fichier vide** ;
 - **plus de 512 Ko** — les images doivent être des URI `data:` compactes ;
 - **syntaxe Jinja fautive** — une balise `{% for %}` non refermée, par exemple ;
-- **erreur au rendu** sur le devis d'exemple.
+- **erreur au rendu** sur le devis d'exemple ;
+- **rendu démesuré** — plus de 5 secondes de calcul, plus de 10 millions de caractères
+  produits, ou une multiplication ou une puissance géante. Un template de devis se rend
+  en quelques millisecondes : ces bornes n'arrêtent que ce qui ferait tomber le serveur.
 
 Deux choses sont retirées sans que le template soit refusé :
 
 - **le JavaScript** — balises `<script>` et attributs `onclick`, `onload`… Un devis est
-  un document, pas une application. Un script ferait dépendre le PDF du réseau au moment
-  précis où vous le montrez ;
+  un document, pas une application ;
 - **l'accès aux internes de Python** — le template est rendu dans un bac à sable Jinja.
   `{% include %}` et `{% extends %}` échouent : aucun template ne lira un fichier du
   serveur.
+
+Et quoi que contienne le template, le PDF est imprimé par un Chromium **sans JavaScript
+et sans réseau**. Une image, une police, une feuille de style ou un cadre désignés par
+une URL ne sont pas chargés : tout ce que le document affiche doit voyager avec lui, en
+URI `data:`. C'est déjà le cas des polices de `{{ css }}`.
 
 ## Le filet, en production
 

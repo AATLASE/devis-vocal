@@ -20,6 +20,9 @@ from __future__ import annotations
 
 import base64
 import re
+import sys
+import time
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 import asyncio
@@ -28,8 +31,9 @@ from functools import lru_cache
 from math import ceil
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader, Template, select_autoescape
 from jinja2 import TemplateError as JinjaTemplateError
+from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment
 from markupsafe import Markup
 from playwright.async_api import Browser, async_playwright
@@ -273,8 +277,96 @@ _env = _poser_les_filtres(
 #
 # Ce qui reste possible, et qu'on assume : un template peut écrire n'importe quoi dans
 # le document, y compris un devis non conforme. C'est le sujet de `mentions_manquantes`.
+#
+# Ce que le bac à sable ne borne pas de lui-même, c'est le coût. Il plafonne chaque
+# `range` à 100 000, pas leur imbrication : deux boucles l'une dans l'autre calculent
+# des minutes, trois des jours. `_BacASable` pose donc trois bornes :
+#
+# - un délai, au-delà duquel le code du template est interrompu ;
+# - une taille maximale pour le document produit ;
+# - un plafond sur `*` et `**`. Ces deux opérateurs font travailler Python en C, là où
+#   le délai ne peut pas interrompre : `10 ** (10 ** 9)` tiendrait le processeur des
+#   heures, sans rendre la main au reste du serveur.
+#
+# Un template d'artisan se rend en quelques millisecondes : ces bornes ne gênent que
+# celui qui cherche à faire tomber le serveur.
+DELAI_JINJA_S = 5
+MAX_RENDU_CARACTERES = 10_000_000
+MAX_OPERANDE = 100_000  # bits d'un entier, ou éléments d'une chaîne répétée
+
+
+class RenduTropLourd(SecurityError):
+    """Le template dépasse le temps ou la taille accordés à un rendu."""
+
+
+@contextmanager
+def _delai(secondes: float):
+    """Interrompt le code du template — et lui seul — passé `secondes`.
+
+    Python ne sait pas arrêter un calcul depuis l'extérieur. Le traceur, lui, est
+    appelé à chaque ligne exécutée par le fil courant : on ne l'arme que sur le code
+    compilé depuis le template (`<template>`), donc ni Jinja ni le reste de
+    l'application n'en paient le prix.
+    """
+    limite = time.monotonic() + secondes
+
+    def ligne(frame, evenement, arg):
+        if time.monotonic() > limite:
+            raise RenduTropLourd(f"le rendu a dépassé {secondes} s")
+        return ligne
+
+    def appel(frame, evenement, arg):
+        return ligne if frame.f_code.co_filename == "<template>" else None
+
+    precedent = sys.gettrace()
+    sys.settrace(appel)
+    try:
+        yield
+    finally:
+        sys.settrace(precedent)
+
+
+class _TemplateBorne(Template):
+    """Un template qui s'arrête au délai et à la taille maximale."""
+
+    def render(self, *args, **kwargs) -> str:
+        morceaux: list[str] = []
+        taille = 0
+        with _delai(DELAI_JINJA_S):
+            for morceau in self.generate(*args, **kwargs):
+                taille += len(morceau)
+                if taille > MAX_RENDU_CARACTERES:
+                    raise RenduTropLourd("le document produit est démesuré")
+                morceaux.append(morceau)
+        return "".join(morceaux)
+
+
+def _demesure(operateur: str, gauche, droite) -> bool:
+    if isinstance(gauche, int) and isinstance(droite, int):
+        if operateur == "**":
+            return gauche.bit_length() * max(droite, 0) > MAX_OPERANDE
+        return gauche.bit_length() + droite.bit_length() > MAX_OPERANDE
+    # Une répétition, dans un sens ou dans l'autre : "x" * n, n * [1].
+    for suite, fois in ((gauche, droite), (droite, gauche)):
+        if isinstance(fois, int) and isinstance(suite, (str, list, tuple)):
+            return len(suite) * fois > MAX_OPERANDE
+    return False
+
+
+class _BacASable(SandboxedEnvironment):
+    template_class = _TemplateBorne
+    # Intercepter un opérateur empêche aussi Jinja de le précalculer à la compilation,
+    # où il échapperait au délai.
+    intercepted_binops = frozenset({"*", "**"})
+
+    def call_binop(self, context, operator, left, right):
+        if _demesure(operator, left, right):
+            raise RenduTropLourd(f"une opération « {operator} » est démesurée")
+        return super().call_binop(context, operator, left, right)
+
+
 _env_template = _poser_les_filtres(
-    SandboxedEnvironment(loader=None, autoescape=select_autoescape(["html"]))
+    _BacASable(loader=None, autoescape=select_autoescape(["html"]))
 )
 
 
@@ -340,10 +432,17 @@ async def demarrer() -> None:
         return
     _playwright = await async_playwright().start()
     _navigateur = await _playwright.chromium.launch(
-        # Dans un conteneur, /dev/shm fait 64 Mo par défaut : Chromium le sature en
-        # plein rendu et meurt sans rien dire. L'option le fait écrire sur le disque —
-        # un peu plus lent, mais le PDF sort. Sans effet hors conteneur.
-        args=["--disable-dev-shm-usage"],
+        args=[
+            # Dans un conteneur, /dev/shm fait 64 Mo par défaut : Chromium le sature en
+            # plein rendu et meurt sans rien dire. L'option le fait écrire sur le disque —
+            # un peu plus lent, mais le PDF sort. Sans effet hors conteneur.
+            "--disable-dev-shm-usage",
+            # Le second verrou du réseau, sous l'interception de `_rendre` : tout ce que
+            # Chromium irait chercher part vers un proxy où rien n'écoute, boucle locale
+            # comprise. `<link rel="prefetch">`, lui, échappe à l'interception.
+            "--proxy-server=http://127.0.0.1:9",
+            "--proxy-bypass-list=<-loopback>",
+        ],
     )
 
 
@@ -358,8 +457,15 @@ async def arreter() -> None:
         _playwright = None
 
 
+# Le plus long qu'un PDF ait le droit de prendre. Un devis de soixante lignes sort en
+# quelques secondes ; au-delà, quelque chose ne va pas, et la place revient aux autres.
+DELAI_RENDU_S = 20
+
+
 async def render(devis: Devis, template: str | None = None) -> bytes:
-    """Produit le PDF du devis. `template` : le HTML de l'artisan, sinon celui livré."""
+    """Produit le PDF du devis. `template` : le HTML de l'artisan, sinon celui livré.
+
+    Lève `TimeoutError` passé `DELAI_RENDU_S`."""
     global _places
     await demarrer()  # filet : permet d'appeler render() depuis un test, hors application
     assert _navigateur is not None
@@ -370,14 +476,36 @@ async def render(devis: Devis, template: str | None = None) -> bytes:
         _places = asyncio.Semaphore(get_config().rendus_simultanes)
 
     async with _places:
-        return await _rendre(devis, template)
+        # Le délai couvre tout le rendu, Jinja compris. Sans lui, une page qui ne finit
+        # pas garde sa place jusqu'au redémarrage, et deux suffisent pour que plus
+        # personne n'obtienne de PDF. Pour `/api/pdf`, le `TimeoutError` est une erreur
+        # comme une autre : il retombe sur le template livré.
+        return await asyncio.wait_for(_rendre(devis, template), DELAI_RENDU_S)
 
 
 async def _rendre(devis: Devis, template: str | None) -> bytes:
     assert _navigateur is not None
-    page = await _navigateur.new_page()
+    # Le Jinja d'un template tiers est du calcul qu'on n'a pas écrit : il tourne hors de
+    # la boucle, et le serveur continue de répondre aux autres pendant ce temps.
+    html = await asyncio.to_thread(render_html, devis, template)
+
+    # Ni JavaScript ni réseau. Ce Chromium tourne sur le serveur, d'où le réseau interne
+    # du conteneur, la boucle locale et l'adresse de métadonnées de l'hébergeur sont
+    # joignables : une iframe vers l'un d'eux s'imprimerait dans le PDF renvoyé à qui a
+    # téléversé le template. Le devis n'a besoin d'aucune ressource extérieure — polices
+    # et images voyagent en URI `data:` — et un script n'a rien à y faire. Couper l'un et
+    # l'autre ici est la vraie barrière ; le nettoyage de `templates.py` n'est qu'hygiène.
+    page = await _navigateur.new_page(java_script_enabled=False)
+
+    async def hors_reseau(route) -> None:
+        if route.request.url.startswith(("data:", "about:")):
+            await route.continue_()
+        else:
+            await route.abort()
+
     try:
-        await page.set_content(render_html(devis, template), wait_until="load")
+        await page.route("**/*", hors_reseau)
+        await page.set_content(html, wait_until="load")
         # `load` ne dit rien des polices. Sans cette attente, Chromium imprime par
         # intermittence en police de repli — le document est alors juste, mais ce n'est
         # plus le design.

@@ -7,11 +7,21 @@ un client. Aucun appel API, aucun accès réseau — les polices voyagent avec l
 
 from __future__ import annotations
 
+import asyncio
 import re
+import struct
+import threading
+import time
+import zlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from playwright.async_api import Page
 
+from app import pdf as pdf_module
+from app import templates
+from app.config import get_config
 from app.models import DevisExtraction, LigneDevis, Unite, to_devis
 from app.pdf import (
     arreter,
@@ -113,6 +123,124 @@ async def test_le_pdf_embarque_ses_polices_de_texte():
         familles = {m.decode().split("+")[-1] for m in re.findall(rb"/BaseFont\s*/([\w+#\-,]+)", contenu)}
         assert any(f.startswith("IBMPlexSans") for f in familles), familles
         assert any(f.startswith("IBMPlexMono") for f in familles), familles
+    finally:
+        await arreter()
+
+
+# --- Un template téléversé ne fait rien d'autre que s'imprimer ---
+
+
+def _png(largeur: int, hauteur: int) -> bytes:
+    """Une image unie, aux dimensions reconnaissables dans le PDF."""
+    lignes = b"".join(b"\x00" + b"\xc0\x40\x20" * largeur for _ in range(hauteur))
+
+    def bloc(nature: bytes, donnees: bytes) -> bytes:
+        return (struct.pack(">I", len(donnees)) + nature + donnees
+                + struct.pack(">I", zlib.crc32(nature + donnees)))
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + bloc(b"IHDR", struct.pack(">IIBBBBB", largeur, hauteur, 8, 2, 0, 0, 0))
+            + bloc(b"IDAT", zlib.compress(lignes))
+            + bloc(b"IEND", b""))
+
+
+@pytest.fixture
+def service_interne():
+    """Un service HTTP sur la boucle locale, comme ceux que le conteneur joint : réseau
+    Docker de Coolify, adresse de métadonnées de l'hébergeur. Il note chaque requête."""
+    recues: list[str] = []
+
+    class Service(BaseHTTPRequestHandler):
+        def do_GET(self):
+            recues.append(self.path)
+            if self.path.startswith("/image"):
+                corps, nature = _png(37, 23), "image/png"
+            else:
+                corps = b'<p>SECRET</p><a href="https://secret-interne.invalid/">lien</a>'
+                nature = "text/html"
+            self.send_response(200)
+            self.send_header("Content-Type", nature)
+            self.send_header("Content-Length", str(len(corps)))
+            self.end_headers()
+            self.wfile.write(corps)
+
+        def log_message(self, *_):
+            pass
+
+    serveur = ThreadingHTTPServer(("127.0.0.1", 0), Service)  # port choisi par le système
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{serveur.server_address[1]}", recues
+    serveur.shutdown()
+    serveur.server_close()
+
+
+async def test_un_template_ne_sort_ni_sur_le_reseau_ni_en_javascript(service_interne):
+    """Le Chromium du serveur joint tout ce que le conteneur joint. Une iframe vers un
+    service interne s'imprimait dans le PDF d'aperçu, renvoyé à qui avait téléversé le
+    template ; et un script reconstitué par Jinja passait le nettoyage du source.
+
+    Témoins, sur le code d'avant : le service reçoit toutes les requêtes, le lien du
+    service et l'image de 37 × 23 sont dans le PDF, et le script y ajoute quatre pages.
+    Le préchargement, lui, échappe à l'interception de Playwright : c'est le proxy
+    sans issue posé au lancement de Chromium qui l'arrête."""
+    base, recues = service_interne
+    script = (
+        "{{ ('<scr' ~ 'ipt>fetch(\"" + base + "/depuis-js\");"
+        "document.body.insertAdjacentHTML(\"beforeend\", \"<a href=https://js-a-tourne.invalid/>js</a>\""
+        " + \"<div style=break-before:page>page</div>\".repeat(4))</scr' ~ 'ipt>') | safe }}"
+    )
+    template = (
+        f'<!doctype html><html><head><link rel="prefetch" href="{base}/prefetch"></head>'
+        "<body><p>Devis {{ devis.numero }}</p>"
+        f'<iframe src="{base}/meta-data" width="600" height="200"></iframe>'
+        f'<img src="{base}/image.png" width="100" height="100">'
+        f"{script}</body></html>"
+    )
+    propre, rendu, _ = templates.valider(template)
+    assert "<script" not in propre and "<script" in rendu, "le témoin n'exerce pas le cas"
+
+    try:
+        # Le rendu se termine : rien n'attend une réponse qui ne viendra pas.
+        contenu = await asyncio.wait_for(render(templates.devis_exemple(), propre), 30)
+        # Le préchargement part après coup : on lui laisse le temps d'arriver.
+        await asyncio.sleep(1)
+    finally:
+        await arreter()
+
+    assert recues == []
+    assert b"secret-interne" not in contenu
+    assert b"/Width 37" not in contenu
+    assert b"js-a-tourne" not in contenu
+    assert re.search(rb"/Count (\d+)", contenu).group(1) == b"1"
+
+
+async def test_un_rendu_qui_ne_finit_pas_est_coupe_et_rend_sa_place(monkeypatch):
+    """Sans délai, une page qui ne finissait pas gardait sa place jusqu'au redémarrage :
+    avec deux places, deux requêtes suffisaient pour que plus personne n'ait de PDF.
+
+    Ici une seule place, et une impression qui n'aboutit jamais."""
+    monkeypatch.setenv("RENDUS_SIMULTANES", "1")
+    get_config.cache_clear()
+    monkeypatch.setattr(pdf_module, "DELAI_RENDU_S", 1)
+    await arreter()  # un sémaphore neuf, créé avec cette configuration
+
+    async def interminable(self, **_options):
+        await asyncio.Event().wait()
+
+    devis = devis_de("peinture")
+    try:
+        with monkeypatch.context() as m:
+            m.setattr(Page, "pdf", interminable)
+            debut = time.monotonic()
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(render(devis), 20)
+            assert time.monotonic() - debut < 10, "coupé par le filet du test, pas par le délai"
+
+        assert not pdf_module._places.locked()
+        assert pdf_module._navigateur.contexts == [], "la page n'a pas été refermée"
+        # La place est revenue : avec une seule, ce rendu attendrait sinon pour toujours.
+        contenu = await asyncio.wait_for(render(devis), 30)
+        assert contenu[:4] == b"%PDF"
     finally:
         await arreter()
 
