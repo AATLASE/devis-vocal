@@ -253,7 +253,7 @@
       exigible après 7 jours à compter de la signature du devis (art. L221-10 du Code de la
       consommation), solde à la réception des travaux. Règlement par
       {%- endif %}
-      virement ou par chèque à 30 jours. Aucun escompte n'est accordé pour paiement anticipé.</p>
+      virement ou par chèque. Aucun escompte n'est accordé pour paiement anticipé.</p>
       {#- Le paragraphe ci-dessus demande un virement : sans coordonnées bancaires, il
           demande au client de deviner où payer. L'IBAN n'apparaît que s'il est réellement
           renseigné — un RIB à zéros serait pire que pas de RIB du tout. #}
@@ -263,11 +263,18 @@
     </div>
     <div class="doc-mention">
       <h4>Pénalités de retard</h4>
+      {#- Le taux BCE majoré et l'indemnité de 40 € ne valent qu'entre professionnels. Face
+          à un particulier, c'est le droit commun : l'intérêt au taux légal. #}
+      {%- if devis.client.professionnel %}
       <p>En cas de retard de paiement, des pénalités au taux d'intérêt appliqué par la Banque
       centrale européenne à son opération de refinancement la plus récente, majoré de dix
       points, seront exigibles sans mise en demeure préalable, ainsi qu'une indemnité
       forfaitaire de 40&#8239;€ pour frais de recouvrement (art. L441-10 et D441-5 du Code de
       commerce).</p>
+      {%- else %}
+      <p>En cas de retard de paiement, les sommes dues porteront intérêt au taux légal à
+      compter de la mise en demeure (art. 1231-6 du Code civil).</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Taux de TVA</h4>

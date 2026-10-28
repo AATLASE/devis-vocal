@@ -121,6 +121,23 @@ def test_un_client_professionnel_n_a_ni_formulaire_ni_acompte_differe():
     assert "l221-3" in texte
 
 
+def test_le_solde_n_a_qu_une_echeance_et_les_penalites_suivent_le_client():
+    """« Solde à la réception » puis « à 30 jours » : deux échéances pour le même
+    solde. Et le taux BCE + 10 et les 40 € (L441-10, D441-5) ne valent qu'entre pros."""
+    particulier = _texte_imprime(devis_de("elec"))
+    assert "solde à la réception des travaux" in particulier
+    assert "chèque à 30 jours" not in particulier
+    assert "taux légal" in particulier
+    assert "40 € pour frais de recouvrement" not in particulier
+    assert "banque centrale européenne" not in particulier
+
+    devis = devis_de("elec").model_copy(deep=True)
+    devis.client.professionnel = True
+    pro = _texte_imprime(devis)
+    assert "chèque à 30 jours" not in pro
+    assert "40 € pour frais de recouvrement" in pro and "l441-10" in pro
+
+
 def test_le_debut_des_travaux_est_toujours_imprime_sans_rien_inventer():
     """L111-1 3° : la date ou le délai d'exécution. Non dicté, une ligne à remplir ;
     saisi à l'écran, la valeur saisie."""
