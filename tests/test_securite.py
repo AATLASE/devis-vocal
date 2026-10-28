@@ -436,6 +436,38 @@ def test_le_code_ouvre_les_routes_protegees(client, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_le_suivi_ne_garde_pas_ce_que_l_artisan_cherche():
+    """L'adresse d'un client tapée dans l'autocomplétion voyage dans la query string,
+    et la ligne d'accès d'uvicorn — comme celle de httpx vers la Base Adresse — la
+    gardait trente jours."""
+    import logging
+
+    import httpx
+
+    from app.suivi import sans_recherche
+
+    acces = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+        ("203.0.113.7:4567", "GET", "/api/adresse?q=12%20rue%20des%20Lilas", "1.1", 200), None,
+    )
+    sortant = logging.LogRecord(
+        "httpx", logging.INFO, "", 0, 'HTTP Request: %s %s "%s %d %s"',
+        ("GET", httpx.URL("https://data.geopf.fr/geocodage/completion?text=12+rue+des+Lilas"),
+         "HTTP/1.1", 200, "OK"), None,
+    )
+    for ligne in (acces, sortant):
+        assert sans_recherche(ligne)
+        assert "Lilas" not in ligne.getMessage()
+
+    assert "GET /api/adresse HTTP/1.1\" 200" in acces.getMessage()
+
+
+def test_le_contenu_des_devis_n_est_pas_journalise_par_defaut():
+    """La transcription et l'extraction portent le nom, l'adresse et le téléphone du
+    client : « le serveur ne garde rien »."""
+    assert get_config().log_contenu is False
+
+
 @pytest.mark.parametrize("nom", [
     "vocal.wav/../../../../../../evil.txt",
     "a.b/../../evil",

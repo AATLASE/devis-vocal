@@ -89,6 +89,11 @@ def configurer() -> None:
     for nom in ("httpcore", "urllib3", "openai", "anthropic", "asyncio"):
         logging.getLogger(nom).setLevel(logging.WARNING)
 
+    # Ce que l'artisan cherche — l'adresse de son client, une raison sociale — voyage
+    # dans la query string, que ces deux lignes recopiaient pour trente jours.
+    for nom in ("uvicorn.access", "httpx"):
+        logging.getLogger(nom).addFilter(sans_recherche)
+
     _configure = True
 
     logger.info("--- Devis Vocal demarre ---")
@@ -101,6 +106,17 @@ def configurer() -> None:
         "arme" if config.journal else "off",
     )
     logger.info("  suivi          %s", config.log_dir / "devis-vocal.log")
+
+
+def sans_recherche(record: logging.LogRecord) -> bool:
+    """Coupe la query string des URL d'une ligne de journal. Le chemin suffit à suivre
+    la requête ; ce qui a été cherché ne regarde pas le journal."""
+    if isinstance(record.args, tuple):
+        record.args = tuple(
+            str(a).split("?", 1)[0] if str(a).startswith(("/", "http")) and "?" in str(a) else a
+            for a in record.args
+        )
+    return True
 
 
 # ---------------------------------------------------------------------------

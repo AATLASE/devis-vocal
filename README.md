@@ -306,8 +306,9 @@ qu'on a écrit noierait les vraies pannes.
 
 Le fichier est archivé chaque nuit sous `logs/devis-vocal.log.2026-09-01` — le chemin à
 ouvrir ne change jamais, la journée d'un rendez-vous reste retrouvable. Trente jours
-gardés, dossier ignoré par git. `LOG_CONTENU=false` cesse d'y recopier les
-transcriptions et les extractions si le fichier devient lourd.
+gardés, dossier ignoré par git. Les transcriptions et les extractions n'y sont recopiées
+qu'avec `LOG_CONTENU=true`, à réserver à son poste : elles portent les coordonnées des
+clients.
 
 > À ne pas confondre avec le journal ci-dessus : celui-ci suit l'exécution, l'autre
 > garde les vocaux. Le suivi recopie des transcriptions, donc parfois des noms et des
@@ -572,5 +573,11 @@ sur l'hôte** (« Ports Exposes » à 8000, « Ports Mappings » vide), et jamai
 Pour vérifier : tant que la valeur est fausse, le journal de l'application affiche une
 fois « Requête relayée par …, qui n'est pas dans FORWARDED_ALLOW_IPS », avec l'adresse
 du proxy. Plus de message après redéploiement : c'est réglé.
+
+Deux autres variables à ne pas recopier telles quelles d'un `.env` de développement :
+`LOG_CONTENU` reste à `false` — sinon les noms, adresses et téléphones des clients
+passent dans les journaux du conteneur, que Docker garde de son côté — et `ACCES_CODE`
+ne doit contenir ni « œ » ni apostrophe typographique, que le navigateur ne sait pas
+envoyer : l'application refuse alors de démarrer, et le dit dans son journal.
 
 Docker n'est **pas** nécessaire pour développer.

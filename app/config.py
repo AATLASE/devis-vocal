@@ -143,8 +143,10 @@ class Config(BaseSettings):
     log_dir: Path = RACINE / "logs"
     log_retention_jours: int = 30
     # Recopie la transcription et le JSON d'extraction dans le log. C'est ce qui rend
-    # un devis raté compréhensible après coup ; c'est aussi ce qui fait le volume.
-    log_contenu: bool = True
+    # un devis raté compréhensible après coup — mais ils portent le nom, l'adresse et le
+    # téléphone du client, gardés trente jours. Éteint par défaut : « le serveur ne
+    # garde rien ». À allumer sur son poste pour comprendre un devis sorti de travers.
+    log_contenu: bool = False
 
     # --- Règles de devis ---
     tva_defaut: Decimal = Decimal("0.10")  # rénovation logement > 2 ans
