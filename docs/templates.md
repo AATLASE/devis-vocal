@@ -20,11 +20,12 @@ le vôtre ne garantit rien.** C'est un document HTML libre, et rien n'oblige un 
 libre à imprimer un SIRET.
 
 Le produit ne peut pas empêcher ça, alors il le mesure. À l'enregistrement, votre
-template est rendu sur un devis d'exemple et le résultat est passé au crible de quatorze
-contrôles. Ce qui manque est affiché sur l'écran du template, et y reste. Un template non
-conforme est accepté — c'est votre document — mais vous savez ce qu'il lui manque.
+template est rendu sur un devis d'exemple et le résultat est passé au crible des
+contrôles ci-dessous. Ce qui manque est affiché sur l'écran du template, et y reste. Un
+template non conforme est accepté — c'est votre document — mais vous savez ce qu'il lui
+manque.
 
-Les quatorze mentions cherchées, dans le document **rendu** :
+Les mentions cherchées, dans le document **rendu** :
 
 | Mention | Où la prendre |
 |---|---|
@@ -32,21 +33,37 @@ Les quatorze mentions cherchées, dans le document **rendu** :
 | La date d'émission | `devis.date_emission` |
 | La date de fin de validité | `devis.date_validite` |
 | Le nom de l'entreprise | `e.nom` |
+| La forme juridique | `e.forme_juridique` |
 | L'adresse de l'entreprise | `e.adresse`, `e.code_postal_ville` |
 | Le numéro SIRET | `e.siret` |
-| Le numéro de TVA intracommunautaire | `e.tva_intracom` |
+| L'immatriculation (RCS ou RM) | `e.immatriculation` |
+| Le numéro de TVA intracommunautaire | `e.tva_intracom` — en franchise, « 293 B » à la place |
 | L'assurance professionnelle | `e.assurance` **et** `e.assurance_police` |
+| Les coordonnées de l'assureur et la couverture géographique | `e.assurance_coordonnees` **et** `e.assurance_couverture` |
 | Le nom du client | `devis.client.nom` |
 | Le détail des prestations | `devis.lignes` |
+| La date ou le délai d'exécution | `devis.debut_travaux`, ou les mots « début des travaux » |
 | Le total HT | `devis.total_ht` |
-| Le montant de la TVA | `devis.montant_tva` |
+| Le montant de la TVA | `devis.montant_tva` — sauf en franchise |
 | Le total TTC | `devis.total_ttc` |
+| L'acompte et les conditions de règlement | `devis.montant_acompte` |
+| Les pénalités de retard | les mots « retard de paiement » |
+| Le médiateur de la consommation et son site | `e.mediateur` **et** `e.mediateur_site` |
 | La mention « bon pour accord » | à écrire en toutes lettres |
+| L'adresse du chantier | `devis.client.adresse_chantier`, quand elle est renseignée |
+| L'attestation du taux réduit | « 278-0 bis A » à 5,5 %, « 279-0 bis » à 10 % |
+| Le droit de rétractation et son formulaire | pour un particulier : « rétractation » et « rayez la mention inutile » |
+| La demande d'exécution anticipée | pour un particulier : « avant la fin du délai de rétractation » |
+
+La liste suit le devis : les quatre dernières lignes ne valent que dans leur cas, et le
+devis d'exemple — un particulier, au taux de 10 % — en exerce trois.
 
 Le contrôle cherche les **valeurs**, pas les libellés : écrire `SIRET :` sans imprimer
 `{{ e.siret }}` ne compte pas. C'est délibéré — un intitulé sans valeur ne rend pas un
 devis conforme. Pour que ces valeurs ne se confondent pas entre elles, le devis
-d'exemple est établi au nom d'une entreprise fictive, l'« Atelier Exemple ».
+d'exemple est établi au nom d'une entreprise fictive, l'« Atelier Exemple ». Seules les
+mentions qui n'ont pas de valeur propre se cherchent par des mots : c'est plus faible,
+et le texte légal reste de votre responsabilité.
 
 Seul compte le texte que le PDF imprime : pas celui de `<title>`, de `<style>`, de
 `<script>`, de `<template>`, ni d'un commentaire. Le template livré met le numéro du
@@ -57,7 +74,7 @@ limite, en revanche : le contrôle lit le HTML, pas le CSS. Un texte masqué par
 ## Par où commencer
 
 Pas par une page blanche. Le bouton **Télécharger le template livré comme point de
-départ** vous donne `templates/devis.html`, qui passe déjà les quatorze contrôles.
+départ** vous donne `templates/devis.html`, qui passe déjà tous les contrôles.
 Modifiez-le plutôt que de repartir de zéro.
 
 Puis, toujours dans cet ordre :
@@ -80,11 +97,14 @@ C'est du [Jinja2](https://jinja.palletsprojects.com/). Trois formes suffisent :
 | `e` | l'entreprise, raccourci de `devis.entreprise` |
 | `pages` | les lignes découpées page par page, `[(numéro, ligne), …]` |
 | `cloture_sur_derniere` | la clôture tient sous la dernière tranche du tableau |
+| `pages_observations` | des observations trop longues pour la clôture, page par page |
+| `notes_cloture` | les observations qui restent à côté des totaux |
 | `total_pages` | le nombre de pages du document |
 | `css` | la feuille du template livré, polices comprises, prête à inliner |
 | `taux_reduit` | `0.10`, pour distinguer le taux réduit du normal |
+| `taux_renovation_energetique` | `0.055`, le taux de l'article 278-0 bis A |
 
-Les trois du milieu ne servent qu'à reproduire la pagination du template livré. Une mise
+Les cinq du milieu ne servent qu'à reproduire la pagination du template livré. Une mise
 en page simple les ignore et laisse Chromium couper les pages.
 
 Sur le PDF, `css` porte les polices en base64 : le document doit rester juste sans
@@ -101,17 +121,26 @@ sens qu'à l'écran : elles ne s'impriment pas.
 ### Les champs du devis
 
 `devis.numero` · `devis.date_emission` · `devis.date_validite` · `devis.validite_jours` ·
-`devis.client.nom` `.adresse` `.telephone` · `devis.type_travaux` · `devis.duree_estimee` ·
+`devis.client.nom` `.adresse` `.telephone` `.adresse_chantier` `.professionnel` ·
+`devis.type_travaux` · `devis.duree_estimee` · `devis.debut_travaux` ·
 `devis.lignes` · `devis.notes` · `devis.taux_tva` · `devis.taux_tva_libelle` ·
 `devis.total_ht` · `devis.montant_tva` · `devis.total_ttc` · `devis.acompte_pct` ·
 `devis.montant_acompte` · `devis.total_ht_estime` · `devis.a_des_prix_estimes`
 
+L'entreprise porte, en plus de son identité : `e.franchise_tva` (franchise en base, art.
+293 B du CGI : ni numéro ni montant de TVA) · `e.immatriculation` ·
+`e.assurance_coordonnees` · `e.assurance_couverture` · `e.mediateur` · `e.mediateur_site`.
+
+`devis.client.professionnel` est faux par défaut : tant que l'artisan n'a rien dit, le
+client est un particulier, et ce sont ses règles qui s'appliquent — formulaire de
+rétractation, acompte exigible après sept jours, demande d'exécution anticipée.
+
 Chaque ligne porte : `designation` · `detail` · `quantite` · `unite.value` ·
 `prix_unitaire_ht` · `total_ht` · `a_valider`.
 
-`a_valider` vaut `true` quand le prix a été estimé et non dicté. **Marquez-le.** C'est
-une règle du produit, pas une décoration : un prix estimé présenté comme ferme est un
-prix qu'on devra renier devant le client.
+`a_valider` vaut `true` quand la quantité ou le prix a été estimé et non dicté.
+**Marquez-le.** C'est une règle du produit, pas une décoration : un montant estimé
+présenté comme ferme est un montant qu'on devra renier devant le client.
 
 ### Les filtres de formatage
 

@@ -29,7 +29,15 @@ from html.parser import HTMLParser
 from app.authentification import UID_LOCAL, application
 from app.config import get_config
 from app.models import Client, Devis, Entreprise, LigneDevis, Template, Unite, arrondi
-from app.pdf import TemplateError, f_date_fr, f_date_longue, f_montant, render_html
+from app.pdf import (
+    TAUX_REDUIT,
+    TAUX_RENOVATION_ENERGETIQUE,
+    TemplateError,
+    f_date_fr,
+    f_date_longue,
+    f_montant,
+    render_html,
+)
 
 logger = logging.getLogger("devis-vocal")
 
@@ -86,6 +94,11 @@ ENTREPRISE_EXEMPLE = Entreprise(
     assurance="Mutuelle Exemple Assurances",
     assurance_police="PE-778 412",
     iban="FR76 0000 0000 0000 0000 0000 000",
+    immatriculation="RCS Grenoble",
+    assurance_coordonnees="14 cours des Assureurs, 69002 Lyon",
+    assurance_couverture="Auvergne-Rhône-Alpes",
+    mediateur="Médiateur Exemple du bâtiment, 9 rue des Arbitres, 75009 Paris",
+    mediateur_site="mediateur.example",
 )
 
 
@@ -191,28 +204,62 @@ def _mentions_attendues(devis: Devis) -> list[tuple[str, list[str | tuple[str, .
     Une valeur donnée en tuple exige toutes ses chaînes.
 
     On cherche les **valeurs**, pas des mots-clés : vérifier que le template contient
-    le mot « SIRET » ne dit pas qu'il imprime le SIRET.
+    le mot « SIRET » ne dit pas qu'il imprime le SIRET. Seules les mentions qui n'ont
+    pas de valeur — la rétractation, les pénalités, l'article qui fonde le taux de TVA —
+    se cherchent par un marqueur textuel : c'est plus faible, et c'est mieux que rien.
+
+    La liste suit le devis : en franchise, la mention de l'article 293 B remplace le
+    numéro et le montant de TVA ; pour un particulier, s'ajoutent la rétractation et la
+    demande d'exécution anticipée.
     """
-    e = devis.entreprise
-    return [
+    e, client = devis.entreprise, devis.client
+    mentions: list[tuple[str, list[str | tuple[str, ...]]]] = [
         ("Le numéro du devis", [devis.numero]),
         ("La date d'émission", [f_date_fr(devis.date_emission), f_date_longue(devis.date_emission)]),
         ("La date de fin de validité",
          [f_date_fr(devis.date_validite), f_date_longue(devis.date_validite)]),
         ("Le nom de l'entreprise", [e.nom]),
+        ("La forme juridique", [e.forme_juridique]),
         ("L'adresse de l'entreprise", [e.adresse, e.code_postal_ville]),
         ("Le numéro SIRET", [e.siret]),
-        ("Le numéro de TVA intracommunautaire", [e.tva_intracom]),
+        ("L'immatriculation (RCS ou RM)", [e.immatriculation]),
+        # En franchise, l'entreprise n'a pas de numéro de TVA à imprimer : c'est la
+        # mention de son régime qui doit y être.
+        ("La mention « TVA non applicable, art. 293 B du CGI »", ["293 B"]) if e.franchise_tva
+        else ("Le numéro de TVA intracommunautaire", [e.tva_intracom]),
         # L'assureur et la police : l'un sans l'autre ne permet pas au client de
         # vérifier la couverture.
         ("L'assurance professionnelle", [(e.assurance, e.assurance_police)]),
-        ("Le nom du client", [devis.client.nom or ""]),
+        ("Les coordonnées de l'assureur et la couverture géographique",
+         [(e.assurance_coordonnees, e.assurance_couverture)]),
+        ("Le nom du client", [client.nom or ""]),
         ("Le détail des prestations", [devis.lignes[0].designation]),
+        ("La date ou le délai d'exécution", [devis.debut_travaux or "début des travaux"]),
         ("Le total HT", [f_montant(devis.total_ht)]),
-        ("Le montant de la TVA", [f_montant(devis.montant_tva)]),
+    ]
+    if not e.franchise_tva:
+        mentions.append(("Le montant de la TVA", [f_montant(devis.montant_tva)]))
+    mentions += [
         ("Le total TTC", [f_montant(devis.total_ttc)]),
+        ("L'acompte et les conditions de règlement", [f_montant(devis.montant_acompte)]),
+        ("Les pénalités de retard", ["retard de paiement"]),
+        ("Le médiateur de la consommation et son site", [(e.mediateur, e.mediateur_site)]),
         ("La mention « bon pour accord »", ["bon pour accord"]),
     ]
+    if client.adresse_chantier:
+        mentions.append(("L'adresse du chantier", [client.adresse_chantier]))
+    if not e.franchise_tva and devis.taux_tva == TAUX_RENOVATION_ENERGETIQUE:
+        mentions.append(("L'attestation du taux réduit (art. 278-0 bis A du CGI)", ["278-0 bis A"]))
+    elif not e.franchise_tva and devis.taux_tva == TAUX_REDUIT:
+        mentions.append(("L'attestation du taux réduit (art. 279-0 bis du CGI)", ["279-0 bis"]))
+    if not client.professionnel:
+        mentions += [
+            ("Le droit de rétractation et son formulaire",
+             [("rétractation", "rayez la mention inutile")]),
+            ("La demande d'exécution avant la fin du délai de rétractation",
+             ["avant la fin du délai de rétractation"]),
+        ]
+    return mentions
 
 
 _BLANCS = re.compile(r"\s+")
