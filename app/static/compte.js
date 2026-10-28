@@ -161,6 +161,9 @@ async function demarrer() {
   onAuthStateChanged(auth, async (compte) => {
     utilisateur = compte;
     try {
+      // La porte d'abord : `app.js` doit savoir si le serveur réclame un code avant
+      // qu'on choisisse l'écran. Voir `porteFermee`.
+      await window.santeLue;
       await peindreCompte();
     } finally {
       // `finally` : une fiche illisible ne doit jamais laisser la page masquée.
@@ -168,7 +171,44 @@ async function demarrer() {
     }
   });
 
+  // L'écran retenu le temps de la porte, peint une fois le code saisi.
+  document.addEventListener('porte-franchie', () => {
+    if (!attendLaPorte) return;
+    attendLaPorte = false;
+    peindreCompte();
+  });
+
   brancher();
+}
+
+/* ---- la porte avant le compte ------------------------------------------- */
+/* Quand le serveur réclame un code d'accès, rien du compte ne doit recouvrir la porte.
+   La connexion la remplaçait : l'artisan touchait « Continuer sans compte », dictait,
+   et ne découvrait le code qu'au premier refus, sur un écran d'erreur sans issue. Tant
+   que la porte est à l'écran, on retient donc l'écran du compte — et la lecture de la
+   fiche, qui serait refusée faute de code. `app.js` annonce le franchissement. */
+
+let attendLaPorte = false;
+const porteFermee = () => $('ecran-porte').classList.contains('is-active');
+
+/* Les en-têtes d'un appel à l'API du compte. Le jeton dit qui appelle ; le code
+   d'accès, tenu par `app.js`, dit qu'on a le droit d'appeler — le serveur l'exige sur
+   tout /api/, compte compris. */
+async function entetes(autres = {}) {
+  return {
+    ...autres,
+    ...enteteAcces(),
+    Authorization: 'Bearer ' + (await window.Compte.jeton()),
+  };
+}
+
+/* Le motif d'un refus, dans la forme où le serveur le donne. */
+async function motif(reponse) {
+  try {
+    const corps = await reponse.json();
+    if (corps.detail) return corps.detail;
+  } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
+  return 'Erreur ' + reponse.status + '.';
 }
 
 /* ---- le menu latéral ---------------------------------------------------- */
@@ -261,6 +301,11 @@ function peindreMenu() {
 }
 
 async function peindreCompte() {
+  if (porteFermee()) {
+    attendLaPorte = true;
+    return;
+  }
+
   if (!utilisateur) {
     profil = null;
     peindreMenu();

@@ -292,10 +292,16 @@ async function poste(url, options) {
     try { motif = (await reponse.json()).detail || ''; } catch (_) { /* corps vide */ }
 
     if (/code d'accès/i.test(motif)) {
+      // Pas de code du tout : /health n'avait pas répondu au chargement, la porte
+      // n'a jamais été montrée. Un code refusé : il a changé en cours de session.
+      const message = codeAcces ? "Ce code n'est plus valable. Redemandez-le." : '';
       oublierAcces();
-      montrer('porte');
-      $('porte-erreur').textContent = "Ce code n'est plus valable. Redemandez-le.";
-      throw new Error("Code d'accès refusé.");
+      ouvrirPorte(message);
+      // Erreur marquée : l'appelant ne doit pas la traiter comme une panne. La porte
+      // est à l'écran, et l'étape refusée sera rejouée une fois le code saisi.
+      const err = new Error("Code d'accès refusé.");
+      err.porte = true;
+      throw err;
     }
     throw new Error(motif || 'Votre session a expiré. Reconnectez-vous.');
   }
@@ -757,6 +763,9 @@ async function lancer(fichier, texte, dureeSecondes) {
       // Gardé avant l'appel, pas après : c'est justement quand la transcription
       // échoue qu'on a besoin de retrouver l'audio.
       vocalCourant = { fichier, secondes: dureeSecondes };
+      // Un vocal neuf : une transcription d'avant ne le concerne pas, et `reprendre()`
+      // la rejouerait à sa place.
+      transcriptionCourante = null;
       // Une dictée connaît sa durée : elle sort du chronomètre, pas du fichier.
       dureeVocal = formaterDuree(dureeSecondes != null ? dureeSecondes : await dureeAudio(fichier));
       transcriptionCourante = await transcrire(fichier);
@@ -798,6 +807,14 @@ async function lancer(fichier, texte, dureeSecondes) {
       setTimeout(() => montrer('relecture'), 500);
     }
   } catch (err) {
+    if (err.porte) {
+      // Le vocal et la transcription sont gardés ; l'étape refusée repartira d'elle-même
+      // une fois le code saisi. `echouer()` recouvrirait la porte d'une impasse.
+      clearInterval(chrono);
+      clearInterval(revelation);
+      aRejouer.add(reprendre);
+      return;
+    }
     echouer(err.message);
   }
 }
@@ -1048,7 +1065,7 @@ function fermerEdition() {
 }
 
 async function validerEdition(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();   // sans événement : rejouée après la porte
   const { lignes, erreurs } = lireLignes();
   if (!lignes.length) erreurs.push('Un devis doit compter au moins une ligne.');
   if (erreurs.length) {
@@ -1080,9 +1097,12 @@ async function validerEdition(e) {
     });
     devisCourant = await r.json();
   } catch (err) {
+    // Code refusé : le formulaire attend derrière la porte, et la validation repart
+    // telle quelle une fois le code saisi.
+    if (err.porte) aRejouer.add(validerEdition);
     // Le formulaire reste tel quel : l'artisan corrige la ligne citée et revalide,
     // sans rien perdre de ce qu'il a déjà saisi.
-    $('ed-erreur').textContent = err.message;
+    else $('ed-erreur').textContent = err.message;
     return;
   } finally {
     bouton.disabled = false;
@@ -1330,7 +1350,8 @@ async function peindreApercu() {
       signalerRepliTemplate();
     }
     html = await r.text();
-  } catch (_) {
+  } catch (err) {
+    if (err.porte) aRejouer.add(peindreApercu);
     // L'aperçu est un confort ; le devis, lui, est intact et téléchargeable. Un
     // aperçu qui rate ne doit surtout pas interrompre la relecture.
     $('apercu-attente').hidden = true;
@@ -1484,7 +1505,9 @@ let pdfPret = null;
 
 function preparerPdf() {
   const promesse = genererPdf();
-  promesse.catch(() => {});   // l'échec sera revu au clic ; pas de rejet non traité
+  // L'échec sera revu au clic ; pas de rejet non traité. Un code refusé, lui, se
+  // rattrape dès la porte franchie.
+  promesse.catch((err) => { if (err.porte) aRejouer.add(preparerPdf); });
   pdfPret = promesse;
 }
 
@@ -2100,8 +2123,36 @@ async function entrer() {
 
   try { localStorage.setItem(CLE_ACCES, saisi); } catch (_) { /* vaut pour la session */ }
   $('porte-code').value = '';
+  $('porte-erreur').textContent = '';
   peindreSante(info);
-  montrer('accueil');
+  franchirPorte();
+}
+
+/* La porte peut aussi tomber en cours de route : le code a changé pendant la session,
+   ou /health n'a pas répondu au chargement et le code n'a jamais été demandé. Ce qui
+   était à l'écran reste en mémoire — vocal, transcription, devis corrigé. Une fois le
+   code saisi, on revient où l'on était et on rejoue ce qui a été refusé : jamais un
+   vocal à redicter pour un code. */
+let ecranAvantPorte = null;
+const aRejouer = new Set();
+
+function ouvrirPorte(message) {
+  if ($('ecran-porte').classList.contains('is-active')) return;
+  const actif = document.querySelector('.screen.is-active');
+  ecranAvantPorte = actif ? actif.id.replace('ecran-', '') : null;
+  $('porte-erreur').textContent = message || '';
+  montrer('porte');
+  $('porte-code').focus({ preventScroll: true });
+}
+
+function franchirPorte() {
+  montrer(ecranAvantPorte || 'accueil');
+  ecranAvantPorte = null;
+  const etapes = [...aRejouer];
+  aRejouer.clear();
+  etapes.forEach((etape) => etape());
+  // `compte.js` a pu retenir son écran de connexion le temps de la porte : à lui.
+  document.dispatchEvent(new Event('porte-franchie'));
 }
 
 $('btn-porte').addEventListener('click', entrer);
@@ -2110,18 +2161,22 @@ $('porte-code').addEventListener('keydown', (e) => {
 });
 
 /* Au chargement : le serveur dit s'il réclame un code, et le reste de ce qu'il
-   annonce — moteur, mode — n'est donné qu'une fois la porte franchie. */
-(async () => {
+   annonce — moteur, mode — n'est donné qu'une fois la porte franchie.
+
+   `compte.js` attend cette réponse avant de choisir son écran : la porte passe avant
+   la connexion. Sans cette attente, la connexion recouvrait la porte, et l'artisan
+   dictait sans code jusqu'au premier refus. Résolue dans tous les cas, même serveur
+   muet — elle ne dit pas que tout va bien, seulement que la question est tranchée. */
+window.santeLue = (async () => {
   let info = null;
   try {
     info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
   } catch (_) {
-    return;  // serveur muet : la page reste debout, l'erreur viendra à l'usage
+    return;  // serveur muet : la page reste debout, la porte viendra au premier refus
   }
 
   if (info.acces === 'requis') {
-    montrer('porte');
-    $('porte-code').focus({ preventScroll: true });
+    ouvrirPorte('');
     return;
   }
   peindreSante(info);
