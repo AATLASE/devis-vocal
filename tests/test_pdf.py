@@ -185,6 +185,16 @@ def test_les_prix_estimes_sont_signales_dans_le_html():
     assert "estimé †" not in render_html(devis_de("peinture"))
 
 
+def test_la_note_dit_que_la_quantite_aussi_peut_etre_estimee():
+    """Le modèle estime aussi un métrage non dicté (« deux murs », sans surface) et
+    marque la ligne. Une note qui ne parle que du prix enverrait l'artisan, et le
+    client, vérifier le mauvais champ."""
+    texte = _texte_imprime(devis_de("sdb"))
+
+    assert "ligne estimée : quantité ou prix unitaire non dicté" in texte
+    assert "prix non dicté" not in texte
+
+
 async def test_le_pdf_se_genere():
     contenu = await render(devis_de("sdb"))
     try:

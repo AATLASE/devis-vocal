@@ -979,7 +979,7 @@ function peindreRelecture(d) {
 
   const aValider = d.lignes.filter((l) => l.a_valider).length;
   $('rel-compte').textContent = aValider === 0
-    ? 'Tous les prix ont été dictés'
+    ? 'Toutes les lignes ont été dictées'
     : `${aValider} ligne${aValider > 1 ? 's' : ''} sur ${d.lignes.length} ${aValider > 1 ? 'sont' : 'est'} à valider`;
 
   const lignes = $('rel-lignes');
@@ -997,7 +997,8 @@ function rangDeLigne(l) {
   if (l.detail) gauche.append(noeud('div', 'table__detail', l.detail));
   // Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
   // alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche.
-  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Prix estimé · à valider'));
+  // La quantité autant que le prix : un métrage non dicté est estimé lui aussi.
+  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Quantité ou prix estimé · à vérifier'));
 
   // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
   // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
@@ -1050,7 +1051,8 @@ function peindreTotaux(d) {
 
   if (Number(d.total_ht_estime) > 0) {
     totaux.append(noeud('div', 'totaux__note',
-      `Dont ${euro(d.total_ht_estime)} de prix estimés. Relisez ces lignes avant l'envoi.`));
+      `Dont ${euro(d.total_ht_estime)} sur des lignes estimées, en quantité ou en prix. ` +
+      'Relisez-les avant l’envoi.'));
   }
   if (tvaAConfirmer && !franchise) {
     totaux.append(noeud('div', 'totaux__note',
@@ -1139,18 +1141,19 @@ function editeurDeLigne(l) {
     champEdition('champ--detail', 'Détail (facultatif)', detail),
   );
 
-  // Un prix estimé le reste tant que l'artisan ne l'a pas pris à son compte. Taper
-  // un prix, c'est le prendre : la case se coche d'elle-même. La laisser vide,
-  // c'est garder la mention « estimé » sur le PDF — elle ne disparaît jamais seule.
+  // Une ligne estimée le reste tant que l'artisan ne l'a pas prise à son compte, et
+  // seule la case le dit. Elle ne se coche pas toute seule quand il retouche le prix :
+  // l'estimation porte souvent sur la quantité, et corriger l'un ne vérifie pas
+  // l'autre. Laisser la case vide, c'est garder la mention « estimé » sur le PDF.
   if (l.a_valider) {
     rang.classList.add('est-estimee');
     const verifie = noeud('input');
     verifie.type = 'checkbox';
     verifie.dataset.cle = 'verifie';
     const etiquette = noeud('label', 'ligne-ed__prix');
-    etiquette.append(verifie, document.createTextNode('Prix estimé · cocher une fois vérifié'));
+    etiquette.append(verifie,
+      document.createTextNode('Quantité ou prix estimé · cocher une fois les deux vérifiés'));
     rang.append(etiquette);
-    prix.addEventListener('input', () => { verifie.checked = true; });
   }
   return rang;
 }

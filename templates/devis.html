@@ -38,8 +38,9 @@
 
 {%- macro note_dague() -%}
   {%- if devis.a_des_prix_estimes -%}
-  <p class="doc-note">† Prix non dicté lors de la prise de mesure, estimé d'après les
-  tarifs pratiqués par l'entreprise. Ces montants sont à confirmer avant signature.</p>
+  {#- La quantité comme le prix : le modèle estime aussi un métrage qui n'a pas été dit. #}
+  <p class="doc-note">† Ligne estimée : quantité ou prix unitaire non dicté lors de la prise
+  de mesure. Montant à confirmer avant signature.</p>
   {%- endif -%}
 {%- endmacro -%}
 

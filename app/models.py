@@ -63,7 +63,7 @@ class LigneExtraction(BaseModel):
     quantite: float
     unite: Unite
     prix_unitaire_ht: float
-    a_valider: bool  # True dès que le prix est une estimation et non un prix dicté
+    a_valider: bool  # True dès que la quantité ou le prix est une estimation, non une valeur dictée
 
 
 class DevisExtraction(BaseModel):
@@ -162,15 +162,17 @@ class Devis(BaseModel):
     acompte_pct: Decimal
     montant_acompte: Decimal
 
-    # Part du HT reposant sur des prix estimés. C'est un total : il se calcule ici,
-    # jamais dans le navigateur. L'écran de relecture l'affiche sous les totaux.
+    # Part du HT reposant sur des lignes estimées, en quantité ou en prix. C'est un
+    # total : il se calcule ici, jamais dans le navigateur. L'écran de relecture
+    # l'affiche sous les totaux.
     total_ht_estime: Decimal = Decimal("0")
 
     transcription: str = ""  # affichée dans le navigateur, jamais dans le PDF
 
     @property
     def a_des_prix_estimes(self) -> bool:
-        """Pilote l'astérisque et la note de bas de tableau dans le PDF."""
+        """Pilote la dague et la note de bas de tableau dans le PDF. Le nom est resté
+        celui d'avant : une ligne estimée l'est en quantité ou en prix."""
         return any(ligne.a_valider for ligne in self.lignes)
 
     @property
