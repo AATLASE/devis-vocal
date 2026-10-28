@@ -206,6 +206,21 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   font-size: 10px; color: var(--dv-muted);
 }
 
+/* Le filigrane du devis établi sur l'identité de démonstration. Hors du flux, il ne
+   déplace rien : la pagination ne le voit pas. Le cadre coupe ce qui dépasse, sinon la
+   diagonale élargirait la page. */
+.page { position: relative; }
+.doc-specimen {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.doc-specimen span {
+  transform: rotate(-35deg);
+  font-family: var(--dv-serif); font-size: 140px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dv-accent); opacity: .13;
+}
+
 /* Des observations trop longues pour tenir à côté des totaux : elles ont leur page,
    en pleine largeur, entre le tableau et la clôture. */
 .doc-suite-observations { margin-top: 22px; }

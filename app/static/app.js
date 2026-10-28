@@ -2062,8 +2062,12 @@ function peindreIdentite() {
   $('identite').classList.toggle('est-vide', !complete);
   $('identite-label').textContent = remplie ? 'Devis établis au nom de' : 'Votre entreprise';
   $('identite-nom').textContent = remplie ? entrepriseCourante.nom : 'à renseigner';
-  $('identite-manque').textContent = manque.length ? 'À compléter : ' + manque.join(', ') : '';
-  $('identite-manque').hidden = manque.length === 0;
+  // Sans identité, le devis sort sur celle de la configuration, barré « spécimen » :
+  // on peut essayer l'outil, pas envoyer ce document à un client.
+  $('identite-manque').textContent = !remplie
+    ? 'Sans elle, vos devis sortent marqués « spécimen ».'
+    : manque.length ? 'À compléter : ' + manque.join(', ') : '';
+  $('identite-manque').hidden = remplie && manque.length === 0;
   $('identite-action').textContent = complete ? 'Modifier' : remplie ? 'Compléter' : 'Renseigner';
 }
 

@@ -29,6 +29,12 @@
   </header>
 {%- endmacro -%}
 
+{#- L'identité de la configuration n'est pas celle de l'artisan : en travers de
+    chaque page, sans rien déplacer — le filigrane est hors du flux. #}
+{%- macro filigrane() -%}
+  {%- if specimen %}<div class="doc-specimen" aria-hidden="true"><span>Spécimen</span></div>{% endif -%}
+{%- endmacro -%}
+
 {%- macro pied_courant(numero) -%}
   <footer class="doc-runfoot">
     <div>{{ e.nom }} · Devis {{ devis.numero }}</div>
@@ -134,6 +140,7 @@
 {%- for bloc in pages %}
 {%- set cloture_ici = loop.last and cloture_sur_derniere %}
 <article class="page">
+  {{ filigrane() }}
   {%- if loop.first %}
 
   <header class="doc-head">
@@ -222,6 +229,7 @@
 
 {%- for tranche in pages_observations %}
 <article class="page">
+  {{ filigrane() }}
   {{ entete_courante('Devis ' ~ devis.numero ~ ' · observations') }}
   <section class="doc-suite-observations">
     <div class="doc-label">Observations</div>
@@ -240,6 +248,7 @@
 
 {%- if not cloture_sur_derniere %}
 <article class="page">
+  {{ filigrane() }}
   {{ entete_courante('Devis ' ~ devis.numero ~ ' · récapitulatif') }}
   <section style="margin-top:22px">{{ note_dague() }}</section>
   {{ cloture() }}
@@ -255,6 +264,7 @@
 {# ---- mentions légales, toujours seules sur la dernière page ----------- #}
 
 <article class="page">
+  {{ filigrane() }}
   {{ entete_courante('Conditions générales') }}
 
   <h2 style="font-family:var(--dv-serif);font-size:19px;font-weight:600;margin:26px 0 20px">Mentions légales et conditions</h2>

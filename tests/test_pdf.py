@@ -62,6 +62,29 @@ def test_le_html_a_exactement_le_nombre_de_pages_annonce(nom):
     assert render_html(devis).count('<article class="page">') == paginer(devis).total_pages
 
 
+def test_l_identite_de_la_configuration_sort_en_specimen():
+    """Un artisan qui n'a jamais renseigné son identité reçoit celle du `.env` : une
+    entreprise fictive au SIRET à zéros, ou celle d'un autre. Le devis sort quand même,
+    barré sur chaque page ; celui d'une identité saisie, jamais."""
+    extraction = DevisExtraction.model_validate_json((FIXTURES / "elec.json").read_text(encoding="utf-8"))
+    demonstration = to_devis(extraction, entreprise=get_config().entreprise, maintenant=INSTANT)
+    html = render_html(demonstration)
+    assert html.count('class="doc-specimen"') == html.count('<article class="page">')
+
+    assert 'class="doc-specimen"' not in render_html(devis_de("elec"))
+    assert 'class="doc-specimen"' not in render_html(templates.devis_exemple())
+
+
+async def test_le_filigrane_ne_change_pas_le_nombre_de_pages():
+    extraction = DevisExtraction.model_validate_json((FIXTURES / "sdb.json").read_text(encoding="utf-8"))
+    devis = to_devis(extraction, entreprise=get_config().entreprise, maintenant=INSTANT)
+    try:
+        contenu = await render(devis)
+        assert int(re.search(rb"/Count (\d+)", contenu).group(1)) == paginer(devis).total_pages
+    finally:
+        await arreter()
+
+
 def test_en_franchise_la_mention_293_b_remplace_la_tva():
     """Ni ligne de TVA, ni numéro de TVA, ni attestation du taux réduit : la mention
     du régime à leur place, en tête, dans les totaux et dans les conditions."""

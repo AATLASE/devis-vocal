@@ -480,6 +480,12 @@ def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
     return {
         "devis": devis,
         "e": devis.entreprise,
+        # Un artisan qui n'a jamais renseigné son identité reçoit celle de la
+        # configuration : une entreprise fictive, ou celle d'un autre artisan préparée
+        # pour un rendez-vous. Le devis sort quand même — la dictée n'attend pas le
+        # compte — mais chaque page le dit, en travers : ce n'est pas un document à
+        # envoyer.
+        "specimen": devis.entreprise == get_config().entreprise,
         "taux_reduit": TAUX_REDUIT,
         "taux_renovation_energetique": TAUX_RENOVATION_ENERGETIQUE,
         # pages, cloture_sur_derniere, total_pages, pages_observations, notes_cloture
