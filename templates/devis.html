@@ -114,7 +114,9 @@
       <p class="doc-accord__case"><span class="doc-case"></span>Je demande que les travaux commencent avant la fin
       du délai de rétractation (art. L221-25 du Code de la consommation).</p>
       {%- endif %}
-      <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / {{ devis.date_emission.year }}</div>
+      {#- L'année aussi reste en blanc : un devis émis en décembre se signe souvent en
+          janvier, et une année pré-imprimée antidaterait l'acceptation. #}
+      <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / ………</div>
     </div>
     <div class="doc-accord__sign">
       <div class="doc-label">Signature</div>

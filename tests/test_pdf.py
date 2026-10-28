@@ -457,4 +457,18 @@ def test_les_dates_s_ecrivent_en_toutes_lettres_sur_le_devis():
     from datetime import date
 
     assert f_date_longue(date(2026, 8, 27)) == "27 août 2026"
-    assert f_date_longue(date(2026, 12, 1)) == "1 décembre 2026"
+    assert f_date_longue(date(2026, 12, 1)) == "1er décembre 2026"
+    assert f_date_longue(date(2027, 1, 11)) == "11 janvier 2027"
+
+
+def test_la_ligne_de_signature_n_imprime_pas_l_annee_d_emission():
+    """Émis le 15 décembre, valable jusqu'au 14 janvier : signé le 5 janvier, une année
+    pré-imprimée daterait l'acceptation d'avant l'émission."""
+    from datetime import datetime
+
+    extraction = DevisExtraction.model_validate_json((FIXTURES / "elec.json").read_text(encoding="utf-8"))
+    devis = to_devis(extraction, entreprise=ENTREPRISE, maintenant=datetime(2026, 12, 15, 10, 0))
+    texte = _texte_imprime(devis)
+
+    assert "le ……… / ……… / ………" in texte
+    assert "/ 2026" not in texte

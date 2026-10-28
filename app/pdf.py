@@ -204,8 +204,10 @@ def f_date_fr(valeur: date) -> str:
 
 
 def f_date_longue(valeur: date) -> str:
-    """2026-08-27 -> « 27 août 2026 ». C'est la forme du design, et celle d'un vrai devis."""
-    return f"{valeur.day} {MOIS[valeur.month - 1]} {valeur.year}"
+    """2026-08-27 -> « 27 août 2026 ». C'est la forme du design, et celle d'un vrai devis.
+    Le premier du mois s'écrit « 1er », comme partout en français."""
+    jour = "1er" if valeur.day == 1 else str(valeur.day)
+    return f"{jour} {MOIS[valeur.month - 1]} {valeur.year}"
 
 
 # ---------------------------------------------------------------------------
