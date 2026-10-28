@@ -264,6 +264,7 @@ def test_la_csp_reste_fermee_sans_firebase():
     assert "script-src 'self';" in csp + ";"
     assert "gstatic" not in csp
     assert "googleapis" not in csp
+    assert "apis.google.com" not in csp
 
 
 def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_path):
@@ -282,6 +283,9 @@ def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_pa
 
     csp = securite.politique()
     assert "https://www.gstatic.com" in csp                      # le SDK
+    # « Continuer avec Google » : le SDK charge api.js avant d'ouvrir la fenêtre, et
+    # échouait en `auth/internal-error` à chaque essai tant que la CSP le refusait.
+    assert "https://apis.google.com" in directives(csp)["script-src"]
     assert "https://identitytoolkit.googleapis.com" in csp       # la connexion
     assert "https://securetoken.googleapis.com" in csp           # le rafraîchissement
     assert "https://mon-projet.firebaseapp.com" in csp           # la fenêtre Google

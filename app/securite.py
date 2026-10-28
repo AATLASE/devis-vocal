@@ -376,6 +376,12 @@ SOCLE = {
 # refuse sans rien casser d'autre. C'est précisément ce qui est arrivé.
 SDK_FIREBASE = "https://www.gstatic.com"
 
+# « Continuer avec Google » passe par `signInWithPopup`, dont le SDK charge d'abord
+# `apis.google.com/js/api.js` — avant même d'ouvrir la fenêtre, et dès l'initialisation
+# sur mobile. Refusé, il fait échouer la connexion en `auth/internal-error`, à chaque
+# essai, sur le premier bouton du premier écran.
+SCRIPT_GOOGLE = "https://apis.google.com"
+
 # Les points d'entrée que le SDK appelle : vérification des identifiants, puis
 # rafraîchissement du jeton toutes les heures.
 API_FIREBASE = [
@@ -390,7 +396,7 @@ def politique() -> str:
 
     config = get_config()
     if config.auth_active:
-        directives["script-src"].append(SDK_FIREBASE)
+        directives["script-src"].extend([SDK_FIREBASE, SCRIPT_GOOGLE])
         directives["connect-src"].extend(API_FIREBASE)
         # La connexion Google passe par une page d'aide hébergée sur le domaine
         # d'authentification du projet.
