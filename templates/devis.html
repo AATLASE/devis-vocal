@@ -82,8 +82,15 @@
     </div>
     <div class="doc-totaux">
       <div><span>Total HT</span><span class="num">{{ devis.total_ht | euro }}</span></div>
+      {%- if e.franchise_tva %}
+      {#- Une entreprise en franchise ne facture pas de TVA : une ligne « TVA 0 % » se
+          lirait comme un taux, la mention dit le régime. #}
+      <div><span>TVA non applicable, art. 293 B du CGI</span></div>
+      <div class="ttc"><span>Net à payer</span><span>{{ devis.total_ttc | euro }}</span></div>
+      {%- else %}
       <div><span>TVA {{ devis.taux_tva_libelle }}&#8239;%</span><span class="num">{{ devis.montant_tva | euro }}</span></div>
       <div class="ttc"><span>Total TTC</span><span>{{ devis.total_ttc | euro }}</span></div>
+      {%- endif %}
       <div class="acompte">
         <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% à la commande</span>
         <span class="num">{{ devis.montant_acompte | euro }}</span>
@@ -129,7 +136,9 @@
       </div>
       <div class="doc-head__legal">
         SIRET {{ e.siret or 'à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
-        TVA {{ e.tva_intracom or 'à compléter' }}<br>
+        {#- En franchise, pas de numéro de TVA : l'annuaire en calcule un pour toute
+            entreprise, y compris celle qui n'est pas redevable de la taxe. #}
+        {% if e.franchise_tva %}TVA non applicable, art. 293 B du CGI{% else %}TVA {{ e.tva_intracom or 'à compléter' }}{% endif %}<br>
         Décennale {{ e.assurance or 'à compléter' }} n° {{ e.assurance_police or 'à compléter' }}
       </div>
     </div>
@@ -240,7 +249,10 @@
     </div>
     <div class="doc-mention">
       <h4>Taux de TVA</h4>
-      {%- if devis.taux_tva == taux_reduit %}
+      {%- if e.franchise_tva %}
+      <p>TVA non applicable, art. 293 B du CGI. L'entreprise relève de la franchise en
+      base de TVA : les montants du présent devis s'entendent sans TVA.</p>
+      {%- elif devis.taux_tva == taux_reduit %}
       <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
       l'article 279-0 bis du Code général des impôts, les travaux portant sur un local à usage
       d'habitation achevé depuis plus de deux ans. En signant le présent devis, le client

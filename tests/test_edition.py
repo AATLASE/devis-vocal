@@ -170,6 +170,26 @@ def test_un_taux_de_tva_inconnu_est_refuse():
         recalculer(devis, corrections_depuis(devis, taux_tva="0.055"), max_lignes=60)
 
 
+def test_un_taux_nul_est_refuse_hors_franchise():
+    """Zéro n'est pas un taux qu'on choisit : c'est le régime d'une entreprise."""
+    devis = devis_sdb()
+    with pytest.raises(EditionRefusee, match="taux de TVA"):
+        recalculer(devis, corrections_depuis(devis, taux_tva="0"), max_lignes=60)
+
+
+@pytest.mark.parametrize("taux", ["0", "0.10", "0.20"])
+def test_en_franchise_le_taux_envoye_est_sans_effet(taux):
+    """L'entreprise en franchise ne facture pas de TVA, quoi que renvoie l'écran."""
+    extraction = DevisExtraction(**json.loads((FIXTURES / "sdb.json").read_text(encoding="utf-8")))
+    franchise = ENTREPRISE.model_copy(update={"franchise_tva": True})
+    devis = to_devis(extraction, entreprise=franchise, maintenant=INSTANT)
+
+    corrige = recalculer(devis, corrections_depuis(devis, taux_tva=taux), max_lignes=60)
+
+    assert corrige.taux_tva == Decimal("0")
+    assert corrige.total_ttc == corrige.total_ht
+
+
 async def test_la_route_rend_le_devis_corrige_et_traduit_les_refus():
     devis = devis_sdb()
     corrige = await api_devis_corriger(DemandeCorrection(

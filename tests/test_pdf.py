@@ -63,6 +63,19 @@ def test_le_html_a_exactement_le_nombre_de_pages_annonce(nom):
     assert render_html(devis).count('<article class="page">') == total_pages
 
 
+def test_en_franchise_la_mention_293_b_remplace_la_tva():
+    """Ni ligne de TVA, ni numéro de TVA, ni attestation du taux réduit : la mention
+    du régime à leur place, en tête, dans les totaux et dans les conditions."""
+    extraction = DevisExtraction.model_validate_json((FIXTURES / "sdb.json").read_text(encoding="utf-8"))
+    franchise = ENTREPRISE.model_copy(update={"franchise_tva": True})
+    html = render_html(to_devis(extraction, entreprise=franchise, maintenant=INSTANT))
+
+    assert html.count("TVA non applicable, art. 293 B du CGI") == 3
+    assert ENTREPRISE.tva_intracom not in html
+    assert "279-0 bis" not in html
+    assert "TVA 10" not in html and "Total TTC" not in html
+
+
 def test_les_prix_estimes_sont_signales_dans_le_html():
     # Sur le papier, le signal est le dague : c'est ce qui survit à une imprimante
     # noir et blanc, là où la teinte brique disparaît.

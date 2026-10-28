@@ -325,6 +325,12 @@ def test_les_champs_saisis_sont_gardes_tels_quels():
     assert fusion.assurance == "MAAF"
 
 
+def test_la_franchise_de_tva_voyage_avec_l_identite():
+    """Une case, pas un texte : elle passe telle quelle, et son absence vaut « assujetti »."""
+    assert EntrepriseSaisie(nom="EI Martin", franchise_tva=True).fusionner(FACTICE).franchise_tva
+    assert not EntrepriseSaisie(nom="EI Martin").fusionner(FACTICE).franchise_tva
+
+
 @pytest.mark.parametrize("saisie", [EntrepriseSaisie(), EntrepriseSaisie(nom="  ", siret="1")])
 def test_une_saisie_sans_nom_n_est_pas_une_identite(saisie):
     """Sans nom, rien à imprimer en tête : le devis sort sur la configuration, comme si

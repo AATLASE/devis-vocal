@@ -155,6 +155,29 @@ def test_le_libelle_de_tva_est_a_la_francaise():
     assert devis_de("sdb", tva_forcee=Decimal("0.055")).taux_tva_libelle == "5,5"
 
 
+@pytest.mark.parametrize("tva_forcee", [None, Decimal("0.10"), Decimal("0.20")])
+def test_en_franchise_aucune_tva_n_est_facturee(tva_forcee):
+    """Une micro-entreprise en franchise (art. 293 B du CGI) qui facture la TVA la doit
+    au Trésor. Ni le taux suggéré par le modèle ni un taux forcé ne passent."""
+    franchise = ENTREPRISE.model_copy(update={"franchise_tva": True})
+    devis = to_devis(charge("sdb"), entreprise=franchise, maintenant=INSTANT,
+                     tva_forcee=tva_forcee)
+
+    assert devis.taux_tva == Decimal("0")
+    assert devis.montant_tva == Decimal("0.00")
+    assert devis.total_ttc == devis.total_ht == Decimal("2840.00")
+    assert devis.montant_acompte == arrondi(devis.total_ht * devis.acompte_pct)
+
+
+def test_un_devis_etabli_avant_la_franchise_reste_valide():
+    """Le champ est nouveau : un devis qui fait l'aller-retour sans lui reste lisible,
+    et son entreprise reste assujettie."""
+    brut = devis_de("sdb").model_dump(mode="json")
+    del brut["entreprise"]["franchise_tva"]
+
+    assert Devis.model_validate(brut).entreprise.franchise_tva is False
+
+
 def test_la_validite_decale_la_date():
     devis = devis_de("sdb", validite_jours=45)
     assert devis.date_emission == date(2026, 8, 27)

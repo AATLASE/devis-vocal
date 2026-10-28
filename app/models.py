@@ -99,6 +99,10 @@ class Entreprise(BaseModel):
     assurance_police: str
     iban: str
 
+    # Ajoutés après coup, tous avec une valeur par défaut : une identité gardée dans un
+    # navigateur, ou un devis établi avant leur ajout, reste valide.
+    franchise_tva: bool = False  # franchise en base, art. 293 B du CGI : aucune TVA facturée
+
 
 class Client(BaseModel):
     nom: str | None = None
@@ -246,7 +250,15 @@ def to_devis(
     maintenant = maintenant or datetime.now()
     emission = maintenant.date()
 
-    taux_tva = tva_forcee if tva_forcee is not None else Decimal(extraction.taux_tva_suggere.value) / 100
+    # La franchise en base est un régime de l'entreprise, pas un choix de devis : une
+    # entreprise qui n'est pas redevable de la TVA ne la facture jamais, quel que soit
+    # le taux que le modèle suggère ou que l'artisan choisit.
+    if entreprise.franchise_tva:
+        taux_tva = Decimal("0")
+    elif tva_forcee is not None:
+        taux_tva = tva_forcee
+    else:
+        taux_tva = Decimal(extraction.taux_tva_suggere.value) / 100
 
     lignes: list[LigneDevis] = []
     for source in extraction.lignes:

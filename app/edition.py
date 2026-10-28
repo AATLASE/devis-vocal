@@ -37,6 +37,8 @@ from app.models import (
 
 # Les deux taux que le devis sait justifier : le gabarit imprime l'attestation du taux
 # réduit quand il s'applique. Un 5,5 % saisi à la main sortirait sans sa mention.
+# La franchise en base n'est pas un taux qu'on choisit ici : elle vient de l'entreprise,
+# et `to_devis` l'applique d'elle-même.
 TAUX_ACCEPTES = {Decimal("0.10"), Decimal("0.20")}
 
 # Au-delà, ce n'est plus une faute de frappe qu'on laisse passer mais un devis absurde.
@@ -82,13 +84,15 @@ def _texte(valeur: str | None) -> str | None:
     return valeur or None
 
 
-def verifier(corrections: Corrections, *, max_lignes: int) -> None:
-    """Refuse ce qui ne peut pas faire un devis, avec la ligne fautive dans le message."""
+def verifier(corrections: Corrections, *, max_lignes: int, franchise: bool = False) -> None:
+    """Refuse ce qui ne peut pas faire un devis, avec la ligne fautive dans le message.
+
+    `franchise` : l'entreprise ne facture pas de TVA, le taux envoyé est sans objet."""
     if not corrections.lignes:
         raise EditionRefusee("Un devis doit compter au moins une ligne.")
     if len(corrections.lignes) > max_lignes:
         raise EditionRefusee(f"Un devis ne peut pas dépasser {max_lignes} lignes.")
-    if corrections.taux_tva not in TAUX_ACCEPTES:
+    if not franchise and corrections.taux_tva not in TAUX_ACCEPTES:
         raise EditionRefusee("Le taux de TVA doit être 10 % ou 20 %.")
 
     for numero, ligne in enumerate(corrections.lignes, start=1):
@@ -102,7 +106,7 @@ def verifier(corrections: Corrections, *, max_lignes: int) -> None:
 
 def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> Devis:
     """Le devis d'origine, avec les corrections de l'artisan, entièrement recalculé."""
-    verifier(corrections, max_lignes=max_lignes)
+    verifier(corrections, max_lignes=max_lignes, franchise=devis.entreprise.franchise_tva)
 
     extraction = DevisExtraction(
         client_nom=_texte(corrections.client.nom),

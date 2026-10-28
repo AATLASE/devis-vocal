@@ -1030,10 +1030,13 @@ function peindreTotaux(d) {
     return el;
   };
 
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
   totaux.append(
     rang('totaux__row', 'Total HT', euro(d.total_ht), true),
-    rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
-    rang('totaux__ttc', 'Total TTC', euro(d.total_ttc), false),
+    franchise
+      ? rang('totaux__row', 'TVA non applicable · art. 293 B', '—', false)
+      : rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
+    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), false),
     rang('totaux__acompte', `Acompte ${pourcent(d.acompte_pct)}${NB}%`, euro(d.montant_acompte), true),
   );
 
@@ -1195,7 +1198,12 @@ function ouvrirEdition() {
   $('ed-client-telephone').value = d.client.telephone || '';
   $('ed-objet').value = d.type_travaux || '';
   $('ed-duree').value = d.duree_estimee || '';
-  $('ed-tva').value = Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
+  // En franchise, le taux n'est pas un choix : le sélecteur montre le régime et se
+  // fige. Le serveur l'applique de toute façon, quel que soit le taux envoyé.
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  $('ed-tva-franchise').hidden = $('ed-tva-franchise').disabled = !franchise;
+  $('ed-tva').disabled = franchise;
+  $('ed-tva').value = franchise ? '0' : Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
   $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
   $('ed-notes').value = d.notes.join('\n');
   $('ed-erreur').textContent = '';
@@ -2000,7 +2008,10 @@ const MENTIONS_REQUISES = [
   ['assurance_police', 'n° de police'],
 ];
 
+/* En franchise de TVA, le devis n'imprime pas de numéro de TVA : le réclamer
+   enverrait l'artisan chercher un numéro qu'il n'a pas à porter. */
 const manquantes = (e) => MENTIONS_REQUISES.filter(([champ]) =>
+  !(champ === 'tva_intracom' && e.franchise_tva) &&
   !(typeof e[champ] === 'string' && e[champ].trim()));
 
 /* La ligne d'accueil. Tant que l'identité manque ou reste incomplète, elle porte
@@ -2023,6 +2034,8 @@ function remplirFormulaire(entreprise) {
     const el = $('e-' + champ);
     if (el) el.value = (entreprise && entreprise[champ]) || '';
   });
+  // Le régime de TVA n'est pas un texte : un oui ou un non, absent valant non.
+  $('e-franchise_tva').value = entreprise && entreprise.franchise_tva ? 'oui' : 'non';
 }
 
 function lireFormulaire() {
@@ -2031,6 +2044,7 @@ function lireFormulaire() {
     const el = $('e-' + champ);
     entreprise[champ] = el ? el.value.trim() : '';
   });
+  entreprise.franchise_tva = $('e-franchise_tva').value === 'oui';
   return entreprise;
 }
 
@@ -2151,6 +2165,11 @@ function signalerCapital() {
   if (societe && capitalAbsent) {
     aide.textContent = 'Ajoutez le capital social : mention obligatoire pour une société.';
     aide.classList.add('est-faux');
+  } else if (/individuel/i.test(forme) && $('e-franchise_tva').value !== 'oui') {
+    // L'annuaire calcule un n° de TVA pour toute entreprise : rien n'y dit qu'une
+    // micro-entreprise ne la facture pas. On pose la question, sans trancher.
+    aide.textContent = 'Micro-entreprise sans TVA ? Choisissez « Franchise en base » plus bas.';
+    aide.classList.remove('est-faux');
   } else {
     aide.textContent = '';
     aide.classList.remove('est-faux');
@@ -2200,6 +2219,7 @@ $('btn-entreprise-oublier').addEventListener('click', () => {
 });
 
 $('e-forme_juridique').addEventListener('blur', signalerCapital);
+$('e-franchise_tva').addEventListener('change', signalerCapital);
 
 $('entreprise-bascule').addEventListener('click', () =>
   $('entreprise-formulaire').classList.toggle('is-open'));

@@ -614,6 +614,9 @@
               <select id="ed-tva">
                 <option value="0.10">10 % — rénovation d'un logement</option>
                 <option value="0.20">20 % — neuf, local professionnel</option>
+                <!-- Réservé à l'entreprise en franchise : ce n'est pas un taux qu'on
+                     choisit, c'est son régime. Voir `ouvrirEdition`. -->
+                <option value="0" id="ed-tva-franchise" hidden disabled>Non applicable — franchise en base, art. 293 B</option>
               </select>
             </div>
           </div>
@@ -917,6 +920,15 @@
           <div class="champ champ--large">
             <label for="e-iban">IBAN <span class="champ__note">pour l'acompte</span></label>
             <input id="e-iban" class="num" autocomplete="off">
+          </div>
+          <!-- L'annuaire ne dit pas si l'entreprise collecte la TVA. Une micro-entreprise
+               en franchise qui la facturerait la devrait au Trésor (art. 283-3 du CGI). -->
+          <div class="champ champ--large">
+            <label for="e-franchise_tva">Régime de TVA</label>
+            <select id="e-franchise_tva">
+              <option value="non">Assujetti à la TVA</option>
+              <option value="oui">Franchise en base (micro-entreprise) — TVA non applicable, art. 293 B du CGI</option>
+            </select>
           </div>
         </div>
       </div>
