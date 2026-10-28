@@ -206,6 +206,10 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   font-size: 10px; color: var(--dv-muted);
 }
 
+/* Des observations trop longues pour tenir à côté des totaux : elles ont leur page,
+   en pleine largeur, entre le tableau et la clôture. */
+.doc-suite-observations { margin-top: 22px; }
+
 /* Client particulier : la case de la demande d'exécution anticipée (art. L221-25),
    dessinée plutôt que tapée — les polices du document n'ont pas le glyphe ☐, et la
    police de repli varie d'une machine à l'autre. */

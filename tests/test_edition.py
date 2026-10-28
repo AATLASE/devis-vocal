@@ -149,12 +149,21 @@ def test_les_quantites_decimales_restent_exactes():
     ({"quantite": "-2"}, "Ligne 1 : la quantité"),
     ({"prix_unitaire_ht": "-5"}, "Ligne 1 : le prix unitaire"),
     ({"prix_unitaire_ht": "1e12"}, "Ligne 1 : le prix unitaire"),
+    # Une ligne plus haute qu'une page : aucune pagination ne la ferait tenir.
+    ({"detail": "x" * 1001}, "Ligne 1 : le texte dépasse"),
+    ({"designation": "Pose " * 201}, "Ligne 1 : le texte dépasse"),
 ])
 def test_une_ligne_inchiffrable_est_refusee_avec_son_numero(ligne, message):
     devis = devis_sdb()
     base = {"designation": "Pose", "quantite": "1", "unite": "u", "prix_unitaire_ht": "10"}
     with pytest.raises(EditionRefusee, match=message):
         recalculer(devis, corrections_depuis(devis, lignes=[{**base, **ligne}]), max_lignes=60)
+
+
+def test_une_observation_demesuree_est_refusee():
+    devis = devis_sdb()
+    with pytest.raises(EditionRefusee, match="observation dépasse"):
+        recalculer(devis, corrections_depuis(devis, notes=["x" * 1001]), max_lignes=60)
 
 
 def test_un_devis_sans_ligne_ou_trop_long_est_refuse():

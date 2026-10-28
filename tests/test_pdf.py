@@ -59,8 +59,7 @@ def test_le_html_a_exactement_le_nombre_de_pages_annonce(nom):
     """Une page de plus dans le PDF que dans le HTML signifierait un débordement ;
     ici on vérifie déjà que le template produit ce que `paginer()` a décidé."""
     devis = devis_de(nom)
-    _, _, total_pages = paginer(devis.lignes, devis.notes)
-    assert render_html(devis).count('<article class="page">') == total_pages
+    assert render_html(devis).count('<article class="page">') == paginer(devis).total_pages
 
 
 def test_en_franchise_la_mention_293_b_remplace_la_tva():
@@ -204,30 +203,67 @@ async def test_le_pdf_se_genere():
         await arreter()
 
 
+DESIGNATION = ("Fourniture et pose d'un receveur de douche extra-plat en résine avec bonde et "
+               "siphon, y compris reprise de l'étanchéité sous carrelage et raccordement à "
+               "l'évacuation existante")
+PRECISION = ("Fourniture et pose comprises, finition satinée, teinte au choix du client, deux "
+             "couches sur impression, protection des sols et nettoyage du chantier en fin "
+             "d'intervention, évacuation des déchets en déchetterie agréée.")
+OBSERVATION = ("Le support n'a pas été précisé, un doublage hydrofuge peut être nécessaire et "
+               "n'est pas compté au présent devis. L'accès au chantier se fait par un escalier "
+               "étroit, sans ascenseur, ce qui allonge la dépose et l'évacuation des gravats. Le "
+               "client fournit la faïence, livrée avant le démarrage.")
+
+
+def _cas_de_pagination():
+    """Les fixtures, et des devis placés de part et d'autre de chaque frontière : ceux du
+    constat de la revue (précisions et désignations longues, observations démesurées),
+    pour un particulier et pour un professionnel, dont le bon pour accord diffère."""
+    cas = [devis_de(nom) for nom in noms_fixtures()]
+    observation = ("Le support n'a pas été précisé, un doublage hydrofuge peut "
+                   "être nécessaire et n'est pas compté au présent devis.")
+    peinture = devis_de("peinture").lignes
+    for professionnel in (False, True):
+        cas += [
+            _devis(peinture, ["Une seule remarque, courte."], professionnel=professionnel),
+            _devis(peinture, [observation] * 5, professionnel=professionnel),
+            # (a) cinq lignes, désignation de 50 caractères, précision de 150, deux observations
+            _devis(_lignes(5, DESIGNATION[:50], PRECISION[:150]), [observation] * 2,
+                   professionnel=professionnel),
+            # (b) 21 lignes, désignation de 70 caractères, précision courte
+            _devis(_lignes(21, DESIGNATION[:70], "Fourniture client"), professionnel=professionnel),
+            # (c) sept lignes de 180 caractères, précision de 80
+            _devis(_lignes(7, DESIGNATION[:180], PRECISION[:80]), professionnel=professionnel),
+            # (d) une ligne et quinze observations de 250 caractères
+            _devis(_lignes(1), [OBSERVATION[:250]] * 15, professionnel=professionnel),
+            # sept lignes simples : la page 1 pleine, clôture comprise
+            _devis(_lignes(7), professionnel=professionnel),
+            # la clôture sur une page de suite, sous des précisions longues
+            _devis(_lignes(12, DESIGNATION[:60], PRECISION[:140]), professionnel=professionnel),
+        ]
+    # Un en-tête qui grandit : raison sociale sur deux lignes, client sur trois, chantier.
+    haut = _devis(_lignes(7))
+    haut.entreprise.nom = "ETABLISSEMENTS DUPONT ET FILS (DUPONT PLOMBERIE)"
+    haut.client = haut.client.model_copy(update={
+        "nom": "Mme Hélène Durand", "telephone": "06 12 34 56 78",
+        "adresse_chantier": "Résidence Les Tilleuls, bâtiment B, 8 allée des Tilleuls, 69300 Caluire"})
+    cas.append(haut)
+    return cas
+
+
 async def test_le_pdf_a_exactement_le_nombre_de_pages_annonce():
     """Le filet de la pagination. `paginer()` raisonne sur des hauteurs mesurées ; si un
     jour le template change et que ces mesures se périment, le contenu déborde et Chromium
-    ajoute une page blanche — invisible au HTML, bien visible chez le client. Ce test rend
-    réellement le PDF et compare. Il tourne sur les six fixtures et sur deux cas placés de
-    part et d'autre de la frontière mesurée."""
-    cas = [devis_de(nom) for nom in noms_fixtures()]
-
-    court = devis_de("peinture").model_copy(deep=True)
-    court.notes = ["Une seule remarque, courte."]
-    cas.append(court)
-
-    charge = devis_de("peinture").model_copy(deep=True)
-    charge.notes = ["Le support n'a pas été précisé, un doublage hydrofuge peut "
-                    "être nécessaire et n'est pas compté au présent devis."] * 5
-    cas.append(charge)
-
+    ajoute une page — invisible au HTML, bien visible chez le client, et tous les « Page
+    n / N » qui suivent sont faux. Ce test rend réellement le PDF et compare."""
     try:
-        for devis in cas:
-            _, _, attendu = paginer(devis.lignes, devis.notes)
+        for devis in _cas_de_pagination():
+            attendu = paginer(devis).total_pages
             contenu = await render(devis)
             pages = int(re.search(rb"/Count (\d+)", contenu).group(1))
             assert pages == attendu, (
-                f"{len(devis.lignes)} lignes, {len(devis.notes)} observations : "
+                f"{len(devis.lignes)} lignes, {len(devis.notes)} observations, "
+                f"{'pro' if devis.client.professionnel else 'particulier'} : "
                 f"{pages} pages rendues pour {attendu} annoncées"
             )
     finally:
@@ -373,12 +409,13 @@ async def test_un_rendu_qui_ne_finit_pas_est_coupe_et_rend_sa_place(monkeypatch)
 # --- Pagination : fonction pure, aucun navigateur ---
 
 
-def _lignes(n: int) -> list[LigneDevis]:
+def _lignes(n: int, designation: str = "Prestation {i}", detail: str | None = None) -> list[LigneDevis]:
     from decimal import Decimal
 
     return [
         LigneDevis(
-            designation=f"Prestation {i}",
+            designation=designation.format(i=i),
+            detail=detail,
             quantite=Decimal("1"),
             unite=Unite.U,
             prix_unitaire_ht=Decimal("100"),
@@ -388,6 +425,17 @@ def _lignes(n: int) -> list[LigneDevis]:
     ]
 
 
+def _devis(lignes: list[LigneDevis], notes=(), *, professionnel: bool = False):
+    """Le devis peinture, ses lignes et ses observations remplacées : `paginer` lit aussi
+    l'en-tête, le client et le bon pour accord, qui comptent dans la hauteur."""
+    devis = devis_de("peinture").model_copy(deep=True)
+    devis.lignes = lignes
+    devis.notes = list(notes)
+    devis.client.professionnel = professionnel
+    return devis
+
+
+@pytest.mark.parametrize("professionnel", [False, True])
 @pytest.mark.parametrize(
     "nb, tranches, cloture_sous_le_tableau, total_pages",
     [
@@ -400,11 +448,12 @@ def _lignes(n: int) -> list[LigneDevis]:
         (25, [7, 14, 4], True, 4),
     ],
 )
-def test_la_pagination(nb, tranches, cloture_sous_le_tableau, total_pages):
-    pages, cloture, total = paginer(_lignes(nb))
-    assert [len(p) for p in pages] == tranches
-    assert cloture is cloture_sous_le_tableau
-    assert total == total_pages
+def test_la_pagination(nb, tranches, cloture_sous_le_tableau, total_pages, professionnel):
+    pagination = paginer(_devis(_lignes(nb), professionnel=professionnel))
+    assert [len(p) for p in pagination.pages] == tranches
+    assert pagination.cloture_sur_derniere is cloture_sous_le_tableau
+    assert pagination.total_pages == total_pages
+    assert pagination.pages_observations == []
 
 
 def test_des_observations_volumineuses_chassent_la_cloture_de_la_page_1():
@@ -412,10 +461,10 @@ def test_des_observations_volumineuses_chassent_la_cloture_de_la_page_1():
     décide, pas le nombre de lignes. Sans ça, la clôture déborderait sur une page
     fantôme — une page blanche de plus dans le PDF que dans le HTML."""
     longue = "Le support n'a pas été précisé, un doublage hydrofuge peut être nécessaire. " * 3
-    _, avec_peu, pages_peu = paginer(_lignes(4), ["Une remarque courte."])
-    _, avec_beaucoup, pages_beaucoup = paginer(_lignes(4), [longue] * 5)
-    assert (avec_peu, pages_peu) == (True, 2)
-    assert (avec_beaucoup, pages_beaucoup) == (False, 3)
+    peu = paginer(_devis(_lignes(4), ["Une remarque courte."]))
+    beaucoup = paginer(_devis(_lignes(4), [longue] * 5))
+    assert (peu.cloture_sur_derniere, peu.total_pages) == (True, 2)
+    assert (beaucoup.cloture_sur_derniere, beaucoup.total_pages) == (False, 3)
 
 
 def test_la_pastille_estime_pousse_la_designation_au_repli():
@@ -433,10 +482,43 @@ def test_la_pastille_estime_pousse_la_designation_au_repli():
     assert _hauteur_lignes([ligne(True)]) > _hauteur_lignes([ligne(False)])
 
 
+def test_une_precision_longue_compte_toutes_ses_lignes():
+    """Une précision de 150 caractères s'imprime sur trois lignes, pas sur une."""
+    courte = _lignes(1, detail="Fourniture client")
+    longue = _lignes(1, detail=PRECISION[:150])
+    assert _hauteur_lignes(longue) - _hauteur_lignes(courte) == 30
+
+
 def test_les_lignes_sont_numerotees_en_continu_d_une_page_a_l_autre():
-    pages, _, _ = paginer(_lignes(12))
+    pages = paginer(_devis(_lignes(12))).pages
     numeros = [numero for page in pages for numero, _ in page]
     assert numeros == list(range(1, 13))
+
+
+def test_sept_lignes_hautes_ne_tiennent_pas_sur_la_page_1():
+    """Le plafond de sept lignes ne suffit pas : sept désignations de trois lignes avec
+    leur précision débordaient de la page 1."""
+    pagination = paginer(_devis(_lignes(7, DESIGNATION[:180], PRECISION[:80])))
+    assert len(pagination.pages[0]) < 7
+    assert sum(len(page) for page in pagination.pages) == 7
+
+
+def test_une_page_de_suite_se_coupe_aussi_en_hauteur():
+    pagination = paginer(_devis(_lignes(21, DESIGNATION[:70] + " {i}", "Fourniture client")))
+    assert all(len(page) < 14 for page in pagination.pages[1:])
+
+
+def test_des_observations_trop_longues_pour_la_cloture_ont_leurs_pages():
+    """Quinze observations de 250 caractères ne tiennent même pas sur une page de clôture :
+    elles partent sur des pages à elles, avant la clôture, qui ne garde que les totaux."""
+    notes = [OBSERVATION[:250]] * 15
+    pagination = paginer(_devis(_lignes(1), notes))
+
+    assert not pagination.cloture_sur_derniere
+    assert pagination.pages_observations
+    assert [n for page in pagination.pages_observations for n in page] == notes
+    assert pagination.notes_cloture == []
+    assert pagination.total_pages == 1 + len(pagination.pages_observations) + 1 + 1
 
 
 # --- Formatage français : c'est ce que le client lit sur le devis ---

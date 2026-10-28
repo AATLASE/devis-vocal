@@ -72,10 +72,12 @@
 {%- macro cloture() -%}
   <section class="doc-foot">
     <div>
-      {%- if devis.notes %}
+      {#- `notes_cloture` et pas `devis.notes` : des observations trop longues pour tenir
+          à côté des totaux ont leurs propres pages, voir plus bas. #}
+      {%- if notes_cloture %}
       <div class="doc-label">Observations</div>
       <div class="doc-observations">
-        {%- for note in devis.notes %}
+        {%- for note in notes_cloture %}
         <div class="doc-observation"><em>—</em><p>{{ note }}</p></div>
         {%- endfor %}
       </div>
@@ -216,6 +218,24 @@
 </article>
 {%- endfor %}
 
+{# ---- observations trop longues pour la clôture, en pleine largeur ----- #}
+
+{%- for tranche in pages_observations %}
+<article class="page">
+  {{ entete_courante('Devis ' ~ devis.numero ~ ' · observations') }}
+  <section class="doc-suite-observations">
+    <div class="doc-label">Observations</div>
+    <div class="doc-observations">
+      {%- for note in tranche %}
+      <div class="doc-observation"><em>—</em><p>{{ note }}</p></div>
+      {%- endfor %}
+    </div>
+  </section>
+  <div class="push"></div>
+  {{ pied_courant(pages | length + loop.index) }}
+</article>
+{%- endfor %}
+
 {# ---- page de clôture, quand elle ne tient pas sous le tableau --------- #}
 
 {%- if not cloture_sur_derniere %}
@@ -228,7 +248,7 @@
       le pied de page descend. #}
   <section style="padding-top:34px">{{ bon_pour_accord() }}</section>
   <div class="push"></div>
-  {{ pied_courant(pages | length + 1) }}
+  {{ pied_courant(pages | length + pages_observations | length + 1) }}
 </article>
 {%- endif %}
 

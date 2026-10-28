@@ -48,6 +48,10 @@ TAUX_ACCEPTES = {
 # Au-delà, ce n'est plus une faute de frappe qu'on laisse passer mais un devis absurde.
 QUANTITE_MAX = Decimal("100000")
 PRIX_MAX = Decimal("1000000")
+# Une désignation, une précision ou une observation de mille caractères tient encore
+# largement dans une page ; au-delà, une seule ligne pourrait déborder de la sienne,
+# et aucune pagination ne la sauverait.
+TEXTE_MAX = 1000
 
 
 class EditionRefusee(ValueError):
@@ -107,6 +111,10 @@ def verifier(corrections: Corrections, *, max_lignes: int, franchise: bool = Fal
             raise EditionRefusee(f"Ligne {numero} : la quantité doit être supérieure à zéro.")
         if not ligne.prix_unitaire_ht.is_finite() or not Decimal("0") <= ligne.prix_unitaire_ht <= PRIX_MAX:
             raise EditionRefusee(f"Ligne {numero} : le prix unitaire doit être positif ou nul.")
+        if len(ligne.designation) > TEXTE_MAX or len(ligne.detail or "") > TEXTE_MAX:
+            raise EditionRefusee(f"Ligne {numero} : le texte dépasse {TEXTE_MAX} caractères.")
+    if any(len(note) > TEXTE_MAX for note in corrections.notes):
+        raise EditionRefusee(f"Une observation dépasse {TEXTE_MAX} caractères.")
 
 
 def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> Devis:
