@@ -1060,9 +1060,17 @@ let numeroChampEdition = 0;
    serveur. Rendu en chaîne et pas en nombre : le Decimal se construit de l'autre
    côté, sans passer par la virgule flottante. `null` quand c'est illisible. */
 function lireNombre(texte) {
-  const brut = String(texte).replace(/[\s  ]/g, '').replace(',', '.');
-  return /^\d+(\.\d+)?$/.test(brut) ? brut : null;
+  const brut = String(texte).replace(/[\s  ]/g, '');
+  if (AMBIGU.test(brut)) return null;
+  const nombre = brut.replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(nombre) ? nombre : null;
 }
+
+/* « 1.200 » : à la française, un point suivi de trois chiffres sépare les milliers ;
+   sur un clavier anglais, il sépare les décimales. Deviner, c'est risquer un prix
+   divisé par mille sans aucun message : on refuse, et on dit comment l'écrire. */
+const AMBIGU = /^\d{1,3}(\.\d{3})+$/;
+const sansEspaces = (texte) => String(texte).replace(/\s/g, '');
 
 function champEdition(classe, libelle, el) {
   const champ = noeud('div', 'champ' + (classe ? ' ' + classe : ''));
@@ -1145,7 +1153,11 @@ function lireLignes() {
     champ('designation').setAttribute('aria-invalid', String(!designation));
     champ('quantite').setAttribute('aria-invalid', String(quantite === null));
     champ('prix').setAttribute('aria-invalid', String(prix === null));
-    const motif = (el) => (el.value.trim() ? 'est illisible' : 'est vide');
+    const motif = (el) => {
+      if (!el.value.trim()) return 'est vide';
+      if (AMBIGU.test(sansEspaces(el.value))) return 'est ambigu : écrivez 1200, ou 1,2 pour une décimale';
+      return 'est illisible';
+    };
     if (!designation) erreurs.push(`Ligne ${i + 1} : la désignation est vide.`);
     if (quantite === null) erreurs.push(`Ligne ${i + 1} : la quantité ${motif(champ('quantite'))}.`);
     if (prix === null) erreurs.push(`Ligne ${i + 1} : le prix unitaire ${motif(champ('prix'))}.`);
