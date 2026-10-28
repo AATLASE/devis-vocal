@@ -35,7 +35,7 @@ Les quatorze mentions cherchées, dans le document **rendu** :
 | L'adresse de l'entreprise | `e.adresse`, `e.code_postal_ville` |
 | Le numéro SIRET | `e.siret` |
 | Le numéro de TVA intracommunautaire | `e.tva_intracom` |
-| L'assurance professionnelle | `e.assurance`, `e.assurance_police` |
+| L'assurance professionnelle | `e.assurance` **et** `e.assurance_police` |
 | Le nom du client | `devis.client.nom` |
 | Le détail des prestations | `devis.lignes` |
 | Le total HT | `devis.total_ht` |
@@ -45,7 +45,14 @@ Les quatorze mentions cherchées, dans le document **rendu** :
 
 Le contrôle cherche les **valeurs**, pas les libellés : écrire `SIRET :` sans imprimer
 `{{ e.siret }}` ne compte pas. C'est délibéré — un intitulé sans valeur ne rend pas un
-devis conforme.
+devis conforme. Pour que ces valeurs ne se confondent pas entre elles, le devis
+d'exemple est établi au nom d'une entreprise fictive, l'« Atelier Exemple ».
+
+Seul compte le texte que le PDF imprime : pas celui de `<title>`, de `<style>`, de
+`<script>`, de `<template>`, ni d'un commentaire. Le template livré met le numéro du
+devis dans son `<title>` ; si vous le retirez du corps, le contrôle le signale. Une
+limite, en revanche : le contrôle lit le HTML, pas le CSS. Un texte masqué par
+`display: none` compte encore comme imprimé.
 
 ## Par où commencer
 
@@ -56,7 +63,8 @@ Modifiez-le plutôt que de repartir de zéro.
 Puis, toujours dans cet ordre :
 
 1. **Voir l'aperçu** — le template est rendu en PDF sur un devis d'exemple complet
-   (cinq lignes, deux observations, des prix estimés). Rien n'est enregistré.
+   (cinq lignes, deux observations, des prix estimés), au nom de l'entreprise fictive.
+   Rien n'est enregistré.
 2. **Enregistrer ce template** — une fois que l'A4 vous convient.
 
 ## Le langage

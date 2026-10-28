@@ -120,6 +120,69 @@ def test_les_insecables_du_formatage_ne_masquent_pas_un_total():
     assert "Le total HT" not in templates.controler_les_mentions(rendu, exemple)
 
 
+@pytest.mark.parametrize("cachette", [
+    "<head><title>Devis {{ devis.numero }}</title></head>",
+    "<head><style>/* {{ devis.numero }} */</style></head>",
+    "<style>.n::after { content: '{{ devis.numero }}' }</style>",
+    "<template><p>{{ devis.numero }}</p></template>",
+    "<!-- {{ devis.numero }} -->",
+    "<svg><title>{{ devis.numero }}</title></svg>",
+])
+def test_le_texte_qui_ne_s_imprime_pas_ne_compte_pas(cachette):
+    """Le template livré met le numéro dans `<title>`. Un artisan qui le retirait du
+    corps gardait « conforme », alors que le PDF n'avait plus de numéro."""
+    cache = TEMPLATE_CONFORME.replace("<h1>Devis {{ devis.numero }}</h1>", cachette)
+
+    _, _, manquantes = templates.valider(cache)
+
+    assert manquantes == ["Le numéro du devis"]
+
+
+def test_un_texte_pose_nu_dans_head_compte_car_chromium_l_imprime():
+    """Le navigateur déplace dans le corps un texte posé hors de tout élément de
+    `<head>`, et l'imprime. Le contrôle suit Chromium, pas la lettre du fichier."""
+    nu = TEMPLATE_CONFORME.replace(
+        "<html><body>\n<h1>Devis {{ devis.numero }}</h1>",
+        "<html><head>Devis {{ devis.numero }}</head><body>",
+    )
+
+    _, _, manquantes = templates.valider(nu)
+
+    assert manquantes == []
+
+
+def test_l_assurance_exige_l_assureur_et_la_police():
+    """Avec l'identité de la configuration, la police « 000 000 000 » se lisait dans
+    le SIRET : tout template qui imprimait le SIRET passait pour assuré."""
+    sans_assurance = TEMPLATE_CONFORME.replace(
+        "<p>{{ e.assurance }} — police {{ e.assurance_police }}</p>", "")
+    police_seule = TEMPLATE_CONFORME.replace("{{ e.assurance }} — ", "")
+
+    assert templates.valider(sans_assurance)[2] == ["L'assurance professionnelle"]
+    assert templates.valider(police_seule)[2] == ["L'assurance professionnelle"]
+
+
+def test_les_valeurs_de_l_identite_d_exemple_ne_se_recouvrent_pas():
+    """Le contrôle cherche des valeurs : il ne vaut que si aucune n'est contenue dans
+    une autre."""
+    e = templates.ENTREPRISE_EXEMPLE
+    valeurs = [e.nom, e.adresse, e.code_postal_ville, e.siret, e.tva_intracom,
+               e.assurance, e.assurance_police, e.telephone, e.email, e.iban]
+
+    for valeur in valeurs:
+        autres = [autre for autre in valeurs if autre is not valeur]
+        assert not any(valeur.lower() in autre.lower() for autre in autres), valeur
+
+
+def test_le_controle_reste_lineaire_sur_un_document_hostile():
+    """L'ancienne expression régulière repartait vers la fin du document à chaque
+    `<` resté sans `>` : deux minutes pour 512 Ko, dans la boucle du serveur."""
+    debut = time.perf_counter()
+    templates.controler_les_mentions("<" * 512 * 1024, templates.devis_exemple())
+
+    assert time.perf_counter() - debut < 5
+
+
 # ---------------------------------------------------------------------------
 # Ce qui est refusé — avant l'enregistrement, jamais devant l'artisan
 # ---------------------------------------------------------------------------
