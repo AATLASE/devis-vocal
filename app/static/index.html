@@ -504,6 +504,10 @@
       </div>
     </div>
 
+    <!-- Un PDF qui échoue ne quitte pas la relecture : le devis corrigé reste là, et
+         le bouton refait le fichier. Voir `envoyerPdf`. -->
+    <p class="relecture__erreur" id="pdf-erreur" role="alert" hidden></p>
+
     <!-- Le commutateur du téléphone. Masqué dès que les deux vues tiennent
          côte à côte : un commutateur qui ne commute rien est un bouton mort. -->
     <div class="bascule" id="bascule-vue" role="tablist" aria-label="Vue du devis">

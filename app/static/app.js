@@ -822,6 +822,7 @@ async function lancer(fichier, texte, dureeSecondes) {
 /* ---- 3. relecture ------------------------------------------------------ */
 
 function peindreRelecture(d) {
+  direErreurPdf('');
   $('rel-numero').textContent = 'Devis n° ' + d.numero;
   $('rel-objet').textContent = d.type_travaux || 'Travaux à préciser';
   $('rel-client').textContent =
@@ -1511,6 +1512,26 @@ function preparerPdf() {
   pdfPret = promesse;
 }
 
+/* Le PDF préparé pendant la relecture peut avoir échoué — coupure 4G, 429, Chromium
+   qui hoquette — alors que le devis, lui, est intact en mémoire. Au geste, on refait
+   donc le fichier une fois au lieu de rendre l'échec d'il y a deux minutes. */
+async function obtenirPdf() {
+  if (pdfPret) {
+    try {
+      return await pdfPret;
+    } catch (_) { /* refait ci-dessous */ }
+  }
+  pdfPret = genererPdf();
+  pdfPret.catch(() => {});
+  return await pdfPret;
+}
+
+function direErreurPdf(texte) {
+  const zone = $('pdf-erreur');
+  zone.textContent = texte;
+  zone.hidden = !texte;
+}
+
 async function envoyerPdf() {
   const bouton = $('btn-pdf');
   // Le libellé est un élément à part, et pas le contenu du bouton : celui-ci porte
@@ -1523,11 +1544,17 @@ async function envoyerPdf() {
   const attente = setTimeout(() => { libelle.textContent = 'Génération…'; }, 150);
 
   let blob;
+  direErreurPdf('');
   try {
-    blob = await (pdfPret || genererPdf());
+    blob = await obtenirPdf();
   } catch (err) {
-    pdfPret = null;
-    echouer(err.message);
+    // On reste sur la relecture, devis corrigé compris : l'appui suivant refera le
+    // fichier. L'écran d'erreur, lui, ne proposait que de rejouer le chiffrage — un
+    // appel payant de plus, et un autre devis à la place de celui-ci.
+    if (!err.porte) {
+      direErreurPdf(`Le PDF n'a pas pu être produit. ${err.message} ` +
+        'Votre devis est intact : touchez de nouveau le bouton pour réessayer.');
+    }
     return;
   } finally {
     clearTimeout(attente);

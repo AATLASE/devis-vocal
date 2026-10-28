@@ -1098,6 +1098,12 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .relecture__client { font-size: var(--dv-t-sm); color: var(--dv-muted); margin-top: var(--dv-s-2); }
 .relecture__actions { display: flex; gap: var(--dv-s-4); flex-shrink: 0; }
+/* L'échec du PDF, dit sous les boutons et pas sur un écran à part. */
+.relecture__erreur {
+  margin: calc(var(--dv-s-4) * -1) 0 var(--dv-s-7);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-danger);
+}
 
 /* ---- le commutateur des deux vues ---------------------------------------- */
 /* Visible seulement là où les deux vues ne tiennent pas côte à côte. */
