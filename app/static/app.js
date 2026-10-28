@@ -50,6 +50,9 @@ let dureeVocal = null;
 let chrono = null;
 let revelation = null;
 let fournisseur = 'openai';   // renseigné par /health
+// Vrai une fois le PDF partagé ou enregistré : le devis est alors entre les mains de
+// l'artisan, et le quitter ne demande plus de confirmation.
+let devisEnvoye = false;
 
 /* ---- navigation -------------------------------------------------------- */
 
@@ -85,7 +88,9 @@ function reinitialiser() {
   arreterDictee(true);
   fermerRelu();
   fermerEdition();
+  leverGardeHistorique();
   devisCourant = null;
+  devisEnvoye = false;
   pdfPret = null;
   vocalCourant = null;
   transcriptionCourante = null;
@@ -99,6 +104,57 @@ function reinitialiser() {
   peindreDictee(false);
   montrer('accueil');
 }
+
+/* ---- ne pas perdre un devis -------------------------------------------- */
+/* Le devis et le vocal ne vivent que dans cette page : le serveur n'en garde rien,
+   c'est voulu. Un geste retour, un tirer-pour-rafraîchir ou un toucher malheureux
+   sur « Nouveau devis » ne doivent donc pas les effacer sans le demander — le perdre,
+   c'est redicter, et payer un chiffrage de plus. */
+
+const devisAPerdre = () => !!(devisCourant && devisCourant.lignes.length && !devisEnvoye);
+
+function confirmerAbandon() {
+  return !devisAPerdre() || window.confirm(
+    "Abandonner ce devis ? Il n'est enregistré nulle part : il faudrait le dicter de nouveau.");
+}
+
+/* Ce que déclenchent « Nouveau devis », « Recommencer » et la marque. `reinitialiser`
+   reste sans question : le code qui l'appelle sait déjà ce qu'il fait. */
+function recommencer() {
+  if (confirmerAbandon()) reinitialiser();
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (!devisAPerdre() && !vocalPret && !enregistreur) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+/* Le geste retour d'Android quitte la page. Une entrée d'historique posée à l'entrée
+   en relecture l'absorbe : le retour demande alors s'il faut abandonner le devis. */
+let gardeHistorique = false;
+
+function poserGardeHistorique() {
+  if (gardeHistorique) return;
+  history.pushState({ devisVocal: true }, '');
+  gardeHistorique = true;
+}
+
+/* Le devis est abandonné par un bouton : l'entrée posée pour lui n'a plus d'objet, et
+   la laisser obligerait à un retour de plus pour quitter la page. */
+function leverGardeHistorique() {
+  if (!gardeHistorique) return;
+  gardeHistorique = false;
+  history.back();   // le `popstate` qui suit trouve la garde levée et ne fait rien
+}
+
+window.addEventListener('popstate', () => {
+  if (!gardeHistorique) return;
+  gardeHistorique = false;   // le geste vient de consommer l'entrée
+  if (!devisCourant) return;
+  if (confirmerAbandon()) reinitialiser();
+  else poserGardeHistorique();
+});
 
 /* Un repli et son lien vont par deux : le panneau se ferme, et le lien doit le
    dire — `aria-expanded` est ce qui l'annonce au lecteur d'écran, et ce qui fait
@@ -292,10 +348,16 @@ async function poste(url, options) {
     try { motif = (await reponse.json()).detail || ''; } catch (_) { /* corps vide */ }
 
     if (/code d'accès/i.test(motif)) {
+      // Pas de code du tout : /health n'avait pas répondu au chargement, la porte
+      // n'a jamais été montrée. Un code refusé : il a changé en cours de session.
+      const message = codeAcces ? "Ce code n'est plus valable. Redemandez-le." : '';
       oublierAcces();
-      montrer('porte');
-      $('porte-erreur').textContent = "Ce code n'est plus valable. Redemandez-le.";
-      throw new Error("Code d'accès refusé.");
+      ouvrirPorte(message);
+      // Erreur marquée : l'appelant ne doit pas la traiter comme une panne. La porte
+      // est à l'écran, et l'étape refusée sera rejouée une fois le code saisi.
+      const err = new Error("Code d'accès refusé.");
+      err.porte = true;
+      throw err;
     }
     throw new Error(motif || 'Votre session a expiré. Reconnectez-vous.');
   }
@@ -403,8 +465,52 @@ let msAcquis = 0;
 let debutSegment = 0;
 let dicteeAnnulee = false;
 let dicteeDirecte = false;
+// Le micro est en train de s'ouvrir. Entre l'appui et l'autorisation, il se passe
+// jusqu'à une demi-seconde sans rien à l'écran : un second appui — des gants, un doigt
+// qui insiste — ouvrait un second micro qu'aucun arrêt ne refermait.
+let demarrage = false;
+// Pourquoi la dictée s'est arrêtée sans qu'on le demande ; dit sous la réécoute.
+let interruption = '';
 
 const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+
+/* ---- l'écran reste allumé ---------------------------------------------- */
+/* Une dictée dure une à deux minutes, téléphone à la main, sans toucher l'écran : le
+   verrouillage automatique tombe en plein milieu, et sur iPhone la capture d'une page
+   masquée est coupée ou rendue muette. On demande donc à garder l'écran allumé le temps
+   de la dictée. Refusé — batterie faible, navigateur ancien —, on dicte sans. */
+
+let verrouEcran = null;
+
+async function garderEcranAllume() {
+  if (!navigator.wakeLock || (verrouEcran && !verrouEcran.released)) return;
+  try {
+    const verrou = await navigator.wakeLock.request('screen');
+    // La dictée a pu s'arrêter pendant la demande : on ne garde pas l'écran pour rien.
+    if (enregistreur) verrouEcran = verrou;
+    else verrou.release().catch(() => {});
+  } catch (_) { /* refusé : la dictée continue sans */ }
+}
+
+function libererEcran() {
+  if (verrouEcran) verrouEcran.release().catch(() => {});
+  verrouEcran = null;
+}
+
+/* L'écran s'éteint quand même — l'artisan l'a verrouillé, ou il est passé à une autre
+   application. La capture d'une page masquée n'est pas garantie : on met en pause, ce
+   qui garde tout ce qui a été dit, et on le dit au retour. Reprendre est un geste. */
+function suspendreDictee(raison) {
+  if (!enregistreur || enregistreur.state !== 'recording') return;
+  basculerPause();
+  $('dictee-aide').replaceChildren(noeud('span', 'dictee__point'), document.createTextNode(raison));
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    suspendreDictee('En pause : l’écran s’est éteint ou vous avez changé d’application. Touchez « Reprendre ».');
+  }
+});
 
 /* ---- ce que le micro entend -------------------------------------------- */
 /* Le chronomètre dit que l'enregistrement tourne ; il ne dit pas que le micro
@@ -597,6 +703,7 @@ function basculerPause() {
     enregistreur.resume();
     debutSegment = Date.now();
     peindrePause(false);
+    garderEcranAllume();   // le verrou tombe de lui-même quand la page est masquée
   }
 }
 
@@ -618,12 +725,14 @@ function raisonMicro(err) {
 
 function fermerMicro() {
   fermerNiveau();
+  libererEcran();
   // Sans ça, le navigateur laisse le voyant d'enregistrement allumé.
   if (micro) micro.getTracks().forEach((t) => t.stop());
   micro = null;
 }
 
 async function demarrerDictee() {
+  if (demarrage || enregistreur) return;
   fermerRelu();
 
   const format = formatDisponible();
@@ -632,11 +741,15 @@ async function demarrerDictee() {
     return;
   }
 
+  demarrage = true;
+  $('dictee-aide').textContent = 'Ouverture du micro…';
   try {
     micro = await navigator.mediaDevices.getUserMedia({ audio: CONTRAINTES_MICRO });
   } catch (err) {
     refuserDictee(raisonMicro(err));
     return;
+  } finally {
+    demarrage = false;
   }
 
   niveauMesure = ouvrirNiveau(micro);
@@ -660,7 +773,30 @@ async function demarrerDictee() {
     if (e.data && e.data.size) morceaux.push(e.data);
   });
 
+  // Le micro peut lâcher sans qu'on le demande : iOS qui le reprend, un appel qui
+  // arrive. Muet, on met en pause ; coupé, l'enregistrement s'arrête là, et on le dit.
+  micro.getAudioTracks().forEach((piste) => {
+    piste.addEventListener('mute', () =>
+      suspendreDictee('En pause : le micro s’est interrompu. Touchez « Reprendre ».'));
+    piste.addEventListener('ended', () => {
+      if (enregistreur !== recorder) return;
+      interruption = 'Le micro s’est coupé : l’enregistrement s’arrête là. Réécoutez avant d’envoyer.';
+      arreterDictee(false);
+    });
+  });
+
   recorder.addEventListener('stop', () => {
+    // Arrêté par le navigateur et non par un geste : le chronomètre tourne encore, et
+    // il réécrirait le titre de la carte pendant la réécoute.
+    if (enregistreur === recorder) {
+      clearInterval(chronoDictee);
+      chronoDictee = null;
+      enregistreur = null;
+      interruption = interruption ||
+        'L’enregistrement s’est arrêté de lui-même. Réécoutez avant d’envoyer.';
+    }
+    const raison = interruption;
+    interruption = '';
     const blob = new Blob(morceaux, { type: recorder.mimeType || type });
     const secondes = secondesDictee;
     const pic = picNiveau;
@@ -697,7 +833,10 @@ async function demarrerDictee() {
     // « Générer le devis » pendant la dictée : l'artisan a choisi d'envoyer sans
     // réécouter. Les deux refus ci-dessus s'appliquent quand même.
     if (directe) lancer(fichier, null, secondes);
-    else montrerRelu(fichier, secondes);
+    else {
+      montrerRelu(fichier, secondes);
+      if (raison) $('dictee-aide').textContent = raison;
+    }
   });
 
   recorder.start();
@@ -705,6 +844,7 @@ async function demarrerDictee() {
   msAcquis = 0;
   debutSegment = Date.now();
   peindreDictee(true);
+  garderEcranAllume();
   chronoDictee = setInterval(() => {
     // L'intervalle tourne pendant la pause — c'est lui qui dit à `basculerDictee`
     // qu'une dictée est en cours — mais il ne compte que ce qui s'enregistre.
@@ -757,6 +897,9 @@ async function lancer(fichier, texte, dureeSecondes) {
       // Gardé avant l'appel, pas après : c'est justement quand la transcription
       // échoue qu'on a besoin de retrouver l'audio.
       vocalCourant = { fichier, secondes: dureeSecondes };
+      // Un vocal neuf : une transcription d'avant ne le concerne pas, et `reprendre()`
+      // la rejouerait à sa place.
+      transcriptionCourante = null;
       // Une dictée connaît sa durée : elle sort du chronomètre, pas du fichier.
       dureeVocal = formaterDuree(dureeSecondes != null ? dureeSecondes : await dureeAudio(fichier));
       transcriptionCourante = await transcrire(fichier);
@@ -777,6 +920,7 @@ async function lancer(fichier, texte, dureeSecondes) {
       : Promise.resolve(($('transcription-directe').textContent = transcription));
 
     devisCourant = await chiffrer(transcription);
+    devisEnvoye = false;
     peindreEtapes(2);
 
     await devoilement;
@@ -795,9 +939,18 @@ async function lancer(fichier, texte, dureeSecondes) {
       vueRelecture = 'detail';
       appliquerVue();
       peindreApercu();
+      poserGardeHistorique();
       setTimeout(() => montrer('relecture'), 500);
     }
   } catch (err) {
+    if (err.porte) {
+      // Le vocal et la transcription sont gardés ; l'étape refusée repartira d'elle-même
+      // une fois le code saisi. `echouer()` recouvrirait la porte d'une impasse.
+      clearInterval(chrono);
+      clearInterval(revelation);
+      aRejouer.add(reprendre);
+      return;
+    }
     echouer(err.message);
   }
 }
@@ -805,6 +958,7 @@ async function lancer(fichier, texte, dureeSecondes) {
 /* ---- 3. relecture ------------------------------------------------------ */
 
 function peindreRelecture(d) {
+  direErreurPdf('');
   $('rel-numero').textContent = 'Devis n° ' + d.numero;
   $('rel-objet').textContent = d.type_travaux || 'Travaux à préciser';
   $('rel-client').textContent =
@@ -906,9 +1060,17 @@ let numeroChampEdition = 0;
    serveur. Rendu en chaîne et pas en nombre : le Decimal se construit de l'autre
    côté, sans passer par la virgule flottante. `null` quand c'est illisible. */
 function lireNombre(texte) {
-  const brut = String(texte).replace(/[\s  ]/g, '').replace(',', '.');
-  return /^\d+(\.\d+)?$/.test(brut) ? brut : null;
+  const brut = String(texte).replace(/[\s  ]/g, '');
+  if (AMBIGU.test(brut)) return null;
+  const nombre = brut.replace(',', '.');
+  return /^\d+(\.\d+)?$/.test(nombre) ? nombre : null;
 }
+
+/* « 1.200 » : à la française, un point suivi de trois chiffres sépare les milliers ;
+   sur un clavier anglais, il sépare les décimales. Deviner, c'est risquer un prix
+   divisé par mille sans aucun message : on refuse, et on dit comment l'écrire. */
+const AMBIGU = /^\d{1,3}(\.\d{3})+$/;
+const sansEspaces = (texte) => String(texte).replace(/\s/g, '');
 
 function champEdition(classe, libelle, el) {
   const champ = noeud('div', 'champ' + (classe ? ' ' + classe : ''));
@@ -991,7 +1153,11 @@ function lireLignes() {
     champ('designation').setAttribute('aria-invalid', String(!designation));
     champ('quantite').setAttribute('aria-invalid', String(quantite === null));
     champ('prix').setAttribute('aria-invalid', String(prix === null));
-    const motif = (el) => (el.value.trim() ? 'est illisible' : 'est vide');
+    const motif = (el) => {
+      if (!el.value.trim()) return 'est vide';
+      if (AMBIGU.test(sansEspaces(el.value))) return 'est ambigu : écrivez 1200, ou 1,2 pour une décimale';
+      return 'est illisible';
+    };
     if (!designation) erreurs.push(`Ligne ${i + 1} : la désignation est vide.`);
     if (quantite === null) erreurs.push(`Ligne ${i + 1} : la quantité ${motif(champ('quantite'))}.`);
     if (prix === null) erreurs.push(`Ligne ${i + 1} : le prix unitaire ${motif(champ('prix'))}.`);
@@ -1048,7 +1214,7 @@ function fermerEdition() {
 }
 
 async function validerEdition(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();   // sans événement : rejouée après la porte
   const { lignes, erreurs } = lireLignes();
   if (!lignes.length) erreurs.push('Un devis doit compter au moins une ligne.');
   if (erreurs.length) {
@@ -1080,14 +1246,18 @@ async function validerEdition(e) {
     });
     devisCourant = await r.json();
   } catch (err) {
+    // Code refusé : le formulaire attend derrière la porte, et la validation repart
+    // telle quelle une fois le code saisi.
+    if (err.porte) aRejouer.add(validerEdition);
     // Le formulaire reste tel quel : l'artisan corrige la ligne citée et revalide,
     // sans rien perdre de ce qu'il a déjà saisi.
-    $('ed-erreur').textContent = err.message;
+    else $('ed-erreur').textContent = err.message;
     return;
   } finally {
     bouton.disabled = false;
   }
 
+  devisEnvoye = false;   // le devis a changé : celui qui est parti n'est plus celui-ci
   fermerEdition();
   peindreRelecture(devisCourant);
   // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
@@ -1330,7 +1500,8 @@ async function peindreApercu() {
       signalerRepliTemplate();
     }
     html = await r.text();
-  } catch (_) {
+  } catch (err) {
+    if (err.porte) aRejouer.add(peindreApercu);
     // L'aperçu est un confort ; le devis, lui, est intact et téléchargeable. Un
     // aperçu qui rate ne doit surtout pas interrompre la relecture.
     $('apercu-attente').hidden = true;
@@ -1484,8 +1655,30 @@ let pdfPret = null;
 
 function preparerPdf() {
   const promesse = genererPdf();
-  promesse.catch(() => {});   // l'échec sera revu au clic ; pas de rejet non traité
+  // L'échec sera revu au clic ; pas de rejet non traité. Un code refusé, lui, se
+  // rattrape dès la porte franchie.
+  promesse.catch((err) => { if (err.porte) aRejouer.add(preparerPdf); });
   pdfPret = promesse;
+}
+
+/* Le PDF préparé pendant la relecture peut avoir échoué — coupure 4G, 429, Chromium
+   qui hoquette — alors que le devis, lui, est intact en mémoire. Au geste, on refait
+   donc le fichier une fois au lieu de rendre l'échec d'il y a deux minutes. */
+async function obtenirPdf() {
+  if (pdfPret) {
+    try {
+      return await pdfPret;
+    } catch (_) { /* refait ci-dessous */ }
+  }
+  pdfPret = genererPdf();
+  pdfPret.catch(() => {});
+  return await pdfPret;
+}
+
+function direErreurPdf(texte) {
+  const zone = $('pdf-erreur');
+  zone.textContent = texte;
+  zone.hidden = !texte;
 }
 
 async function envoyerPdf() {
@@ -1500,11 +1693,17 @@ async function envoyerPdf() {
   const attente = setTimeout(() => { libelle.textContent = 'Génération…'; }, 150);
 
   let blob;
+  direErreurPdf('');
   try {
-    blob = await (pdfPret || genererPdf());
+    blob = await obtenirPdf();
   } catch (err) {
-    pdfPret = null;
-    echouer(err.message);
+    // On reste sur la relecture, devis corrigé compris : l'appui suivant refera le
+    // fichier. L'écran d'erreur, lui, ne proposait que de rejouer le chiffrage — un
+    // appel payant de plus, et un autre devis à la place de celui-ci.
+    if (!err.porte) {
+      direErreurPdf(`Le PDF n'a pas pu être produit. ${err.message} ` +
+        'Votre devis est intact : touchez de nouveau le bouton pour réessayer.');
+    }
     return;
   } finally {
     clearTimeout(attente);
@@ -1523,6 +1722,7 @@ async function envoyerPdf() {
         title: `Devis ${devisCourant.numero}`,
       });
       partage = true;
+      devisEnvoye = true;
     } catch (err) {
       // Une feuille de partage vraiment ouverte, puis refermée par l'artisan, prend
       // au moins quelques centaines de millisecondes. Un refus instantané veut dire
@@ -1534,6 +1734,7 @@ async function envoyerPdf() {
 
   if (!partage) {
     telecharger(blob, nom);
+    devisEnvoye = true;
     // Sur un téléphone, un téléchargement se signale par une notification qu'on
     // rate. Le bouton, lui, est sous le doigt.
     libelle.textContent = 'Devis enregistré';
@@ -1678,7 +1879,7 @@ if (saitPartagerUnPdf()) {
 }
 
 document.querySelectorAll('[data-recommencer]').forEach((b) =>
-  b.addEventListener('click', reinitialiser));
+  b.addEventListener('click', recommencer));
 
 /* ---- ossature et relecture --------------------------------------------- */
 
@@ -1688,7 +1889,9 @@ document.querySelectorAll('[data-recommencer]').forEach((b) =>
    `compte.js` pose son propre retour depuis l'écran du template. */
 $('marque').addEventListener('click', () => {
   if ($('ecran-traitement').classList.contains('is-active')) return;
-  reinitialiser();
+  // Devant la porte, l'accueil ne s'atteint qu'avec le code.
+  if ($('ecran-porte').classList.contains('is-active')) return;
+  recommencer();
 });
 
 /* Le commutateur des deux vues du devis. */
@@ -1781,15 +1984,38 @@ function estRemplie(e) {
   return !!(e && typeof e.nom === 'string' && e.nom.trim());
 }
 
-/* La ligne d'accueil. Tant que l'identité manque, elle porte l'accent : un devis
-   sans SIRET ni assurance décennale n'est pas un devis, et ça ne doit pas se
-   découvrir sur le PDF, devant un client. */
+/* Les mentions que le devis imprime « à compléter » quand elles manquent. Le serveur
+   ne les emprunte plus à sa configuration — c'était l'identité d'une autre entreprise,
+   imprimée sous le nom de l'artisan. Ce qui manque doit donc se voir ici, avant la
+   dictée, et pas sur le PDF devant un client. */
+const MENTIONS_REQUISES = [
+  ['forme_juridique', 'forme juridique'],
+  ['adresse', 'adresse'],
+  ['code_postal_ville', 'code postal et ville'],
+  ['siret', 'SIRET'],
+  ['tva_intracom', 'n° de TVA'],
+  ['telephone', 'téléphone'],
+  ['email', 'e-mail'],
+  ['assurance', 'assurance décennale'],
+  ['assurance_police', 'n° de police'],
+];
+
+const manquantes = (e) => MENTIONS_REQUISES.filter(([champ]) =>
+  !(typeof e[champ] === 'string' && e[champ].trim()));
+
+/* La ligne d'accueil. Tant que l'identité manque ou reste incomplète, elle porte
+   l'accent et dit ce qui manque : un devis sans SIRET ni assurance décennale n'est pas
+   un devis, et ça ne doit pas se découvrir sur le PDF, devant un client. */
 function peindreIdentite() {
   const remplie = estRemplie(entrepriseCourante);
-  $('identite').classList.toggle('est-vide', !remplie);
+  const manque = remplie ? manquantes(entrepriseCourante).map(([, libelle]) => libelle) : [];
+  const complete = remplie && manque.length === 0;
+  $('identite').classList.toggle('est-vide', !complete);
   $('identite-label').textContent = remplie ? 'Devis établis au nom de' : 'Votre entreprise';
   $('identite-nom').textContent = remplie ? entrepriseCourante.nom : 'à renseigner';
-  $('identite-action').textContent = remplie ? 'Modifier' : 'Renseigner';
+  $('identite-manque').textContent = manque.length ? 'À compléter : ' + manque.join(', ') : '';
+  $('identite-manque').hidden = manque.length === 0;
+  $('identite-action').textContent = complete ? 'Modifier' : remplie ? 'Compléter' : 'Renseigner';
 }
 
 function remplirFormulaire(entreprise) {
@@ -1906,7 +2132,7 @@ function choisirEntreprise(trouvee) {
 
   signalerCapital();
 
-  const manquant = ['telephone', 'email', 'assurance', 'iban'].find((c) => !actuel[c]);
+  const [manquant] = manquantes(actuel)[0] || [];
   if (manquant) $('e-' + manquant).focus({ preventScroll: true });
 }
 
@@ -2100,8 +2326,36 @@ async function entrer() {
 
   try { localStorage.setItem(CLE_ACCES, saisi); } catch (_) { /* vaut pour la session */ }
   $('porte-code').value = '';
+  $('porte-erreur').textContent = '';
   peindreSante(info);
-  montrer('accueil');
+  franchirPorte();
+}
+
+/* La porte peut aussi tomber en cours de route : le code a changé pendant la session,
+   ou /health n'a pas répondu au chargement et le code n'a jamais été demandé. Ce qui
+   était à l'écran reste en mémoire — vocal, transcription, devis corrigé. Une fois le
+   code saisi, on revient où l'on était et on rejoue ce qui a été refusé : jamais un
+   vocal à redicter pour un code. */
+let ecranAvantPorte = null;
+const aRejouer = new Set();
+
+function ouvrirPorte(message) {
+  if ($('ecran-porte').classList.contains('is-active')) return;
+  const actif = document.querySelector('.screen.is-active');
+  ecranAvantPorte = actif ? actif.id.replace('ecran-', '') : null;
+  $('porte-erreur').textContent = message || '';
+  montrer('porte');
+  $('porte-code').focus({ preventScroll: true });
+}
+
+function franchirPorte() {
+  montrer(ecranAvantPorte || 'accueil');
+  ecranAvantPorte = null;
+  const etapes = [...aRejouer];
+  aRejouer.clear();
+  etapes.forEach((etape) => etape());
+  // `compte.js` a pu retenir son écran de connexion le temps de la porte : à lui.
+  document.dispatchEvent(new Event('porte-franchie'));
 }
 
 $('btn-porte').addEventListener('click', entrer);
@@ -2110,18 +2364,22 @@ $('porte-code').addEventListener('keydown', (e) => {
 });
 
 /* Au chargement : le serveur dit s'il réclame un code, et le reste de ce qu'il
-   annonce — moteur, mode — n'est donné qu'une fois la porte franchie. */
-(async () => {
+   annonce — moteur, mode — n'est donné qu'une fois la porte franchie.
+
+   `compte.js` attend cette réponse avant de choisir son écran : la porte passe avant
+   la connexion. Sans cette attente, la connexion recouvrait la porte, et l'artisan
+   dictait sans code jusqu'au premier refus. Résolue dans tous les cas, même serveur
+   muet — elle ne dit pas que tout va bien, seulement que la question est tranchée. */
+window.santeLue = (async () => {
   let info = null;
   try {
     info = await fetch('/health', { headers: enteteAcces() }).then((r) => r.json());
   } catch (_) {
-    return;  // serveur muet : la page reste debout, l'erreur viendra à l'usage
+    return;  // serveur muet : la page reste debout, la porte viendra au premier refus
   }
 
   if (info.acces === 'requis') {
-    montrer('porte');
-    $('porte-code').focus({ preventScroll: true });
+    ouvrirPorte('');
     return;
   }
   peindreSante(info);

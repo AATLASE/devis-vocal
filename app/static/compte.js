@@ -7,9 +7,10 @@
 
    Module ESM, chargé après `app.js`, et dans cet ordre pour une raison : le SDK
    Firebase n'existe qu'en ESM, alors qu'`app.js` est un script classique dont les
-   fonctions (`montrer`, `$`, `telecharger`) sont des globales. La dépendance ne va
-   que dans ce sens — `app.js` ne connaît de ce fichier que `window.Compte`, et se
-   passe très bien de son absence.
+   fonctions (`montrer`, `$`, `telecharger`, `enteteAcces`) sont des globales. La
+   dépendance ne va que dans ce sens — `app.js` ne connaît de ce fichier que
+   `window.Compte`, n'émet pour lui que l'événement `porte-franchie`, et se passe très
+   bien de son absence.
 
    Deux règles tiennent tout le reste :
 
@@ -98,6 +99,10 @@ const MESSAGES = {
   'auth/too-many-requests': 'Trop de tentatives. Patientez une minute avant de réessayer.',
   'auth/operation-not-allowed':
     "Ce mode de connexion n'est pas activé sur le projet Firebase.",
+  // Le SDK n'a pas pu charger ce dont la fenêtre Google a besoin — script bloqué,
+  // réseau. Réessayer ne changera rien : on montre les deux autres chemins.
+  'auth/internal-error':
+    "La connexion Google n'a pas pu s'ouvrir. Connectez-vous par e-mail, ou continuez sans compte.",
 };
 
 const message = (err, defaut = "La connexion a échoué. Réessayez dans un instant.") =>
@@ -161,6 +166,9 @@ async function demarrer() {
   onAuthStateChanged(auth, async (compte) => {
     utilisateur = compte;
     try {
+      // La porte d'abord : `app.js` doit savoir si le serveur réclame un code avant
+      // qu'on choisisse l'écran. Voir `porteFermee`.
+      await window.santeLue;
       await peindreCompte();
     } finally {
       // `finally` : une fiche illisible ne doit jamais laisser la page masquée.
@@ -168,7 +176,44 @@ async function demarrer() {
     }
   });
 
+  // L'écran retenu le temps de la porte, peint une fois le code saisi.
+  document.addEventListener('porte-franchie', () => {
+    if (!attendLaPorte) return;
+    attendLaPorte = false;
+    peindreCompte();
+  });
+
   brancher();
+}
+
+/* ---- la porte avant le compte ------------------------------------------- */
+/* Quand le serveur réclame un code d'accès, rien du compte ne doit recouvrir la porte.
+   La connexion la remplaçait : l'artisan touchait « Continuer sans compte », dictait,
+   et ne découvrait le code qu'au premier refus, sur un écran d'erreur sans issue. Tant
+   que la porte est à l'écran, on retient donc l'écran du compte — et la lecture de la
+   fiche, qui serait refusée faute de code. `app.js` annonce le franchissement. */
+
+let attendLaPorte = false;
+const porteFermee = () => $('ecran-porte').classList.contains('is-active');
+
+/* Les en-têtes d'un appel à l'API du compte. Le jeton dit qui appelle ; le code
+   d'accès, tenu par `app.js`, dit qu'on a le droit d'appeler — le serveur l'exige sur
+   tout /api/, compte compris. */
+async function entetes(autres = {}) {
+  return {
+    ...autres,
+    ...enteteAcces(),
+    Authorization: 'Bearer ' + (await window.Compte.jeton()),
+  };
+}
+
+/* Le motif d'un refus, dans la forme où le serveur le donne. */
+async function motif(reponse) {
+  try {
+    const corps = await reponse.json();
+    if (corps.detail) return corps.detail;
+  } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
+  return 'Erreur ' + reponse.status + '.';
 }
 
 /* ---- le menu latéral ---------------------------------------------------- */
@@ -261,6 +306,11 @@ function peindreMenu() {
 }
 
 async function peindreCompte() {
+  if (porteFermee()) {
+    attendLaPorte = true;
+    return;
+  }
+
   if (!utilisateur) {
     profil = null;
     peindreMenu();
@@ -314,19 +364,9 @@ let profil = null;
 async function appelProfil(options = {}) {
   const reponse = await fetch('/api/profil', {
     ...options,
-    headers: {
-      ...(options.headers || {}),
-      Authorization: 'Bearer ' + (await window.Compte.jeton()),
-    },
+    headers: await entetes(options.headers),
   });
-  if (!reponse.ok) {
-    let detail = 'Erreur ' + reponse.status + '.';
-    try {
-      const corps = await reponse.json();
-      if (corps.detail) detail = corps.detail;
-    } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
-    throw new Error(detail);
-  }
+  if (!reponse.ok) throw new Error(await motif(reponse));
   return await reponse.json();
 }
 
@@ -662,11 +702,18 @@ async function ouvrirTemplate() {
   direTemplate('');
   choisir(null);
   try {
-    peindreTemplate(await (await fetch('/api/template', {
-      headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
-    })).json());
-  } catch (_) {
-    direTemplate("L'état du template n'a pas pu être lu. Le devis sort sur la mise en page livrée.", 'alerte');
+    const reponse = await fetch('/api/template', { headers: await entetes() });
+    // Un refus n'est pas un état : peint tel quel, il affichait « le template livré,
+    // toutes les mentions garanties » par-dessus un template non conforme.
+    if (!reponse.ok) throw new Error(await motif(reponse));
+    peindreTemplate(await reponse.json());
+  } catch (err) {
+    // On ne sait pas ce qui est posé : on ne l'affirme pas.
+    $('template-nom').textContent = 'État inconnu';
+    $('template-meta').textContent = '';
+    $('template-alerte').hidden = true;
+    $('btn-template-retirer').hidden = true;
+    direTemplate("L'état du template n'a pas pu être lu. " + err.message, 'alerte');
   }
 }
 
@@ -709,17 +756,10 @@ async function envoyerTemplate(url, methode) {
   donnees.append('template', fichierChoisi);
   const reponse = await fetch(url, {
     method: methode,
-    headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
+    headers: await entetes(),
     body: donnees,
   });
-  if (!reponse.ok) {
-    let detail = 'Erreur ' + reponse.status + '.';
-    try {
-      const corps = await reponse.json();
-      if (corps.detail) detail = corps.detail;
-    } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
-    throw new Error(detail);
-  }
+  if (!reponse.ok) throw new Error(await motif(reponse));
   return reponse;
 }
 
@@ -776,13 +816,28 @@ async function retirer() {
   try {
     const reponse = await fetch('/api/template', {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
+      headers: await entetes(),
     });
-    if (!reponse.ok) throw new Error('La suppression a échoué.');
+    if (!reponse.ok) throw new Error('La suppression a échoué. ' + await motif(reponse));
     peindreTemplate({ pose: false });
     direTemplate('Vos devis sortent de nouveau sur la mise en page livrée.', 'ok');
   } catch (err) {
     direTemplate(err.message, 'alerte');
+  }
+}
+
+/* Le template livré, comme point de départ. Un lien nu ne peut porter aucun en-tête :
+   derrière la porte, le navigateur affichait le refus en JSON brut. On le récupère donc
+   comme les autres appels, puis on le remet en fichier. */
+async function telechargerModele(e) {
+  e.preventDefault();
+  direTemplate('');
+  try {
+    const reponse = await fetch('/api/template/modele', { headers: enteteAcces() });
+    if (!reponse.ok) throw new Error(await motif(reponse));
+    telecharger(await reponse.blob(), 'devis-modele.html');
+  } catch (err) {
+    direTemplate('Le template livré n’a pas pu être téléchargé. ' + err.message, 'alerte');
   }
 }
 
@@ -813,6 +868,7 @@ function brancherTemplate() {
   $('btn-template-apercu').addEventListener('click', (e) => apercu(e.currentTarget));
   $('btn-template-poser').addEventListener('click', (e) => poser(e.currentTarget));
   $('btn-template-retirer').addEventListener('click', retirer);
+  $('lien-modele').addEventListener('click', telechargerModele);
 }
 
 demarrer();

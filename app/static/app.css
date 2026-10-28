@@ -31,6 +31,12 @@ html {
   scroll-padding-top: calc(var(--dv-entete-h) + var(--dv-s-4));
 }
 
+/* Pas de tirer-pour-rafraîchir : sur Chrome Android comme sur Safari, remonter un peu
+   trop vite en haut d'un devis rechargeait la page — et le devis, qui ne vit qu'ici,
+   disparaissait. Posé sur les deux : selon le navigateur, c'est l'un ou l'autre qui
+   porte le défilement du document. */
+html, body { overscroll-behavior-y: contain; }
+
 /* `hidden` doit cacher, sans exception.
 
    Le navigateur applique `[hidden] { display: none }` depuis sa propre feuille,
@@ -1098,6 +1104,12 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .relecture__client { font-size: var(--dv-t-sm); color: var(--dv-muted); margin-top: var(--dv-s-2); }
 .relecture__actions { display: flex; gap: var(--dv-s-4); flex-shrink: 0; }
+/* L'échec du PDF, dit sous les boutons et pas sur un écran à part. */
+.relecture__erreur {
+  margin: calc(var(--dv-s-4) * -1) 0 var(--dv-s-7);
+  font-size: var(--dv-t-sm);
+  color: var(--dv-danger);
+}
 
 /* ---- le commutateur des deux vues ---------------------------------------- */
 /* Visible seulement là où les deux vues ne tiennent pas côte à côte. */
@@ -1649,6 +1661,8 @@ body.menu-anime.menu-ouvert .menu-voile {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .identite.est-vide .identite__nom { color: var(--dv-accent-dark); font-weight: 400; }
+/* Ce qui manque, en toutes lettres : « à renseigner » ne dit pas quoi. */
+.identite__manque { font-size: 13px; line-height: 1.45; color: var(--dv-accent-dark); }
 .identite__action {
   flex: none; font-family: var(--dv-mono); font-size: 12px; letter-spacing: .04em;
   text-transform: uppercase; color: var(--dv-accent);
@@ -1704,13 +1718,16 @@ body.menu-anime.menu-ouvert .menu-voile {
   display: block; margin-bottom: 6px; font-size: 13px; color: var(--dv-muted);
 }
 .champ__note { color: var(--dv-faint); font-size: 12px; }
+/* 16px pour tous les champs, chiffres compris : en dessous, Safari iOS agrandit la
+   page à chaque mise au point et la laisse agrandie. Ces règles venaient après celle
+   de la section des formulaires et l'écrasaient à 15px, et à 14px en chasse fixe. */
 .champ input {
-  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  width: 100%; padding: 11px 13px; font: inherit; font-size: var(--dv-t-body);
   background: var(--dv-paper); color: var(--dv-ink);
   border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
 }
 .champ input:focus { outline: none; border-color: var(--dv-accent); }
-.champ input.num { font-family: var(--dv-mono); font-size: 14px; }
+.champ input.num { font-family: var(--dv-mono); font-size: var(--dv-t-body); }
 .champ__aide { margin-top: 6px; font-size: 12px; color: var(--dv-faint); min-height: 16px; }
 .champ__aide.est-faux { color: var(--dv-accent-dark); }
 
@@ -1785,7 +1802,7 @@ body.menu-anime.menu-ouvert .menu-voile {
 .ligne-ed.est-estimee { border-color: var(--dv-accent-edge); }
 .ligne-ed .champ--detail { grid-column: 1 / 5; }
 .ligne-ed .champ select {
-  width: 100%; padding: 11px 13px; font: inherit; font-size: 15px;
+  width: 100%; padding: 11px 13px; font: inherit; font-size: var(--dv-t-body);
   background: var(--dv-paper); color: var(--dv-ink);
   border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
 }
@@ -1819,7 +1836,7 @@ body.menu-anime.menu-ouvert .menu-voile {
 
 .edition__ajout { margin-top: 12px; }
 .edition textarea {
-  width: 100%; min-height: 110px; padding: 11px 13px; font: inherit; font-size: 15px;
+  width: 100%; min-height: 110px; padding: 11px 13px; font: inherit; font-size: var(--dv-t-body);
   line-height: 1.55; resize: vertical;
   background: var(--dv-paper); color: var(--dv-ink);
   border: 1px solid var(--dv-border-input); border-radius: var(--dv-radius);
@@ -1830,9 +1847,12 @@ body.menu-anime.menu-ouvert .menu-voile {
 .edition__erreur:empty { min-height: 0; margin-top: 0; }
 .edition__actions { display: flex; gap: 12px; margin-top: 22px; }
 
-/* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. */
+/* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. « Nouveau
+   devis » non plus : à portée de pouce sous le formulaire, il effaçait la correction
+   en cours. On sort de l'édition par « Annuler ». */
 .relecture.en-edition #btn-pdf,
-.relecture.en-edition #btn-modifier { display: none; }
+.relecture.en-edition #btn-modifier,
+.relecture.en-edition [data-recommencer] { display: none; }
 
 @media (max-width: 640px) {
   /* La désignation prend tout le rang à côté de la croix : c'est le texte le plus
