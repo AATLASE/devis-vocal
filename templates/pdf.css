@@ -251,6 +251,7 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   content: ""; flex: 1; border-bottom: 1px dotted var(--dv-rule-strong); margin-bottom: 3px;
 }
 .doc-retractation__ligne { height: 14px; margin: 0 0 9px; border-bottom: 1px dotted var(--dv-rule-strong); }
+.doc-retractation__signature { margin-bottom: 34px; }  /* la place de signer */
 
 /* Devis sans aucune ligne chiffrable. Le parcours n'y mène pas — le produit
    refuse d'établir le devis — mais le template ne doit pas casser pour autant. */
