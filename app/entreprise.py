@@ -360,8 +360,8 @@ class EntrepriseSaisie(BaseModel):
 
     Tous les champs sont facultatifs, et c'est le point important. Un artisan doit
     pouvoir sortir un devis après avoir choisi son entreprise dans la liste, sans avoir
-    encore renseigné son IBAN ni son assurance : ce qui manque retombe sur la
-    configuration du serveur au lieu de faire échouer la requête.
+    encore renseigné son IBAN ni son assurance : ce qui manque reste vide — le document
+    l'imprime « à compléter » — au lieu de faire échouer la requête.
 
     C'est aussi ce qui rend la chose durable. Si `Entreprise` gagne un champ demain, les
     identités déjà enregistrées dans les navigateurs ne deviennent pas invalides — le
@@ -386,14 +386,26 @@ class EntrepriseSaisie(BaseModel):
     iban: str | None = None
 
     def fusionner(self, defaut: Entreprise) -> Entreprise:
-        """Pose les champs renseignés par-dessus ceux du serveur.
+        """L'identité saisie, sans rien emprunter à celle du serveur.
 
-        Un champ vide n'est pas une valeur : c'est une absence de saisie. Il laisse donc
-        passer la valeur de la configuration, ce qui permet de préremplir un `.env` avant
-        un rendez-vous sans que le navigateur ne l'écrase avec du vide.
+        Une identité envoyée par le navigateur est celle de l'artisan, et elle ne se
+        complète pas avec celle d'une autre entreprise. Les champs vides laissaient
+        passer la configuration : « 00 00 00 00 00 », « contact@example.com », une
+        assurance « à renseigner », un SIRET à zéros — ou, avec un `.env` préparé pour
+        un rendez-vous, les coordonnées d'un autre artisan — imprimés sous son nom, sur
+        un document qui part chez un client. Un champ vide reste donc vide, et le
+        document l'imprime « à compléter ».
+
+        `defaut` ne sert plus qu'à une saisie sans nom : ce n'est pas une identité mais
+        une absence, et le devis sort sur la configuration, comme si le navigateur
+        n'avait rien envoyé. C'est ce qui permet encore de préparer un `.env` avant un
+        rendez-vous.
         """
-        valeurs = defaut.model_dump()
-        for champ, valeur in self.model_dump().items():
-            if isinstance(valeur, str) and valeur.strip():
-                valeurs[champ] = valeur.strip()
-        return Entreprise(**valeurs)
+        if not (self.nom or "").strip():
+            return defaut
+        # Partir des champs du contrat, pas de ceux de la saisie : si `Entreprise` en
+        # gagne un, une identité gardée dans un navigateur reste valide — vide là aussi.
+        saisie = self.model_dump()
+        return Entreprise(**{
+            champ: (saisie.get(champ) or "").strip() for champ in Entreprise.model_fields
+        })

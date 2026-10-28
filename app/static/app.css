@@ -1655,6 +1655,8 @@ body.menu-anime.menu-ouvert .menu-voile {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .identite.est-vide .identite__nom { color: var(--dv-accent-dark); font-weight: 400; }
+/* Ce qui manque, en toutes lettres : « à renseigner » ne dit pas quoi. */
+.identite__manque { font-size: 13px; line-height: 1.45; color: var(--dv-accent-dark); }
 .identite__action {
   flex: none; font-family: var(--dv-mono); font-size: 12px; letter-spacing: .04em;
   text-transform: uppercase; color: var(--dv-accent);

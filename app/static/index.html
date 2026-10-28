@@ -349,6 +349,8 @@
       <span class="identite__texte">
         <span class="identite__label label" id="identite-label">Votre entreprise</span>
         <span class="identite__nom" id="identite-nom">à renseigner</span>
+        <!-- Ce que le devis imprimera « à compléter ». Voir `MENTIONS_REQUISES`. -->
+        <span class="identite__manque" id="identite-manque" hidden></span>
       </span>
       <span class="identite__action" id="identite-action">Renseigner</span>
     </button>
@@ -853,7 +855,9 @@
           </div>
           <div class="champ">
             <label for="e-forme_juridique">Forme juridique</label>
-            <input id="e-forme_juridique" placeholder="SARL au capital de 10 000 €">
+            <!-- Pas d'exemple en texte de substitution : « SARL au capital de 10 000 € »
+                 se lisait comme un champ déjà rempli. -->
+            <input id="e-forme_juridique">
             <div class="champ__aide" id="forme-aide"></div>
           </div>
           <div class="champ">

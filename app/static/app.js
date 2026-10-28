@@ -1831,15 +1831,38 @@ function estRemplie(e) {
   return !!(e && typeof e.nom === 'string' && e.nom.trim());
 }
 
-/* La ligne d'accueil. Tant que l'identité manque, elle porte l'accent : un devis
-   sans SIRET ni assurance décennale n'est pas un devis, et ça ne doit pas se
-   découvrir sur le PDF, devant un client. */
+/* Les mentions que le devis imprime « à compléter » quand elles manquent. Le serveur
+   ne les emprunte plus à sa configuration — c'était l'identité d'une autre entreprise,
+   imprimée sous le nom de l'artisan. Ce qui manque doit donc se voir ici, avant la
+   dictée, et pas sur le PDF devant un client. */
+const MENTIONS_REQUISES = [
+  ['forme_juridique', 'forme juridique'],
+  ['adresse', 'adresse'],
+  ['code_postal_ville', 'code postal et ville'],
+  ['siret', 'SIRET'],
+  ['tva_intracom', 'n° de TVA'],
+  ['telephone', 'téléphone'],
+  ['email', 'e-mail'],
+  ['assurance', 'assurance décennale'],
+  ['assurance_police', 'n° de police'],
+];
+
+const manquantes = (e) => MENTIONS_REQUISES.filter(([champ]) =>
+  !(typeof e[champ] === 'string' && e[champ].trim()));
+
+/* La ligne d'accueil. Tant que l'identité manque ou reste incomplète, elle porte
+   l'accent et dit ce qui manque : un devis sans SIRET ni assurance décennale n'est pas
+   un devis, et ça ne doit pas se découvrir sur le PDF, devant un client. */
 function peindreIdentite() {
   const remplie = estRemplie(entrepriseCourante);
-  $('identite').classList.toggle('est-vide', !remplie);
+  const manque = remplie ? manquantes(entrepriseCourante).map(([, libelle]) => libelle) : [];
+  const complete = remplie && manque.length === 0;
+  $('identite').classList.toggle('est-vide', !complete);
   $('identite-label').textContent = remplie ? 'Devis établis au nom de' : 'Votre entreprise';
   $('identite-nom').textContent = remplie ? entrepriseCourante.nom : 'à renseigner';
-  $('identite-action').textContent = remplie ? 'Modifier' : 'Renseigner';
+  $('identite-manque').textContent = manque.length ? 'À compléter : ' + manque.join(', ') : '';
+  $('identite-manque').hidden = manque.length === 0;
+  $('identite-action').textContent = complete ? 'Modifier' : remplie ? 'Compléter' : 'Renseigner';
 }
 
 function remplirFormulaire(entreprise) {
@@ -1956,7 +1979,7 @@ function choisirEntreprise(trouvee) {
 
   signalerCapital();
 
-  const manquant = ['telephone', 'email', 'assurance', 'iban'].find((c) => !actuel[c]);
+  const [manquant] = manquantes(actuel)[0] || [];
   if (manquant) $('e-' + manquant).focus({ preventScroll: true });
 }
 

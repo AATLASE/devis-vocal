@@ -119,15 +119,18 @@
     <div>
       <div class="doc-head__name">{{ e.nom }}</div>
       <div class="doc-head__trade">{{ e.metier }}</div>
+      {#- Une mention que l'artisan n'a pas renseignée s'imprime « à compléter » : le
+          serveur ne la complète plus avec la configuration, qui est l'identité d'une
+          autre entreprise. Le code APE, qui n'est pas une mention obligatoire, se tait. #}
       <div class="doc-head__coords">
-        {{ e.forme_juridique }}<br>
-        {{ e.adresse }}, {{ e.code_postal_ville }}<br>
-        {{ e.telephone }} · {{ e.email }}
+        {{ e.forme_juridique or 'Forme juridique à compléter' }}<br>
+        {{ e.adresse or 'Adresse à compléter' }}, {{ e.code_postal_ville or 'code postal à compléter' }}<br>
+        {{ e.telephone or 'Téléphone à compléter' }} · {{ e.email or 'e-mail à compléter' }}
       </div>
       <div class="doc-head__legal">
-        SIRET {{ e.siret }} · APE {{ e.code_ape }}<br>
-        TVA {{ e.tva_intracom }}<br>
-        Décennale {{ e.assurance }} n° {{ e.assurance_police }}
+        SIRET {{ e.siret or 'à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
+        TVA {{ e.tva_intracom or 'à compléter' }}<br>
+        Décennale {{ e.assurance or 'à compléter' }} n° {{ e.assurance_police or 'à compléter' }}
       </div>
     </div>
     <div class="doc-meta">
@@ -256,7 +259,7 @@
     </div>
     <div class="doc-mention">
       <h4>Assurance décennale</h4>
-      <p>Entreprise assurée auprès de {{ e.assurance }}, police n° {{ e.assurance_police }},
+      <p>Entreprise assurée auprès de {{ e.assurance or 'assureur à compléter' }}, police n° {{ e.assurance_police or 'à compléter' }},
       au titre de la responsabilité décennale, pour les travaux réalisés sur l'ensemble du
       territoire français métropolitain.</p>
     </div>
@@ -275,7 +278,7 @@
   </section>
 
   <footer class="doc-runfoot doc-runfoot--rule push">
-    <div>{{ e.nom }} · {{ e.forme_juridique }} · SIRET {{ e.siret }}</div>
+    <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }} · SIRET {{ e.siret or 'à compléter' }}</div>
     <div>Page {{ total_pages }} / {{ total_pages }}</div>
   </footer>
 </article>

@@ -59,10 +59,10 @@ async def test_health_distingue_le_mode_reel(monkeypatch):
 # ---------------------------------------------------------------------------
 #
 # Elle vient du navigateur, où elle est conservée, et non plus seulement du `.env`.
-# Ce que ces tests protègent, c'est la règle de fusion : ce qui est saisi gagne, ce
-# qui est vide laisse passer la configuration. Sans elle, choisir son entreprise dans
-# l'annuaire sans avoir encore renseigné son IBAN effacerait l'IBAN du serveur — et le
-# devis sortirait avec un champ de moins qu'avant.
+# Ce que ces tests protègent, c'est la règle de fusion : ce qui est saisi gagne, et ce
+# qui est vide reste vide. La configuration est l'identité d'une autre entreprise : la
+# laisser combler les trous imprimait ses coordonnées sous le nom de l'artisan. Voir
+# `EntrepriseSaisie.fusionner` et tests/test_entreprise.py.
 
 
 @pytest.fixture
@@ -91,19 +91,19 @@ async def test_l_identite_du_navigateur_prime(mode_fixtures):
     assert devis.entreprise.tva_intracom == "FR83394659882"
 
 
-async def test_un_champ_vide_ne_efface_pas_la_configuration(mode_fixtures):
-    """Un champ non saisi est une absence, pas une valeur.
+async def test_un_champ_vide_ne_reprend_pas_la_configuration(mode_fixtures):
+    """Un champ non saisi est une absence, pas une valeur — et pas celle du `.env`.
 
     C'est le cas courant : l'artisan choisit son entreprise dans l'annuaire, ce qui
-    remplit sept champs, et n'a pas encore tapé son IBAN. Celui du `.env` doit rester.
+    remplit sept champs, et n'a pas encore tapé son IBAN. Celui du `.env` est celui
+    d'une autre entreprise : l'acompte partirait sur son compte.
     """
-    defaut = get_config().entreprise
     devis = await api_devis(DemandeDevis(
         transcription=mode_fixtures,
         entreprise=EntrepriseSaisie(nom="SARL DUPONT PLOMBERIE", iban="   "),
     ))
     assert devis.entreprise.nom == "SARL DUPONT PLOMBERIE"
-    assert devis.entreprise.iban == defaut.iban
+    assert devis.entreprise.iban == ""
 
 
 async def test_une_identite_incomplete_ne_fait_pas_echouer_la_requete(mode_fixtures):
@@ -118,7 +118,7 @@ async def test_une_identite_incomplete_ne_fait_pas_echouer_la_requete(mode_fixtu
         entreprise=EntrepriseSaisie(nom="EURL Martin"),
     ))
     assert devis.entreprise.nom == "EURL Martin"
-    assert devis.entreprise.code_ape  # hérité de la configuration
+    assert devis.entreprise.code_ape == ""  # vide, et pas emprunté à la configuration
 
 
 async def test_les_totaux_ne_dependent_pas_de_l_identite(mode_fixtures):

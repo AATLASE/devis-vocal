@@ -2,16 +2,20 @@
 
 Tout ce qui est vérifié ici est arithmétique ou traduction : la clé de Luhn, la clé de
 TVA, la mise en forme. C'est la partie qui doit être juste à tous les coups, parce
-qu'elle finit imprimée sous les mentions obligatoires d'un devis.
+qu'elle finit imprimée sous les mentions obligatoires d'un devis. Et la règle de
+l'identité renvoyée par le navigateur : elle ne s'emprunte jamais à la configuration.
 
 La recherche elle-même appelle une API publique : elle est testée séparément, en `live`.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.entreprise import (
+    EntrepriseSaisie,
     EntrepriseTrouvee,
     _mapper,
     capitaliser_fr,
@@ -24,6 +28,8 @@ from app.entreprise import (
     numero_tva,
     rechercher,
 )
+from app.models import DevisExtraction, Entreprise, to_devis
+from app.pdf import render_html
 
 # SARL DUPONT PLOMBERIE, relevée dans la base publique — un vrai numéro, donc une vraie
 # clé de contrôle. Un numéro inventé passerait à côté de ce que le test vérifie.
@@ -249,6 +255,98 @@ def test_mapper_prefere_l_etablissement_correspondant():
 def test_mapper_refuse_un_resultat_sans_identifiant():
     assert _mapper({"siren": "abc"}) is None
     assert _mapper({"siren": SIREN, "siege": {}}) is None
+
+
+# --- Identité renvoyée par le navigateur -------------------------------------
+#
+# La configuration du serveur est l'identité d'une autre entreprise — par défaut,
+# celle, factice, de la démonstration. Elle ne doit jamais compléter celle d'un artisan :
+# ses zéros et son « contact@example.com » s'imprimaient sous son nom, mention de
+# l'assurance décennale comprise.
+
+FACTICE = Entreprise(
+    nom="Bâti Rénov",
+    forme_juridique="SARL au capital de 10 000 €",
+    metier="Rénovation · Plomberie · Second œuvre",
+    adresse="12 rue des Compagnons",
+    code_postal_ville="75011 Paris",
+    telephone="00 00 00 00 00",
+    email="contact@example.com",
+    siret="000 000 000 00000",
+    code_ape="4399C",
+    tva_intracom="FR00 000 000 000",
+    assurance="Assureur à renseigner",
+    assurance_police="000 000 000",
+    iban="FR76 0000 0000 0000 0000 0000 000",
+)
+
+# Ce que l'annuaire remplit quand l'artisan choisit son entreprise. Le reste — téléphone,
+# e-mail, assurance, police, IBAN — n'est dans aucune base publique.
+DEPUIS_L_ANNUAIRE = EntrepriseSaisie(
+    nom="SARL DUPONT PLOMBERIE",
+    forme_juridique="SARL",
+    metier="Plomberie · Chauffage · Sanitaire",
+    adresse="88 Avenue de Grande Bretagne",
+    code_postal_ville="31300 Toulouse",
+    siret="394 659 882 00010",
+    code_ape="4322A",
+    tva_intracom=TVA,
+)
+
+
+@pytest.mark.parametrize("champ", [
+    "forme_juridique", "siret", "tva_intracom", "assurance", "assurance_police",
+    "metier", "telephone", "email",
+])
+def test_un_champ_legal_vide_ne_reprend_pas_la_configuration(champ):
+    """Le cas du constat : nom saisi, le reste vide. Rien ne vient du `.env`."""
+    fusion = EntrepriseSaisie(nom="EI Martin", **{champ: "   "}).fusionner(FACTICE)
+    assert getattr(fusion, champ) == ""
+
+
+def test_l_identite_de_l_annuaire_ne_se_complete_pas_avec_la_configuration():
+    """Le cas courant : l'entreprise choisie dans la liste, l'assurance pas encore saisie.
+
+    Aucune valeur de la configuration ne doit apparaître — ni les quatre champs que
+    l'annuaire ne connaît pas, ni l'IBAN, qui enverrait l'acompte sur le compte d'un autre.
+    """
+    fusion = DEPUIS_L_ANNUAIRE.fusionner(FACTICE)
+    assert fusion.telephone == fusion.email == ""
+    assert fusion.assurance == fusion.assurance_police == ""
+    assert fusion.iban == ""
+    for champ, valeur in fusion.model_dump().items():
+        if valeur:
+            assert valeur != getattr(FACTICE, champ), champ
+
+
+def test_les_champs_saisis_sont_gardes_tels_quels():
+    fusion = EntrepriseSaisie(nom="  SARL DUPONT  ", assurance=" MAAF ").fusionner(FACTICE)
+    assert fusion.nom == "SARL DUPONT"
+    assert fusion.assurance == "MAAF"
+
+
+@pytest.mark.parametrize("saisie", [EntrepriseSaisie(), EntrepriseSaisie(nom="  ", siret="1")])
+def test_une_saisie_sans_nom_n_est_pas_une_identite(saisie):
+    """Sans nom, rien à imprimer en tête : le devis sort sur la configuration, comme si
+    le navigateur n'avait rien envoyé. C'est ce qui garde le `.env` utilisable."""
+    assert saisie.fusionner(FACTICE) == FACTICE
+
+
+def test_le_devis_imprime_a_completer_plutot_qu_une_valeur_factice():
+    """Jusqu'au document : ce qui manque se lit « à compléter », en clair, en tête comme
+    dans la mention de l'assurance décennale."""
+    extraction = DevisExtraction.model_validate_json(
+        (Path(__file__).parent / "fixtures" / "plomberie.json").read_text(encoding="utf-8"))
+    devis = to_devis(extraction, entreprise=DEPUIS_L_ANNUAIRE.fusionner(FACTICE))
+    html = render_html(devis, polices_inline=False)
+
+    assert "SARL DUPONT PLOMBERIE" in html
+    assert "Téléphone à compléter" in html
+    assert "Décennale à compléter n° à compléter" in html
+    assert "assurée auprès de assureur à compléter, police n° à compléter" in html
+    for factice in ("00 00 00 00 00", "contact@example.com", "Assureur à renseigner",
+                    "000 000 000", "Bâti Rénov"):
+        assert factice not in html, factice
 
 
 async def test_recherche_trop_courte_n_appelle_pas_le_reseau():
