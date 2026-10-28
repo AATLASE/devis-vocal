@@ -99,6 +99,10 @@ const MESSAGES = {
   'auth/too-many-requests': 'Trop de tentatives. Patientez une minute avant de réessayer.',
   'auth/operation-not-allowed':
     "Ce mode de connexion n'est pas activé sur le projet Firebase.",
+  // Le SDK n'a pas pu charger ce dont la fenêtre Google a besoin — script bloqué,
+  // réseau. Réessayer ne changera rien : on montre les deux autres chemins.
+  'auth/internal-error':
+    "La connexion Google n'a pas pu s'ouvrir. Connectez-vous par e-mail, ou continuez sans compte.",
 };
 
 const message = (err, defaut = "La connexion a échoué. Réessayez dans un instant.") =>
