@@ -45,7 +45,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -133,7 +133,16 @@ async def health(request: Request) -> dict[str, str]:
     if securite.acces_requis():
         try:
             securite.verifier_acces(request)
-        except HTTPException:
+        except HTTPException as err:
+            # /health dit si le code est bon : c'est un oracle, donc les essais faux y
+            # sont comptés comme ailleurs. Une adresse qui les a épuisés reçoit 429,
+            # avec le même « requis » que lit la page, sans rien apprendre de plus.
+            # Le healthcheck, lui, n'envoie pas de code et n'est jamais compté.
+            if err.status_code == 429:
+                return JSONResponse(
+                    status_code=429,
+                    content={"status": "ok", "acces": "requis", "detail": err.detail},
+                )
             return {"status": "ok", "acces": "requis"}
 
     config = get_config()

@@ -67,21 +67,67 @@ def acces_requis() -> bool:
     return bool(get_config().acces_code)
 
 
+# Les codes faux, comptés à part et bien plus serré que le débit. Sans eux, un code
+# donné de vive voix — un mot, une date — se devine par dictionnaire à la vitesse du
+# réseau : un 401 n'était jamais compté nulle part. Dix essais par adresse et par dix
+# minutes laissent largement de quoi se tromper au clavier d'un téléphone.
+ESSAIS_PAR_FENETRE = 10
+FENETRE_ESSAIS_S = 600
+
+_echecs: dict[str, deque[float]] = defaultdict(deque)
+
+
 def verifier_acces(request: Request) -> None:
-    """Refuse la requête si le code est absent ou faux."""
+    """Refuse la requête si le code est absent ou faux, et limite les essais."""
     if not acces_requis():
         return
 
     fourni = request.headers.get(ENTETE_ACCES, "")
-    attendu = get_config().acces_code
+    if not fourni:
+        # Pas de code, pas d'essai : c'est la première visite, ou le healthcheck.
+        raise HTTPException(status_code=401, detail="Code d'accès invalide.")
+
+    # Une adresse qui a épuisé ses essais est refusée avant toute comparaison, bon code
+    # compris : sinon le bon code se reconnaîtrait au seul fait de ne pas être refusé.
+    adresse = _client(request)
+    if _essais_epuises(adresse):
+        raise HTTPException(
+            status_code=429,
+            detail="Trop d'essais de code d'accès. Patientez quelques minutes.",
+        )
 
     # `compare_digest` compare en temps constant. Un `==` classique s'arrête au
     # premier caractère différent, et le temps de réponse trahit alors combien de
     # caractères sont justes — de quoi retrouver le code lettre par lettre.
     # Sur des octets : appliqué à des chaînes, il lève une TypeError dès qu'un
     # caractère sort de l'ASCII — un code « maçon-2026 » faisait répondre 500 partout.
+    attendu = get_config().acces_code
     if not hmac.compare_digest(fourni.encode("utf-8"), attendu.encode("utf-8")):
+        _noter_un_echec(adresse)
         raise HTTPException(status_code=401, detail="Code d'accès invalide.")
+
+
+def _essais_epuises(adresse: str) -> bool:
+    fenetre = _echecs.get(adresse)
+    if fenetre is None:
+        return False
+    maintenant = time.monotonic()
+    while fenetre and maintenant - fenetre[0] > FENETRE_ESSAIS_S:
+        fenetre.popleft()
+    if not fenetre:
+        del _echecs[adresse]
+        return False
+    return len(fenetre) >= ESSAIS_PAR_FENETRE
+
+
+def _noter_un_echec(adresse: str) -> None:
+    maintenant = time.monotonic()
+    # Même précaution que pour le débit : une adresse qui ne revient pas ne doit pas
+    # rester en mémoire pour toujours.
+    if len(_echecs) > 2048:
+        for perimee in [a for a, f in _echecs.items() if maintenant - f[-1] > FENETRE_ESSAIS_S]:
+            del _echecs[perimee]
+    _echecs[adresse].append(maintenant)
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +345,7 @@ def reinitialiser() -> None:
     """Remet les compteurs à zéro. Utilisé par les tests, jamais par l'application."""
     global _etat, _proxy_signale
     _fenetres.clear()
+    _echecs.clear()
     _etat = None
     _proxy_signale = False
 

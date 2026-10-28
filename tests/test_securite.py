@@ -119,6 +119,49 @@ def test_un_code_que_le_navigateur_ne_sait_pas_envoyer_est_refuse_au_demarrage(m
 
 
 # ---------------------------------------------------------------------------
+# Les essais de code
+# ---------------------------------------------------------------------------
+
+
+def test_les_codes_faux_sont_limites(porte_fermee):
+    """Un 401 n'était compté nulle part : 50 codes faux donnaient 50 × 401, et un code
+    dit de vive voix se devinait par dictionnaire à la vitesse du réseau."""
+    client = TestClient(app)
+    for n in range(securite.ESSAIS_PAR_FENETRE):
+        assert client.get("/api/entreprise", headers={"X-Acces": f"essai-{n}"}).status_code == 401
+
+    assert client.get("/api/entreprise", headers={"X-Acces": "essai-suivant"}).status_code == 429
+    # Le bon code est refusé lui aussi : sinon il se reconnaîtrait au seul fait de passer.
+    assert client.get("/api/entreprise", headers={"X-Acces": CODE}).status_code == 429
+
+
+async def test_health_ne_sert_pas_d_oracle(porte_fermee):
+    """/health dit si un code est bon. Ses essais sont comptés comme les autres, et
+    une adresse qui les a épuisés n'apprend plus rien — bon code compris."""
+    attaquant = "198.51.100.66"
+    for n in range(securite.ESSAIS_PAR_FENETRE):
+        assert (await health(requete({"X-Acces": f"essai-{n}"}, ip=attaquant)))["acces"] == "requis"
+
+    bloque = await health(requete({"X-Acces": CODE}, ip=attaquant))
+    assert bloque.status_code == 429
+    assert b'"acces":"requis"' in bloque.body        # la page lit toujours « requis »
+
+    # Les autres adresses ne sont pas touchées, et le healthcheck, qui n'envoie pas de
+    # code, n'est jamais compté ni refusé.
+    assert (await health(requete({"X-Acces": CODE}, ip="203.0.113.50")))["acces"] == "ouvert"
+    assert await health(requete(ip=attaquant)) == {"status": "ok", "acces": "requis"}
+
+
+def test_l_absence_de_code_n_est_pas_un_essai(porte_fermee):
+    """La première visite et le healthcheck arrivent sans code : les compter bloquerait
+    un artisan avant même qu'il ait tapé quoi que ce soit."""
+    client = TestClient(app)
+    for _ in range(securite.ESSAIS_PAR_FENETRE + 5):
+        assert client.get("/api/entreprise").status_code == 401
+    assert client.get("/health", headers={"X-Acces": CODE}).json()["acces"] == "ouvert"
+
+
+# ---------------------------------------------------------------------------
 # Le débit
 # ---------------------------------------------------------------------------
 
