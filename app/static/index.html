@@ -933,6 +933,16 @@
             <label for="e-assurance_police">N° de police</label>
             <input id="e-assurance_police" class="num">
           </div>
+          <!-- La loi demande les coordonnées de l'assureur et la zone couverte, sur chaque
+               devis. Pas d'exemple en substitution : il se lirait comme une réponse. -->
+          <div class="champ champ--large">
+            <label for="e-assurance_coordonnees">Adresse de l'assureur</label>
+            <input id="e-assurance_coordonnees" autocomplete="off">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-assurance_couverture">Couverture géographique <span class="champ__note">telle qu'écrite au contrat</span></label>
+            <input id="e-assurance_couverture" autocomplete="off">
+          </div>
           <div class="champ champ--large">
             <label for="e-iban">IBAN <span class="champ__note">pour l'acompte</span></label>
             <input id="e-iban" class="num" autocomplete="off">

@@ -105,6 +105,10 @@ class Entreprise(BaseModel):
     # Ajoutés après coup, tous avec une valeur par défaut : une identité gardée dans un
     # navigateur, ou un devis établi avant leur ajout, reste valide.
     franchise_tva: bool = False  # franchise en base, art. 293 B du CGI : aucune TVA facturée
+    # L'assurance décennale se décrit en entier sur le devis (loi 96-603, art. 22-2) :
+    # l'assureur, ses coordonnées, et la zone que couvre le contrat, telle que saisie.
+    assurance_coordonnees: str = ""
+    assurance_couverture: str = ""
 
 
 class Client(BaseModel):

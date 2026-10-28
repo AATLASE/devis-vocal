@@ -30,6 +30,7 @@ from app.entreprise import (
 )
 from app.models import DevisExtraction, Entreprise, to_devis
 from app.pdf import render_html
+from app.templates import _texte_rendu
 
 # SARL DUPONT PLOMBERIE, relevée dans la base publique — un vrai numéro, donc une vraie
 # clé de contrôle. Un numéro inventé passerait à côté de ce que le test vérifie.
@@ -349,10 +350,29 @@ def test_le_devis_imprime_a_completer_plutot_qu_une_valeur_factice():
     assert "SARL DUPONT PLOMBERIE" in html
     assert "Téléphone à compléter" in html
     assert "Décennale à compléter n° à compléter" in html
-    assert "assurée auprès de assureur à compléter, police n° à compléter" in html
+    # Sans assureur, la mention n'affirme plus que l'entreprise est assurée.
+    assert "assurée" not in html
+    assert ("assureur, coordonnées de l'assureur, n° de police et couverture géographique "
+            "à compléter") in _texte_rendu(html)
     for factice in ("00 00 00 00 00", "contact@example.com", "Assureur à renseigner",
-                    "000 000 000", "Bâti Rénov"):
+                    "000 000 000", "Bâti Rénov", "territoire français métropolitain"):
         assert factice not in html, factice
+
+
+def test_l_assurance_s_imprime_telle_que_saisie():
+    """Coordonnées de l'assureur et couverture géographique (loi 96-603, art. 22-2) : ce
+    que l'artisan a saisi, et rien d'écrit en dur à leur place."""
+    extraction = DevisExtraction.model_validate_json(
+        (Path(__file__).parent / "fixtures" / "plomberie.json").read_text(encoding="utf-8"))
+    saisie = DEPUIS_L_ANNUAIRE.model_copy(update={
+        "assurance": "MAAF Pro", "assurance_police": "PRO-12345",
+        "assurance_coordonnees": "Chaban, 79180 Chauray", "assurance_couverture": "Occitanie",
+    })
+    texte = _texte_rendu(render_html(to_devis(extraction, entreprise=saisie.fusionner(FACTICE))))
+
+    assert "auprès de maaf pro, chaban, 79180 chauray, police n° pro-12345" in texte
+    assert "couverture géographique du contrat : occitanie" in texte
+    assert "métropolitain" not in texte
 
 
 async def test_recherche_trop_courte_n_appelle_pas_le_reseau():

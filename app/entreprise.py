@@ -385,6 +385,8 @@ class EntrepriseSaisie(BaseModel):
     assurance_police: str | None = None
     iban: str | None = None
     franchise_tva: bool = False
+    assurance_coordonnees: str | None = None
+    assurance_couverture: str | None = None
 
     def fusionner(self, defaut: Entreprise) -> Entreprise:
         """L'identité saisie, sans rien emprunter à celle du serveur.

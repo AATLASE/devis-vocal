@@ -299,9 +299,18 @@
     </div>
     <div class="doc-mention">
       <h4>Assurance décennale</h4>
-      <p>Entreprise assurée auprès de {{ e.assurance or 'assureur à compléter' }}, police n° {{ e.assurance_police or 'à compléter' }},
-      au titre de la responsabilité décennale, pour les travaux réalisés sur l'ensemble du
-      territoire français métropolitain.</p>
+      {#- Tout tel que saisi (loi 96-603, art. 22-2) : la couverture géographique se lit
+          dans le contrat de l'artisan, elle ne se suppose pas. Sans assureur, la phrase
+          n'affirme pas que l'entreprise est assurée. #}
+      {%- if e.assurance %}
+      <p>Entreprise assurée au titre de la responsabilité civile décennale auprès de
+      {{ e.assurance }}, {{ e.assurance_coordonnees or "coordonnées de l'assureur à compléter" }},
+      police n° {{ e.assurance_police or 'à compléter' }}. Couverture géographique du
+      contrat : {{ e.assurance_couverture or 'à compléter' }}.</p>
+      {%- else %}
+      <p>Assurance de responsabilité civile décennale : assureur, coordonnées de l'assureur,
+      n° de police et couverture géographique à compléter.</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Médiation de la consommation</h4>

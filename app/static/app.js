@@ -1984,6 +1984,7 @@ const CHAMPS_ENTREPRISE = [
   'nom', 'forme_juridique', 'metier', 'adresse', 'code_postal_ville',
   'telephone', 'email', 'siret', 'code_ape', 'tva_intracom',
   'assurance', 'assurance_police', 'iban',
+  'assurance_coordonnees', 'assurance_couverture',
 ];
 
 const CLE_ENTREPRISE = 'devis-vocal.entreprise';
@@ -2030,6 +2031,8 @@ const MENTIONS_REQUISES = [
   ['email', 'e-mail'],
   ['assurance', 'assurance décennale'],
   ['assurance_police', 'n° de police'],
+  ['assurance_coordonnees', 'adresse de l’assureur'],
+  ['assurance_couverture', 'couverture géographique'],
 ];
 
 /* En franchise de TVA, le devis n'imprime pas de numéro de TVA : le réclamer
