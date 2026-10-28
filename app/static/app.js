@@ -40,6 +40,11 @@ function noeud(balise, classe, texte) {
 /* ---- état -------------------------------------------------------------- */
 
 let devisCourant = null;
+// Le taux de TVA d'un devis qui sort du modèle est déduit du vocal, et le PDF en tire
+// une attestation juridique. Il reste signalé « à confirmer » tant que l'artisan n'est
+// pas passé par l'édition, où le sélecteur de taux est sous ses yeux. Rien de calculé
+// ici : c'est un signal d'écran, le serveur ne garde rien.
+let tvaAConfirmer = false;
 // Le vocal et la transcription survivent à l'échec de l'étape qui les suit. C'est ce
 // qui permet de rejouer la seule étape qui a raté, au lieu de renvoyer l'artisan
 // dicter — et il n'y a aucune raison de le faire reparler quand le fournisseur de
@@ -90,6 +95,7 @@ function reinitialiser() {
   fermerEdition();
   leverGardeHistorique();
   devisCourant = null;
+  tvaAConfirmer = false;
   devisEnvoye = false;
   pdfPret = null;
   vocalCourant = null;
@@ -921,6 +927,8 @@ async function lancer(fichier, texte, dureeSecondes) {
 
     devisCourant = await chiffrer(transcription);
     devisEnvoye = false;
+    // En franchise, il n'y a pas de taux à confirmer : c'est le régime de l'entreprise.
+    tvaAConfirmer = !(devisCourant.entreprise && devisCourant.entreprise.franchise_tva);
     peindreEtapes(2);
 
     await devoilement;
@@ -962,8 +970,8 @@ function peindreRelecture(d) {
   $('rel-numero').textContent = 'Devis n° ' + d.numero;
   $('rel-objet').textContent = d.type_travaux || 'Travaux à préciser';
   $('rel-client').textContent =
-    [d.client.nom, d.client.adresse, d.client.telephone].filter(Boolean).join(' · ') ||
-    'Client à compléter';
+    ([d.client.nom, d.client.adresse, d.client.telephone].filter(Boolean).join(' · ') ||
+     'Client à compléter') + (d.client.professionnel ? ' · professionnel' : ' · particulier');
 
   $('rel-duree').textContent =
     'Transcription de la note vocale' + (dureeVocal ? ' · ' + dureeVocal : '');
@@ -971,7 +979,7 @@ function peindreRelecture(d) {
 
   const aValider = d.lignes.filter((l) => l.a_valider).length;
   $('rel-compte').textContent = aValider === 0
-    ? 'Tous les prix ont été dictés'
+    ? 'Toutes les lignes ont été dictées'
     : `${aValider} ligne${aValider > 1 ? 's' : ''} sur ${d.lignes.length} ${aValider > 1 ? 'sont' : 'est'} à valider`;
 
   const lignes = $('rel-lignes');
@@ -989,7 +997,8 @@ function rangDeLigne(l) {
   if (l.detail) gauche.append(noeud('div', 'table__detail', l.detail));
   // Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
   // alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche.
-  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Prix estimé · à valider'));
+  // La quantité autant que le prix : un métrage non dicté est estimé lui aussi.
+  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Quantité ou prix estimé · à vérifier'));
 
   // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
   // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
@@ -1030,16 +1039,25 @@ function peindreTotaux(d) {
     return el;
   };
 
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
   totaux.append(
     rang('totaux__row', 'Total HT', euro(d.total_ht), true),
-    rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
-    rang('totaux__ttc', 'Total TTC', euro(d.total_ttc), false),
+    franchise
+      ? rang('totaux__row', 'TVA non applicable · art. 293 B', '—', false)
+      : rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
+    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), false),
     rang('totaux__acompte', `Acompte ${pourcent(d.acompte_pct)}${NB}%`, euro(d.montant_acompte), true),
   );
 
   if (Number(d.total_ht_estime) > 0) {
     totaux.append(noeud('div', 'totaux__note',
-      `Dont ${euro(d.total_ht_estime)} de prix estimés. Relisez ces lignes avant l'envoi.`));
+      `Dont ${euro(d.total_ht_estime)} sur des lignes estimées, en quantité ou en prix. ` +
+      'Relisez-les avant l’envoi.'));
+  }
+  if (tvaAConfirmer && !franchise) {
+    totaux.append(noeud('div', 'totaux__note',
+      `TVA à ${pourcent(d.taux_tva)}${NB}% choisie automatiquement d'après le vocal. ` +
+      'Le devis atteste ce taux : confirmez-le dans Modifier.'));
   }
 }
 
@@ -1123,18 +1141,19 @@ function editeurDeLigne(l) {
     champEdition('champ--detail', 'Détail (facultatif)', detail),
   );
 
-  // Un prix estimé le reste tant que l'artisan ne l'a pas pris à son compte. Taper
-  // un prix, c'est le prendre : la case se coche d'elle-même. La laisser vide,
-  // c'est garder la mention « estimé » sur le PDF — elle ne disparaît jamais seule.
+  // Une ligne estimée le reste tant que l'artisan ne l'a pas prise à son compte, et
+  // seule la case le dit. Elle ne se coche pas toute seule quand il retouche le prix :
+  // l'estimation porte souvent sur la quantité, et corriger l'un ne vérifie pas
+  // l'autre. Laisser la case vide, c'est garder la mention « estimé » sur le PDF.
   if (l.a_valider) {
     rang.classList.add('est-estimee');
     const verifie = noeud('input');
     verifie.type = 'checkbox';
     verifie.dataset.cle = 'verifie';
     const etiquette = noeud('label', 'ligne-ed__prix');
-    etiquette.append(verifie, document.createTextNode('Prix estimé · cocher une fois vérifié'));
+    etiquette.append(verifie,
+      document.createTextNode('Quantité ou prix estimé · cocher une fois les deux vérifiés'));
     rang.append(etiquette);
-    prix.addEventListener('input', () => { verifie.checked = true; });
   }
   return rang;
 }
@@ -1193,9 +1212,22 @@ function ouvrirEdition() {
   $('ed-client-nom').value = d.client.nom || '';
   $('ed-client-adresse').value = d.client.adresse || '';
   $('ed-client-telephone').value = d.client.telephone || '';
+  $('ed-client-type').value = d.client.professionnel ? 'professionnel' : 'particulier';
   $('ed-objet').value = d.type_travaux || '';
+  $('ed-chantier').value = d.client.adresse_chantier || '';
   $('ed-duree').value = d.duree_estimee || '';
-  $('ed-tva').value = Number(d.taux_tva) > 0.15 ? '0.20' : '0.10';
+  $('ed-debut').value = d.debut_travaux || '';
+  // En franchise, le taux n'est pas un choix : le sélecteur montre le régime et se
+  // fige. Le serveur l'applique de toute façon, quel que soit le taux envoyé.
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  $('ed-tva-franchise').hidden = $('ed-tva-franchise').disabled = !franchise;
+  $('ed-tva').disabled = franchise;
+  $('ed-tva').value = franchise ? '0'
+    : Number(d.taux_tva) > 0.15 ? '0.20'
+    : Number(d.taux_tva) < 0.08 ? '0.055' : '0.10';
+  $('ed-tva-aide').textContent = tvaAConfirmer
+    ? 'Choisi automatiquement d’après le vocal : vérifiez-le, le devis l’atteste.'
+    : '';
   $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
   $('ed-notes').value = d.notes.join('\n');
   $('ed-erreur').textContent = '';
@@ -1227,9 +1259,12 @@ async function validerEdition(e) {
       nom: $('ed-client-nom').value,
       adresse: $('ed-client-adresse').value,
       telephone: $('ed-client-telephone').value,
+      professionnel: $('ed-client-type').value === 'professionnel',
+      adresse_chantier: $('ed-chantier').value,
     },
     type_travaux: $('ed-objet').value,
     duree_estimee: $('ed-duree').value,
+    debut_travaux: $('ed-debut').value,
     taux_tva: $('ed-tva').value,
     lignes,
     notes: $('ed-notes').value.split('\n').map((n) => n.trim()).filter(Boolean),
@@ -1258,6 +1293,7 @@ async function validerEdition(e) {
   }
 
   devisEnvoye = false;   // le devis a changé : celui qui est parti n'est plus celui-ci
+  tvaAConfirmer = false; // le taux a été validé avec le sélecteur sous les yeux
   fermerEdition();
   peindreRelecture(devisCourant);
   // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
@@ -1373,6 +1409,9 @@ async function chercherClientPro(requete) {
 function choisirClientPro(e) {
   $('ed-client-nom').value = e.nom;
   $('ed-client-adresse').value = [e.adresse, e.code_postal_ville].filter(Boolean).join(', ');
+  // Trouvé dans l'annuaire, c'est une entreprise. L'artisan peut revenir sur ce choix :
+  // une petite entreprise qui commande hors de son métier garde les droits du particulier.
+  $('ed-client-type').value = 'professionnel';
   $('ed-pro-recherche').value = '';
   $('ed-pro-resultats').hidden = true;
   $('ed-pro-etat').textContent = 'Rempli depuis l’annuaire. Ajoutez le téléphone si vous l’avez.';
@@ -1952,6 +1991,8 @@ const CHAMPS_ENTREPRISE = [
   'nom', 'forme_juridique', 'metier', 'adresse', 'code_postal_ville',
   'telephone', 'email', 'siret', 'code_ape', 'tva_intracom',
   'assurance', 'assurance_police', 'iban',
+  'assurance_coordonnees', 'assurance_couverture', 'mediateur', 'mediateur_site',
+  'immatriculation',
 ];
 
 const CLE_ENTREPRISE = 'devis-vocal.entreprise';
@@ -1993,14 +2034,22 @@ const MENTIONS_REQUISES = [
   ['adresse', 'adresse'],
   ['code_postal_ville', 'code postal et ville'],
   ['siret', 'SIRET'],
+  ['immatriculation', 'immatriculation (RCS ou RM)'],
   ['tva_intracom', 'n° de TVA'],
   ['telephone', 'téléphone'],
   ['email', 'e-mail'],
   ['assurance', 'assurance décennale'],
   ['assurance_police', 'n° de police'],
+  ['assurance_coordonnees', 'adresse de l’assureur'],
+  ['assurance_couverture', 'couverture géographique'],
+  ['mediateur', 'médiateur de la consommation'],
+  ['mediateur_site', 'site du médiateur'],
 ];
 
+/* En franchise de TVA, le devis n'imprime pas de numéro de TVA : le réclamer
+   enverrait l'artisan chercher un numéro qu'il n'a pas à porter. */
 const manquantes = (e) => MENTIONS_REQUISES.filter(([champ]) =>
+  !(champ === 'tva_intracom' && e.franchise_tva) &&
   !(typeof e[champ] === 'string' && e[champ].trim()));
 
 /* La ligne d'accueil. Tant que l'identité manque ou reste incomplète, elle porte
@@ -2013,8 +2062,12 @@ function peindreIdentite() {
   $('identite').classList.toggle('est-vide', !complete);
   $('identite-label').textContent = remplie ? 'Devis établis au nom de' : 'Votre entreprise';
   $('identite-nom').textContent = remplie ? entrepriseCourante.nom : 'à renseigner';
-  $('identite-manque').textContent = manque.length ? 'À compléter : ' + manque.join(', ') : '';
-  $('identite-manque').hidden = manque.length === 0;
+  // Sans identité, le devis sort sur celle de la configuration, barré « spécimen » :
+  // on peut essayer l'outil, pas envoyer ce document à un client.
+  $('identite-manque').textContent = !remplie
+    ? 'Sans elle, vos devis sortent marqués « spécimen ».'
+    : manque.length ? 'À compléter : ' + manque.join(', ') : '';
+  $('identite-manque').hidden = remplie && manque.length === 0;
   $('identite-action').textContent = complete ? 'Modifier' : remplie ? 'Compléter' : 'Renseigner';
 }
 
@@ -2023,6 +2076,8 @@ function remplirFormulaire(entreprise) {
     const el = $('e-' + champ);
     if (el) el.value = (entreprise && entreprise[champ]) || '';
   });
+  // Le régime de TVA n'est pas un texte : un oui ou un non, absent valant non.
+  $('e-franchise_tva').value = entreprise && entreprise.franchise_tva ? 'oui' : 'non';
 }
 
 function lireFormulaire() {
@@ -2031,6 +2086,7 @@ function lireFormulaire() {
     const el = $('e-' + champ);
     entreprise[champ] = el ? el.value.trim() : '';
   });
+  entreprise.franchise_tva = $('e-franchise_tva').value === 'oui';
   return entreprise;
 }
 
@@ -2151,6 +2207,11 @@ function signalerCapital() {
   if (societe && capitalAbsent) {
     aide.textContent = 'Ajoutez le capital social : mention obligatoire pour une société.';
     aide.classList.add('est-faux');
+  } else if (/individuel/i.test(forme) && $('e-franchise_tva').value !== 'oui') {
+    // L'annuaire calcule un n° de TVA pour toute entreprise : rien n'y dit qu'une
+    // micro-entreprise ne la facture pas. On pose la question, sans trancher.
+    aide.textContent = 'Micro-entreprise sans TVA ? Choisissez « Franchise en base » plus bas.';
+    aide.classList.remove('est-faux');
   } else {
     aide.textContent = '';
     aide.classList.remove('est-faux');
@@ -2200,6 +2261,7 @@ $('btn-entreprise-oublier').addEventListener('click', () => {
 });
 
 $('e-forme_juridique').addEventListener('blur', signalerCapital);
+$('e-franchise_tva').addEventListener('change', signalerCapital);
 
 $('entreprise-bascule').addEventListener('click', () =>
   $('entreprise-formulaire').classList.toggle('is-open'));

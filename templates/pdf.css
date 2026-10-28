@@ -206,6 +206,53 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   font-size: 10px; color: var(--dv-muted);
 }
 
+/* Le filigrane du devis établi sur l'identité de démonstration. Hors du flux, il ne
+   déplace rien : la pagination ne le voit pas. Le cadre coupe ce qui dépasse, sinon la
+   diagonale élargirait la page. */
+.page { position: relative; }
+.doc-specimen {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.doc-specimen span {
+  transform: rotate(-35deg);
+  font-family: var(--dv-serif); font-size: 140px; font-weight: 700;
+  letter-spacing: .08em; text-transform: uppercase;
+  color: var(--dv-accent); opacity: .13;
+}
+
+/* Des observations trop longues pour tenir à côté des totaux : elles ont leur page,
+   en pleine largeur, entre le tableau et la clôture. */
+.doc-suite-observations { margin-top: 22px; }
+
+/* Client particulier : la case de la demande d'exécution anticipée (art. L221-25),
+   dessinée plutôt que tapée — les polices du document n'ont pas le glyphe ☐, et la
+   police de repli varie d'une machine à l'autre. */
+.doc-accord__case { margin-top: 8px; }
+.doc-case {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border: 1px solid var(--dv-ink); vertical-align: -1px;
+}
+
+/* Le formulaire type de rétractation, à découper : un trait tireté le sépare des
+   conditions. Les lignes à remplir sont tracées en pointillés jusqu'à la marge. */
+.doc-retractation {
+  margin-top: 4px; padding-top: 14px; border-top: 1px dashed var(--dv-rule-strong);
+}
+.doc-retractation h4 {
+  margin: 0 0 6px;
+  font-family: var(--dv-mono); font-size: 8.5px; font-weight: 400;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dv-accent);
+}
+.doc-retractation p { margin: 0 0 7px; font-size: 9.5px; line-height: 1.6; color: var(--dv-text); }
+.doc-retractation__consigne { color: var(--dv-muted); }
+.doc-retractation__champ { display: flex; gap: 6px; }
+.doc-retractation__champ::after {
+  content: ""; flex: 1; border-bottom: 1px dotted var(--dv-rule-strong); margin-bottom: 3px;
+}
+.doc-retractation__ligne { height: 14px; margin: 0 0 9px; border-bottom: 1px dotted var(--dv-rule-strong); }
+.doc-retractation__signature { margin-bottom: 34px; }  /* la place de signer */
+
 /* Devis sans aucune ligne chiffrable. Le parcours n'y mène pas — le produit
    refuse d'établir le devis — mais le template ne doit pas casser pour autant. */
 .doc-table__vide {

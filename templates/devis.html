@@ -29,6 +29,12 @@
   </header>
 {%- endmacro -%}
 
+{#- L'identité de la configuration n'est pas celle de l'artisan : en travers de
+    chaque page, sans rien déplacer — le filigrane est hors du flux. #}
+{%- macro filigrane() -%}
+  {%- if specimen %}<div class="doc-specimen" aria-hidden="true"><span>Spécimen</span></div>{% endif -%}
+{%- endmacro -%}
+
 {%- macro pied_courant(numero) -%}
   <footer class="doc-runfoot">
     <div>{{ e.nom }} · Devis {{ devis.numero }}</div>
@@ -38,8 +44,9 @@
 
 {%- macro note_dague() -%}
   {%- if devis.a_des_prix_estimes -%}
-  <p class="doc-note">† Prix non dicté lors de la prise de mesure, estimé d'après les
-  tarifs pratiqués par l'entreprise. Ces montants sont à confirmer avant signature.</p>
+  {#- La quantité comme le prix : le modèle estime aussi un métrage qui n'a pas été dit. #}
+  <p class="doc-note">† Ligne estimée : quantité ou prix unitaire non dicté lors de la prise
+  de mesure. Montant à confirmer avant signature.</p>
   {%- endif -%}
 {%- endmacro -%}
 
@@ -71,10 +78,12 @@
 {%- macro cloture() -%}
   <section class="doc-foot">
     <div>
-      {%- if devis.notes %}
+      {#- `notes_cloture` et pas `devis.notes` : des observations trop longues pour tenir
+          à côté des totaux ont leurs propres pages, voir plus bas. #}
+      {%- if notes_cloture %}
       <div class="doc-label">Observations</div>
       <div class="doc-observations">
-        {%- for note in devis.notes %}
+        {%- for note in notes_cloture %}
         <div class="doc-observation"><em>—</em><p>{{ note }}</p></div>
         {%- endfor %}
       </div>
@@ -82,10 +91,19 @@
     </div>
     <div class="doc-totaux">
       <div><span>Total HT</span><span class="num">{{ devis.total_ht | euro }}</span></div>
+      {%- if e.franchise_tva %}
+      {#- Une entreprise en franchise ne facture pas de TVA : une ligne « TVA 0 % » se
+          lirait comme un taux, la mention dit le régime. #}
+      <div><span>TVA non applicable, art. 293 B du CGI</span></div>
+      <div class="ttc"><span>Net à payer</span><span>{{ devis.total_ttc | euro }}</span></div>
+      {%- else %}
       <div><span>TVA {{ devis.taux_tva_libelle }}&#8239;%</span><span class="num">{{ devis.montant_tva | euro }}</span></div>
       <div class="ttc"><span>Total TTC</span><span>{{ devis.total_ttc | euro }}</span></div>
+      {%- endif %}
       <div class="acompte">
-        <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% à la commande</span>
+        {#- Chez un particulier, aucun paiement avant sept jours (art. L221-10 du Code de
+            la consommation) : « à la commande » y réclamerait un acompte interdit. #}
+        <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% {{ 'à la commande' if devis.client.professionnel else 'après 7 jours' }}</span>
         <span class="num">{{ devis.montant_acompte | euro }}</span>
       </div>
     </div>
@@ -98,7 +116,16 @@
       <h3>Bon pour accord</h3>
       <p>Date et signature du client, précédées de la mention manuscrite
       « Bon pour accord, devis reçu avant l'exécution des travaux ».</p>
-      <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / {{ devis.date_emission.year }}</div>
+      {%- if not devis.client.professionnel %}
+      {#- La demande expresse de l'article L221-25 : sans elle, un client qui se rétracte
+          ne doit rien pour les travaux déjà faits. Ses suites sont sur la page des
+          conditions, avec le droit de rétractation. #}
+      <p class="doc-accord__case"><span class="doc-case"></span>Je demande que les travaux commencent avant la fin
+      du délai de rétractation (art. L221-25 du Code de la consommation).</p>
+      {%- endif %}
+      {#- L'année aussi reste en blanc : un devis émis en décembre se signe souvent en
+          janvier, et une année pré-imprimée antidaterait l'acceptation. #}
+      <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / ………</div>
     </div>
     <div class="doc-accord__sign">
       <div class="doc-label">Signature</div>
@@ -113,6 +140,7 @@
 {%- for bloc in pages %}
 {%- set cloture_ici = loop.last and cloture_sur_derniere %}
 <article class="page">
+  {{ filigrane() }}
   {%- if loop.first %}
 
   <header class="doc-head">
@@ -128,8 +156,12 @@
         {{ e.telephone or 'Téléphone à compléter' }} · {{ e.email or 'e-mail à compléter' }}
       </div>
       <div class="doc-head__legal">
-        SIRET {{ e.siret or 'à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
-        TVA {{ e.tva_intracom or 'à compléter' }}<br>
+        {#- L'immatriculation (RCS et ville du greffe, ou répertoire des métiers) n'est
+            dans aucun champ de l'annuaire : c'est l'artisan qui la saisit. #}
+        SIRET {{ e.siret or 'à compléter' }} · {{ e.immatriculation or 'immatriculation à compléter' }}{% if e.code_ape %} · APE {{ e.code_ape }}{% endif %}<br>
+        {#- En franchise, pas de numéro de TVA : l'annuaire en calcule un pour toute
+            entreprise, y compris celle qui n'est pas redevable de la taxe. #}
+        {% if e.franchise_tva %}TVA non applicable, art. 293 B du CGI{% else %}TVA {{ e.tva_intracom or 'à compléter' }}{% endif %}<br>
         Décennale {{ e.assurance or 'à compléter' }} n° {{ e.assurance_police or 'à compléter' }}
       </div>
     </div>
@@ -142,6 +174,10 @@
         {%- if devis.duree_estimee %}
         <div><span>Durée estimée</span><span>{{ devis.duree_estimee }}</span></div>
         {%- endif %}
+        {#- La date ou le délai d'exécution est une mention due (art. L111-1 du Code de la
+            consommation), et une durée ne dit pas quand. Rien de dicté : une ligne à
+            remplir à la main, jamais une date inventée. #}
+        <div><span>Début des travaux</span><span>{{ devis.debut_travaux or '…………………………' }}</span></div>
       </div>
     </div>
   </header>
@@ -159,7 +195,8 @@
       <div class="doc-label">Objet des travaux</div>
       <p>
         {{ devis.type_travaux or 'Nature des travaux à préciser' }}.
-        {%- if devis.taux_tva == taux_reduit %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
+        {%- if devis.client.adresse_chantier %}<br>Chantier : {{ devis.client.adresse_chantier }}{% endif %}
+        {%- if devis.taux_tva in (taux_reduit, taux_renovation_energetique) %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
       </p>
     </div>
   </section>
@@ -188,10 +225,30 @@
 </article>
 {%- endfor %}
 
+{# ---- observations trop longues pour la clôture, en pleine largeur ----- #}
+
+{%- for tranche in pages_observations %}
+<article class="page">
+  {{ filigrane() }}
+  {{ entete_courante('Devis ' ~ devis.numero ~ ' · observations') }}
+  <section class="doc-suite-observations">
+    <div class="doc-label">Observations</div>
+    <div class="doc-observations">
+      {%- for note in tranche %}
+      <div class="doc-observation"><em>—</em><p>{{ note }}</p></div>
+      {%- endfor %}
+    </div>
+  </section>
+  <div class="push"></div>
+  {{ pied_courant(pages | length + loop.index) }}
+</article>
+{%- endfor %}
+
 {# ---- page de clôture, quand elle ne tient pas sous le tableau --------- #}
 
 {%- if not cloture_sur_derniere %}
 <article class="page">
+  {{ filigrane() }}
   {{ entete_courante('Devis ' ~ devis.numero ~ ' · récapitulatif') }}
   <section style="margin-top:22px">{{ note_dague() }}</section>
   {{ cloture() }}
@@ -200,13 +257,14 @@
       le pied de page descend. #}
   <section style="padding-top:34px">{{ bon_pour_accord() }}</section>
   <div class="push"></div>
-  {{ pied_courant(pages | length + 1) }}
+  {{ pied_courant(pages | length + pages_observations | length + 1) }}
 </article>
 {%- endif %}
 
 {# ---- mentions légales, toujours seules sur la dernière page ----------- #}
 
 <article class="page">
+  {{ filigrane() }}
   {{ entete_courante('Conditions générales') }}
 
   <h2 style="font-family:var(--dv-serif);font-size:19px;font-weight:600;margin:26px 0 20px">Mentions légales et conditions</h2>
@@ -220,9 +278,15 @@
     </div>
     <div class="doc-mention">
       <h4>Conditions de règlement</h4>
+      {%- if devis.client.professionnel %}
       <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;% à la commande, soit
       {{ devis.montant_acompte | euro }}, solde à la réception des travaux. Règlement par
-      virement ou par chèque à 30 jours. Aucun escompte n'est accordé pour paiement anticipé.</p>
+      {%- else %}
+      <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;%, soit {{ devis.montant_acompte | euro }},
+      exigible après 7 jours à compter de la signature du devis (art. L221-10 du Code de la
+      consommation), solde à la réception des travaux. Règlement par
+      {%- endif %}
+      virement ou par chèque. Aucun escompte n'est accordé pour paiement anticipé.</p>
       {#- Le paragraphe ci-dessus demande un virement : sans coordonnées bancaires, il
           demande au client de deviner où payer. L'IBAN n'apparaît que s'il est réellement
           renseigné — un RIB à zéros serait pire que pas de RIB du tout. #}
@@ -232,42 +296,77 @@
     </div>
     <div class="doc-mention">
       <h4>Pénalités de retard</h4>
+      {#- Le taux BCE majoré et l'indemnité de 40 € ne valent qu'entre professionnels. Face
+          à un particulier, c'est le droit commun : l'intérêt au taux légal. #}
+      {%- if devis.client.professionnel %}
       <p>En cas de retard de paiement, des pénalités au taux d'intérêt appliqué par la Banque
       centrale européenne à son opération de refinancement la plus récente, majoré de dix
       points, seront exigibles sans mise en demeure préalable, ainsi qu'une indemnité
       forfaitaire de 40&#8239;€ pour frais de recouvrement (art. L441-10 et D441-5 du Code de
       commerce).</p>
+      {%- else %}
+      <p>En cas de retard de paiement, les sommes dues porteront intérêt au taux légal à
+      compter de la mise en demeure (art. 1231-6 du Code civil).</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Taux de TVA</h4>
-      {%- if devis.taux_tva == taux_reduit %}
+      {%- if e.franchise_tva %}
+      <p>TVA non applicable, art. 293 B du CGI. L'entreprise relève de la franchise en
+      base de TVA : les montants du présent devis s'entendent sans TVA.</p>
+      {%- elif devis.taux_tva == taux_renovation_energetique %}
+      <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
+      l'article 278-0 bis A du Code général des impôts, les travaux portant sur l'amélioration
+      de la qualité énergétique d'un local à usage d'habitation achevé depuis plus de deux ans.
+      En signant le présent devis, le client atteste que ces conditions sont remplies.</p>
+      {%- elif devis.taux_tva == taux_reduit %}
       <p>TVA au taux réduit de {{ devis.taux_tva_libelle }}&#8239;% appliquée conformément à
       l'article 279-0 bis du Code général des impôts, les travaux portant sur un local à usage
       d'habitation achevé depuis plus de deux ans. En signant le présent devis, le client
       atteste que cette condition est remplie.</p>
       {%- else %}
       <p>TVA au taux normal de {{ devis.taux_tva_libelle }}&#8239;%, les travaux ne relevant
-      pas des cas d'application du taux réduit prévus à l'article 279-0 bis du Code général
+      pas des taux réduits prévus aux articles 278-0 bis A et 279-0 bis du Code général
       des impôts.</p>
       {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Droit de rétractation</h4>
-      <p>Pour tout contrat conclu hors établissement, le client dispose d'un délai de quatorze
-      (14) jours à compter de la signature pour exercer son droit de rétractation, conformément
-      à l'article L221-18 du Code de la consommation.</p>
+      {%- if devis.client.professionnel %}
+      <p>Le client professionnel ne bénéficie du droit de rétractation que dans les cas
+      prévus à l'article L221-3 du Code de la consommation.</p>
+      {%- else %}
+      <p>Pour un contrat conclu hors établissement ou à distance, le client dispose d'un délai
+      de quatorze (14) jours à compter de la signature du devis pour se rétracter, sans avoir
+      à se justifier (art. L221-18 du Code de la consommation). Il notifie sa décision au moyen
+      du formulaire ci-dessous ou de toute autre déclaration dénuée d'ambiguïté. S'il a demandé
+      que les travaux commencent avant la fin de ce délai, il doit, en cas de rétractation, un
+      montant proportionné aux travaux exécutés jusqu'à sa décision (art. L221-25).</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Assurance décennale</h4>
-      <p>Entreprise assurée auprès de {{ e.assurance or 'assureur à compléter' }}, police n° {{ e.assurance_police or 'à compléter' }},
-      au titre de la responsabilité décennale, pour les travaux réalisés sur l'ensemble du
-      territoire français métropolitain.</p>
+      {#- Tout tel que saisi (loi 96-603, art. 22-2) : la couverture géographique se lit
+          dans le contrat de l'artisan, elle ne se suppose pas. Sans assureur, la phrase
+          n'affirme pas que l'entreprise est assurée. #}
+      {%- if e.assurance %}
+      <p>Entreprise assurée au titre de la responsabilité civile décennale auprès de
+      {{ e.assurance }}, {{ e.assurance_coordonnees or "coordonnées de l'assureur à compléter" }},
+      police n° {{ e.assurance_police or 'à compléter' }}. Couverture géographique du
+      contrat : {{ e.assurance_couverture or 'à compléter' }}.</p>
+      {%- else %}
+      <p>Assurance de responsabilité civile décennale : assureur, coordonnées de l'assureur,
+      n° de police et couverture géographique à compléter.</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Médiation de la consommation</h4>
+      {#- Nommé, avec son site (art. R616-1) : une phrase sur « le médiateur dont relève
+          l'entreprise » paraît conforme et ne dit au client à qui s'adresser. #}
       <p>En cas de litige n'ayant pas trouvé d'issue amiable, le client peut recourir
-      gratuitement au médiateur de la consommation dont relève l'entreprise, conformément à
-      l'article L612-1 du Code de la consommation.</p>
+      gratuitement au médiateur de la consommation dont relève l'entreprise :
+      {{ e.mediateur or 'médiateur à compléter' }}, {{ e.mediateur_site or 'site internet à compléter' }}
+      (art. L612-1 et R616-1 du Code de la consommation).</p>
     </div>
     <div class="doc-mention">
       <h4>Réserves</h4>
@@ -277,8 +376,31 @@
     </div>
   </section>
 
+  {%- if not devis.client.professionnel %}
+  {#- Le formulaire type de l'annexe à l'article R221-1, texte officiel inchangé. Sans
+      lui, le délai de rétractation est prolongé de douze mois (art. L221-20). Seul
+      l'en-tête « à l'attention de » est rempli : c'est au professionnel de le faire. #}
+  <section class="doc-retractation">
+    <h4>Formulaire de rétractation</h4>
+    <p class="doc-retractation__consigne">(Veuillez compléter et renvoyer le présent formulaire
+    uniquement si vous souhaitez vous rétracter du contrat.)</p>
+    <p>À l'attention de {{ e.nom }}, {{ e.adresse or 'adresse à compléter' }},
+    {{ e.code_postal_ville or 'code postal à compléter' }}{% if e.email %}, {{ e.email }}{% endif %} :</p>
+    <p>Je/nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat
+    portant sur la vente du bien (*)/pour la prestation de services (*) ci-dessous :</p>
+    <div class="doc-retractation__ligne"></div>
+    <p class="doc-retractation__champ">Commandé le (*)/reçu le (*) :</p>
+    <p class="doc-retractation__champ">Nom du (des) consommateur(s) :</p>
+    <p class="doc-retractation__champ">Adresse du (des) consommateur(s) :</p>
+    <p class="doc-retractation__signature">Signature du (des) consommateur(s) (uniquement en cas de
+    notification du présent formulaire sur papier) :</p>
+    <p class="doc-retractation__champ">Date :</p>
+    <p class="doc-retractation__consigne">(*) Rayez la mention inutile.</p>
+  </section>
+  {%- endif %}
+
   <footer class="doc-runfoot doc-runfoot--rule push">
-    <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }} · SIRET {{ e.siret or 'à compléter' }}</div>
+    <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }}{% if e.immatriculation %} · {{ e.immatriculation }}{% endif %} · SIRET {{ e.siret or 'à compléter' }}</div>
     <div>Page {{ total_pages }} / {{ total_pages }}</div>
   </footer>
 </article>

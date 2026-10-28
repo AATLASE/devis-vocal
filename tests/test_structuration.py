@@ -8,7 +8,7 @@ l'œil sur le PDF, pas dans un test.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from app.models import (
     TauxTVA,
     Unite,
     arrondi,
+    heure_de_paris,
     to_devis,
 )
 
@@ -155,6 +156,47 @@ def test_le_libelle_de_tva_est_a_la_francaise():
     assert devis_de("sdb", tva_forcee=Decimal("0.055")).taux_tva_libelle == "5,5"
 
 
+def test_le_taux_de_5_5_pourcent_suggere_est_applique():
+    """Amélioration énergétique (art. 278-0 bis A) : 80 m² d'isolation à 30 € font
+    2 400 € HT, soit 132 € de TVA, et non 240 € au taux de 10 %."""
+    extraction = DevisExtraction(
+        client_nom=None, client_adresse=None, client_telephone=None,
+        type_travaux="Isolation des combles perdus", duree_estimee=None,
+        lignes=[LigneExtraction(designation="Isolation des combles perdus", detail=None,
+                                quantite=80, unite=Unite.M2, prix_unitaire_ht=30,
+                                a_valider=False)],
+        taux_tva_suggere=TauxTVA.ENERGIE, notes=[],
+    )
+    devis = to_devis(extraction, entreprise=ENTREPRISE, maintenant=INSTANT)
+
+    assert devis.taux_tva == Decimal("0.055")
+    assert devis.montant_tva == Decimal("132.00")
+    assert devis.total_ttc == Decimal("2532.00")
+
+
+@pytest.mark.parametrize("tva_forcee", [None, Decimal("0.10"), Decimal("0.20")])
+def test_en_franchise_aucune_tva_n_est_facturee(tva_forcee):
+    """Une micro-entreprise en franchise (art. 293 B du CGI) qui facture la TVA la doit
+    au Trésor. Ni le taux suggéré par le modèle ni un taux forcé ne passent."""
+    franchise = ENTREPRISE.model_copy(update={"franchise_tva": True})
+    devis = to_devis(charge("sdb"), entreprise=franchise, maintenant=INSTANT,
+                     tva_forcee=tva_forcee)
+
+    assert devis.taux_tva == Decimal("0")
+    assert devis.montant_tva == Decimal("0.00")
+    assert devis.total_ttc == devis.total_ht == Decimal("2840.00")
+    assert devis.montant_acompte == arrondi(devis.total_ht * devis.acompte_pct)
+
+
+def test_un_devis_etabli_avant_la_franchise_reste_valide():
+    """Le champ est nouveau : un devis qui fait l'aller-retour sans lui reste lisible,
+    et son entreprise reste assujettie."""
+    brut = devis_de("sdb").model_dump(mode="json")
+    del brut["entreprise"]["franchise_tva"]
+
+    assert Devis.model_validate(brut).entreprise.franchise_tva is False
+
+
 def test_la_validite_decale_la_date():
     devis = devis_de("sdb", validite_jours=45)
     assert devis.date_emission == date(2026, 8, 27)
@@ -163,6 +205,35 @@ def test_la_validite_decale_la_date():
 
 def test_le_numero_est_deterministe():
     assert devis_de("sdb").numero == "DEV-20260827-1432"
+
+
+UTC = timezone.utc
+
+
+@pytest.mark.parametrize("utc, paris", [
+    # Le cas du constat : 1er janvier, 0 h 30 à Paris, 23 h 30 la veille à Greenwich.
+    (datetime(2026, 12, 31, 23, 30, tzinfo=UTC), datetime(2027, 1, 1, 0, 30)),
+    (datetime(2026, 7, 1, 12, 0, tzinfo=UTC), datetime(2026, 7, 1, 14, 0)),
+    # Les deux bascules de 2026 : dimanche 29 mars et dimanche 25 octobre, à 1 h UTC.
+    (datetime(2026, 3, 29, 0, 59, tzinfo=UTC), datetime(2026, 3, 29, 1, 59)),
+    (datetime(2026, 3, 29, 1, 0, tzinfo=UTC), datetime(2026, 3, 29, 3, 0)),
+    (datetime(2026, 10, 25, 0, 59, tzinfo=UTC), datetime(2026, 10, 25, 2, 59)),
+    (datetime(2026, 10, 25, 1, 0, tzinfo=UTC), datetime(2026, 10, 25, 2, 0)),
+])
+def test_l_heure_du_devis_est_celle_de_paris(utc, paris):
+    """Le conteneur tourne en UTC : le numéro et les dates suivaient Greenwich."""
+    assert heure_de_paris(utc) == paris
+
+
+def test_sans_instant_impose_le_devis_est_date_a_l_heure_de_paris(monkeypatch):
+    import app.models
+
+    monkeypatch.setattr(app.models, "heure_de_paris", lambda: datetime(2027, 1, 1, 0, 30))
+    devis = to_devis(charge("sdb"), entreprise=ENTREPRISE)
+
+    assert devis.numero == "DEV-20270101-0030"
+    assert devis.date_emission == date(2027, 1, 1)
+    assert devis.date_validite == date(2027, 1, 31)
 
 
 # ---------------------------------------------------------------------------

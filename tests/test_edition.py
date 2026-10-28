@@ -43,6 +43,7 @@ def corrections_depuis(devis, **remplacements) -> Corrections:
         "client": devis.client.model_dump(),
         "type_travaux": devis.type_travaux,
         "duree_estimee": devis.duree_estimee,
+        "debut_travaux": devis.debut_travaux,
         "taux_tva": str(devis.taux_tva),
         "lignes": [ligne.model_dump(mode="json") for ligne in devis.lignes],
         "notes": devis.notes,
@@ -148,12 +149,21 @@ def test_les_quantites_decimales_restent_exactes():
     ({"quantite": "-2"}, "Ligne 1 : la quantité"),
     ({"prix_unitaire_ht": "-5"}, "Ligne 1 : le prix unitaire"),
     ({"prix_unitaire_ht": "1e12"}, "Ligne 1 : le prix unitaire"),
+    # Une ligne plus haute qu'une page : aucune pagination ne la ferait tenir.
+    ({"detail": "x" * 1001}, "Ligne 1 : le texte dépasse"),
+    ({"designation": "Pose " * 201}, "Ligne 1 : le texte dépasse"),
 ])
 def test_une_ligne_inchiffrable_est_refusee_avec_son_numero(ligne, message):
     devis = devis_sdb()
     base = {"designation": "Pose", "quantite": "1", "unite": "u", "prix_unitaire_ht": "10"}
     with pytest.raises(EditionRefusee, match=message):
         recalculer(devis, corrections_depuis(devis, lignes=[{**base, **ligne}]), max_lignes=60)
+
+
+def test_une_observation_demesuree_est_refusee():
+    devis = devis_sdb()
+    with pytest.raises(EditionRefusee, match="observation dépasse"):
+        recalculer(devis, corrections_depuis(devis, notes=["x" * 1001]), max_lignes=60)
 
 
 def test_un_devis_sans_ligne_ou_trop_long_est_refuse():
@@ -166,8 +176,64 @@ def test_un_devis_sans_ligne_ou_trop_long_est_refuse():
 
 def test_un_taux_de_tva_inconnu_est_refuse():
     devis = devis_sdb()
-    with pytest.raises(EditionRefusee, match="10 % ou 20 %"):
-        recalculer(devis, corrections_depuis(devis, taux_tva="0.055"), max_lignes=60)
+    with pytest.raises(EditionRefusee, match="5,5 %, 10 % ou 20 %"):
+        recalculer(devis, corrections_depuis(devis, taux_tva="0.07"), max_lignes=60)
+
+
+def test_le_taux_de_5_5_pourcent_est_accepte():
+    """Isolation, pompe à chaleur : le taux de l'article 278-0 bis A se choisit à l'écran."""
+    devis = devis_sdb()
+    corrige = recalculer(devis, corrections_depuis(devis, taux_tva="0.055"), max_lignes=60)
+    assert corrige.taux_tva == Decimal("0.055")
+    assert corrige.montant_tva == (devis.total_ht * Decimal("0.055")).quantize(Decimal("0.01"))
+    assert corrige.taux_tva_libelle == "5,5"
+
+
+def test_le_type_de_client_choisi_a_l_ecran_est_garde():
+    """Le modèle ne le dicte pas : c'est l'écran qui dit qu'un client est professionnel,
+    et le recalcul ne doit pas le perdre en route."""
+    devis = devis_sdb()
+    assert devis.client.professionnel is False  # particulier tant qu'on n'a rien dit
+
+    client = {**devis.client.model_dump(), "professionnel": True}
+    corrige = recalculer(devis, corrections_depuis(devis, client=client), max_lignes=60)
+
+    assert corrige.client.professionnel is True
+
+
+def test_le_debut_des_travaux_et_le_chantier_saisis_a_l_ecran_sont_gardes():
+    devis = devis_sdb()
+    client = {**devis.client.model_dump(), "adresse_chantier": " 5 rue X, 69001 Lyon "}
+    corrige = recalculer(devis, corrections_depuis(
+        devis, client=client, debut_travaux=" Semaine du 16 novembre "), max_lignes=60)
+
+    assert corrige.debut_travaux == "Semaine du 16 novembre"
+    assert corrige.client.adresse_chantier == "5 rue X, 69001 Lyon"
+
+    # Vidés par l'artisan, ils redeviennent absents : le devis laisse la ligne en blanc.
+    vide = recalculer(corrige, corrections_depuis(
+        corrige, client={**client, "adresse_chantier": "  "}, debut_travaux=""), max_lignes=60)
+    assert vide.debut_travaux is None and vide.client.adresse_chantier is None
+
+
+def test_un_taux_nul_est_refuse_hors_franchise():
+    """Zéro n'est pas un taux qu'on choisit : c'est le régime d'une entreprise."""
+    devis = devis_sdb()
+    with pytest.raises(EditionRefusee, match="taux de TVA"):
+        recalculer(devis, corrections_depuis(devis, taux_tva="0"), max_lignes=60)
+
+
+@pytest.mark.parametrize("taux", ["0", "0.10", "0.20"])
+def test_en_franchise_le_taux_envoye_est_sans_effet(taux):
+    """L'entreprise en franchise ne facture pas de TVA, quoi que renvoie l'écran."""
+    extraction = DevisExtraction(**json.loads((FIXTURES / "sdb.json").read_text(encoding="utf-8")))
+    franchise = ENTREPRISE.model_copy(update={"franchise_tva": True})
+    devis = to_devis(extraction, entreprise=franchise, maintenant=INSTANT)
+
+    corrige = recalculer(devis, corrections_depuis(devis, taux_tva=taux), max_lignes=60)
+
+    assert corrige.taux_tva == Decimal("0")
+    assert corrige.total_ttc == corrige.total_ht
 
 
 async def test_la_route_rend_le_devis_corrige_et_traduit_les_refus():

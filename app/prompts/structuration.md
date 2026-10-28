@@ -173,6 +173,13 @@ que le client a déjà payée.
 
 ## TVA
 
+Un devis ne porte qu'un seul taux.
+
+- `5.5` quand **tout** le devis porte sur l'amélioration énergétique d'un logement existant :
+  isolation des combles, des murs ou des planchers, pompe à chaleur, fenêtres isolantes en
+  remplacement, et les travaux indissociables de ceux-là. S'y mêle-t-il d'autres travaux
+  (finitions, sanitaires, électricité), ce n'est pas `5.5` : prends le taux de ces autres
+  travaux.
 - `10` quand le vocal montre des travaux dans un logement existant : une pièce d'habitation
   à rénover, un appartement, une maison, « chez la dame du deuxième ». C'est le cas courant.
 - `20` si le vocal indique du neuf, une extension, un local professionnel, des travaux qui

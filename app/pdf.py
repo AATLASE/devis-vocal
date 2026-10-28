@@ -27,6 +27,7 @@ from datetime import date
 from decimal import Decimal
 import asyncio
 from collections.abc import Sequence
+from typing import NamedTuple
 from functools import lru_cache
 from math import ceil
 from pathlib import Path
@@ -44,6 +45,7 @@ from app.models import Devis, LigneDevis
 TEMPLATES = RACINE / "templates"
 STATIQUE = RACINE / "app" / "static"
 TAUX_REDUIT = Decimal("0.10")
+TAUX_RENOVATION_ENERGETIQUE = Decimal("0.055")
 
 # Espace fine insécable (U+202F). C'est celle que demande le design, et la bonne en
 # typographie française : ni coupure entre les milliers, ni avant le symbole €, et un
@@ -61,103 +63,198 @@ MOIS = (
 # Pagination — fonction pure, testable sans navigateur
 # ---------------------------------------------------------------------------
 
-# Le découpage du tableau se fait au nombre de lignes : l'en-tête d'entreprise de la
-# page 1 laisse la place à sept, une page de suite en tient quatorze.
+# Le design découpe le tableau au nombre de lignes : sept sous l'en-tête d'entreprise de
+# la page 1, quatorze sur une page de suite, cinq au plus quand la clôture les suit. Ces
+# plafonds restent, mais ils ne suffisent pas : une désignation ou une précision longue
+# fait grandir sa ligne, et sept lignes hautes débordaient de la page 1. Chaque page est
+# donc aussi bornée en hauteur, et c'est la première des deux limites qui coupe.
 LIGNES_PAGE_1 = 7
 LIGNES_PAGE_SUITE = 14
 LIGNES_MAX_AVEC_CLOTURE = 5     # sur une page de suite, où seul un titre courant précède
 
-# Savoir si la clôture — note †, observations, totaux, bon pour accord — tient sous le
-# tableau de la page 1 demande en revanche de raisonner en hauteur : deux devis de
-# quatre lignes n'occupent pas la même place selon la longueur des désignations et des
-# observations. Toutes les valeurs ci-dessous sont **mesurées** dans le navigateur sur
-# le template réel, jamais estimées à vue. Le jeu reproduit au pixel près la hauteur du
-# tableau des quatre fixtures.
-HAUTEUR_LIGNE = 38                      # une ligne de tableau sur une ligne de texte
-HAUTEUR_LIGNE_REPLI = 16                # chaque repli supplémentaire de la désignation
-HAUTEUR_DETAIL = 17                     # la précision sous la désignation
-CARACTERES_PAR_DESIGNATION = 61
+# Toutes les valeurs ci-dessous sont **mesurées** dans Chromium sur le template réel,
+# jamais estimées à vue — sur du texte français courant, pas sur des caractères répétés.
+# Les nombres de caractères par ligne sont pris un peu sous la mesure : mieux vaut une
+# page qui coupe une ligne trop tôt qu'une page qui déborde.
+HAUTEUR_LIGNE = 38                      # une ligne de tableau sur une ligne de texte (37,5)
+HAUTEUR_LIGNE_REPLI = 16.5              # chaque repli supplémentaire de la désignation
+HAUTEUR_DETAIL = 17                     # la première ligne de la précision, marge comprise
+HAUTEUR_DETAIL_REPLI = 15               # chacune des suivantes
+CARACTERES_PAR_DESIGNATION = 61         # mesuré : 65 à 69
+CARACTERES_PAR_DETAIL = 70              # mesuré : 72 à 79
 CARACTERES_PASTILLE_ESTIME = 8          # « estimé † » est en ligne : il pousse au repli
 
 HAUTEUR_OBSERVATION_LIGNE = 17
 ESPACE_ENTRE_OBSERVATIONS = 8
 HAUTEUR_LIBELLE_OBSERVATIONS = 20       # le libellé « OBSERVATIONS » et sa marge
-CARACTERES_PAR_OBSERVATION = 62
+CARACTERES_PAR_OBSERVATION = 62         # à côté des totaux
+CARACTERES_PAR_OBSERVATION_PLEINE = 125 # sur une page à elles, en pleine largeur (140)
 
 HAUTEUR_TOTAUX = 146                    # le cadre des totaux, hauteur fixe
-HAUTEUR_NOTE_DAGUE = 25                 # la note « † Prix non dicté… », marge comprise
+HAUTEUR_NOTE_DAGUE = 25                 # la note « † Ligne estimée… », marge comprise
 
-# Ce que la page 1 peut porter quand la clôture l'accompagne. Frontière relevée sur
-# 72 rendus réels balayant 2 à 7 lignes et 0 à 5 observations de deux longueurs : le
-# dernier cas qui tient mesure 450 px, le premier qui déborde 452. On se pose à 445.
+# Ce que chaque page laisse au tableau, à la clôture ou aux observations, avec le bon
+# pour accord d'un client professionnel. Les budgets « avec clôture » comptent le
+# tableau, la note † et le plus haut des observations et des totaux.
+#
+# Page 1 avec clôture : frontière relevée sur 72 rendus réels balayant 2 à 7 lignes et
+# 0 à 5 observations de deux longueurs — le dernier cas qui tient mesure 450 px, le
+# premier qui déborde 452. Les autres se tirent de la géométrie mesurée de la page :
+# 1 026 px utiles, en-tête d'entreprise 199, parties 112, titre courant 34, en-tête de
+# tableau 21, marges du tableau et de la clôture, bon pour accord 133, pied 27. Moins
+# 5 px de jeu.
+BUDGET_PAGE_1 = 636
 BUDGET_PAGE_1_AVEC_CLOTURE = 445
+BUDGET_PAGE_SUITE = 917
+BUDGET_PAGE_SUITE_AVEC_CLOTURE = 720
+BUDGET_CLOTURE_SEULE = 741
+BUDGET_PAGE_OBSERVATIONS = 900
+
+# Pour un particulier, le bon pour accord porte la case de l'exécution anticipée.
+HAUTEUR_CASE_EXECUTION_ANTICIPEE = 33
+
+# Ce qui fait grandir l'en-tête de la page 1, mesuré lui aussi : la raison sociale en
+# 25 px, les coordonnées, les mentions légales en chasse fixe, et les deux colonnes
+# client et objet des travaux. Les budgets de la page 1 supposent une raison sociale sur
+# une ligne et deux lignes dans la plus haute des deux colonnes.
+CARACTERES_PAR_NOM = 27                 # mesuré : 28
+HAUTEUR_NOM_REPLI = 34
+CARACTERES_PAR_COORDONNEE = 72          # mesuré : 75
+HAUTEUR_COORDONNEE_REPLI = 18
+CARACTERES_PAR_MENTION_LEGALE = 68      # mesuré : 70
+HAUTEUR_MENTION_LEGALE_REPLI = 16
+CARACTERES_PAR_PARTIE = 52              # mesuré : 55
+HAUTEUR_PARTIE_LIGNE = 20.625
+LIGNES_PARTIES_DE_REFERENCE = 2
 
 
-def _hauteur_lignes(lignes: list[LigneDevis]) -> int:
+def _lignes(texte: str, par_ligne: int) -> int:
+    """Le nombre de lignes qu'occupe un texte, au moins une."""
+    return max(1, ceil(len(texte) / par_ligne))
+
+
+def _hauteur_ligne(ligne: LigneDevis) -> float:
+    """Hauteur d'une ligne du tableau, replis et précision compris."""
+    designation = ligne.designation + " " * (CARACTERES_PASTILLE_ESTIME if ligne.a_valider else 0)
+    hauteur = HAUTEUR_LIGNE + HAUTEUR_LIGNE_REPLI * (_lignes(designation, CARACTERES_PAR_DESIGNATION) - 1)
+    if ligne.detail:
+        hauteur += HAUTEUR_DETAIL + HAUTEUR_DETAIL_REPLI * (_lignes(ligne.detail, CARACTERES_PAR_DETAIL) - 1)
+    return hauteur
+
+
+def _hauteur_lignes(lignes: Sequence[LigneDevis]) -> float:
     """Hauteur du tableau des prestations, replis et précisions compris."""
-    total = 0
-    for ligne in lignes:
-        largeur = len(ligne.designation) + (CARACTERES_PASTILLE_ESTIME if ligne.a_valider else 0)
-        replis = max(1, ceil(largeur / CARACTERES_PAR_DESIGNATION))
-        total += HAUTEUR_LIGNE + HAUTEUR_LIGNE_REPLI * (replis - 1)
-        if ligne.detail:
-            total += HAUTEUR_DETAIL
-    return total
+    return sum(_hauteur_ligne(ligne) for ligne in lignes)
 
 
-def _hauteur_observations(notes: Sequence[str]) -> int:
+def _hauteur_observations(notes: Sequence[str], par_ligne: int = CARACTERES_PAR_OBSERVATION) -> float:
     if not notes:
         return 0
     total = HAUTEUR_LIBELLE_OBSERVATIONS + ESPACE_ENTRE_OBSERVATIONS * (len(notes) - 1)
     for note in notes:
-        replis = max(1, ceil(len(note) / CARACTERES_PAR_OBSERVATION))
-        total += HAUTEUR_OBSERVATION_LIGNE * replis
+        total += HAUTEUR_OBSERVATION_LIGNE * _lignes(note, par_ligne)
     return total
 
 
-def _hauteur_cloture(lignes: list[LigneDevis], notes: Sequence[str]) -> int:
+def _hauteur_cloture(lignes: Sequence[LigneDevis], notes: Sequence[str]) -> float:
     """Hauteur de la clôture. Les observations et les totaux sont côte à côte dans une
     grille : c'est le plus haut des deux qui commande, pas leur somme."""
     note_dague = HAUTEUR_NOTE_DAGUE if any(ligne.a_valider for ligne in lignes) else 0
     return note_dague + max(_hauteur_observations(notes), HAUTEUR_TOTAUX)
 
 
-def paginer(
-    lignes: list[LigneDevis], notes: Sequence[str] = ()
-) -> tuple[list[list[tuple[int, LigneDevis]]], bool, int]:
-    """Répartit les prestations sur les pages du devis.
+def _supplement_page_1(devis: Devis) -> float:
+    """Ce que l'en-tête et les parties prennent de plus que dans les budgets de la page 1 :
+    une raison sociale sur deux lignes, une adresse longue, une adresse de chantier."""
+    e, client = devis.entreprise, devis.client
 
-    Renvoie `(pages, cloture_sur_derniere, total_pages)` :
+    supplement = HAUTEUR_NOM_REPLI * (_lignes(e.nom, CARACTERES_PAR_NOM) - 1)
+    coordonnees = (e.forme_juridique, f"{e.adresse}, {e.code_postal_ville}",
+                   f"{e.telephone} · {e.email}")
+    supplement += HAUTEUR_COORDONNEE_REPLI * sum(
+        _lignes(texte, CARACTERES_PAR_COORDONNEE) - 1 for texte in coordonnees)
+    legales = (f"SIRET {e.siret} · {e.immatriculation or 'immatriculation à compléter'} · APE {e.code_ape}",
+               f"Décennale {e.assurance} n° {e.assurance_police}")
+    supplement += HAUTEUR_MENTION_LEGALE_REPLI * sum(
+        _lignes(texte, CARACTERES_PAR_MENTION_LEGALE) - 1 for texte in legales)
 
-    - `pages` : les lignes numérotées, découpées page par page ;
-    - `cloture_sur_derniere` : la clôture tient sous la dernière tranche du tableau ;
-    - `total_pages` : tableau + clôture éventuelle + la page des mentions.
+    colonne_client = (_lignes(client.nom or "Nom du client à compléter", CARACTERES_PAR_PARTIE)
+                      + (_lignes(client.adresse, CARACTERES_PAR_PARTIE) if client.adresse else 0)
+                      + (1 if client.telephone else 0))
+    colonne_objet = (_lignes((devis.type_travaux or "Nature des travaux à préciser") + ".",
+                             CARACTERES_PAR_PARTIE)
+                     + (_lignes("Chantier : " + client.adresse_chantier, CARACTERES_PAR_PARTIE)
+                        if client.adresse_chantier else 0)
+                     + 1)  # l'attestation du taux réduit, qui tient sur une ligne
+    lignes_parties = max(colonne_client, colonne_objet)
+    supplement += HAUTEUR_PARTIE_LIGNE * max(0, lignes_parties - LIGNES_PARTIES_DE_REFERENCE)
+    return supplement
+
+
+class Pagination(NamedTuple):
+    """Le découpage du devis en pages. Les trois premiers champs sont ceux d'avant."""
+
+    pages: list[list[tuple[int, LigneDevis]]]  # les lignes numérotées, page par page
+    cloture_sur_derniere: bool                 # la clôture tient sous la dernière tranche
+    total_pages: int                           # tout compris, page des mentions incluse
+    # Des observations trop longues pour tenir à côté des totaux, même sur une page à
+    # part, ont leurs propres pages, entre le tableau et la clôture. Rare : quinze
+    # observations de quatre lignes.
+    pages_observations: list[list[str]]
+    notes_cloture: list[str]                   # celles qui restent à côté des totaux
+
+
+def paginer(devis: Devis) -> Pagination:
+    """Répartit les prestations et les observations sur les pages du devis.
 
     Avec les douze prestations du design livré, on retombe exactement sur ses trois
     pages : 7 + 5 avec la clôture, puis les mentions. Un devis court — quatre lignes,
     une observation — tient sur deux : le tableau et sa clôture, puis les mentions.
     """
-    numerotees = list(enumerate(lignes, start=1))
+    lignes, notes = devis.lignes, list(devis.notes)
+    accord = 0 if devis.client.professionnel else HAUTEUR_CASE_EXECUTION_ANTICIPEE
+    supplement = _supplement_page_1(devis)
 
-    pages = [numerotees[:LIGNES_PAGE_1]]
-    reste = numerotees[LIGNES_PAGE_1:]
-    while reste:
-        pages.append(reste[:LIGNES_PAGE_SUITE])
-        reste = reste[LIGNES_PAGE_SUITE:]
+    # Le tableau : chaque page se remplit jusqu'à la première des deux limites, le
+    # nombre de lignes du design ou la hauteur. Une ligne au moins par page, sinon une
+    # ligne démesurée ne trouverait jamais sa place.
+    pages: list[list[tuple[int, LigneDevis]]] = [[]]
+    budget, plafond, hauteur = BUDGET_PAGE_1 - supplement, LIGNES_PAGE_1, 0.0
+    for numero, ligne in enumerate(lignes, start=1):
+        h = _hauteur_ligne(ligne)
+        if pages[-1] and (len(pages[-1]) >= plafond or hauteur + h > budget):
+            pages.append([])
+            budget, plafond, hauteur = BUDGET_PAGE_SUITE, LIGNES_PAGE_SUITE, 0.0
+        pages[-1].append((numero, ligne))
+        hauteur += h
 
+    # La clôture sous la dernière tranche, si elle y tient. Sur la page 1, c'est là que
+    # l'en-tête d'entreprise pèse. Une page presque vide n'est pas une faute d'impression,
+    # mais sur un devis de quatre lignes elle se voit.
+    cloture = _hauteur_cloture(lignes, notes)
     if len(pages) == 1:
-        # Tout le tableau tient sur la page 1. Reste à savoir si la clôture y tient
-        # aussi : c'est là que l'en-tête d'entreprise pèse. Une page presque vide n'est
-        # pas une faute d'impression, mais sur un devis de quatre lignes elle se voit.
-        occupe = _hauteur_lignes(lignes) + _hauteur_cloture(lignes, notes)
-        cloture_sur_derniere = occupe <= BUDGET_PAGE_1_AVEC_CLOTURE
+        cloture_sur_derniere = hauteur + cloture <= BUDGET_PAGE_1_AVEC_CLOTURE - supplement - accord
     else:
-        # Sur une page de suite, seul un titre courant précède le tableau : le nombre
-        # de lignes suffit à décider.
-        cloture_sur_derniere = len(pages[-1]) <= LIGNES_MAX_AVEC_CLOTURE
+        cloture_sur_derniere = (len(pages[-1]) <= LIGNES_MAX_AVEC_CLOTURE
+                                and hauteur + cloture <= BUDGET_PAGE_SUITE_AVEC_CLOTURE - accord)
 
-    total_pages = len(pages) + (0 if cloture_sur_derniere else 1) + 1
-    return pages, cloture_sur_derniere, total_pages
+    # Sinon la clôture a sa page. Si les observations n'y tiennent pas non plus, elles
+    # partent sur des pages à elles, avant la clôture : la signature reste la dernière
+    # chose que le client lit avant les conditions.
+    pages_observations: list[list[str]] = []
+    notes_cloture = notes
+    if not cloture_sur_derniere and cloture > BUDGET_CLOTURE_SEULE - accord:
+        notes_cloture = []
+        for note in notes:
+            if pages_observations and _hauteur_observations(
+                    pages_observations[-1] + [note], CARACTERES_PAR_OBSERVATION_PLEINE
+            ) <= BUDGET_PAGE_OBSERVATIONS:
+                pages_observations[-1].append(note)
+            else:
+                pages_observations.append([note])
+
+    total_pages = len(pages) + len(pages_observations) + (0 if cloture_sur_derniere else 1) + 1
+    return Pagination(pages, cloture_sur_derniere, total_pages, pages_observations, notes_cloture)
 
 
 # ---------------------------------------------------------------------------
@@ -201,8 +298,10 @@ def f_date_fr(valeur: date) -> str:
 
 
 def f_date_longue(valeur: date) -> str:
-    """2026-08-27 -> « 27 août 2026 ». C'est la forme du design, et celle d'un vrai devis."""
-    return f"{valeur.day} {MOIS[valeur.month - 1]} {valeur.year}"
+    """2026-08-27 -> « 27 août 2026 ». C'est la forme du design, et celle d'un vrai devis.
+    Le premier du mois s'écrit « 1er », comme partout en français."""
+    jour = "1er" if valeur.day == 1 else str(valeur.day)
+    return f"{jour} {MOIS[valeur.month - 1]} {valeur.year}"
 
 
 # ---------------------------------------------------------------------------
@@ -377,14 +476,20 @@ class TemplateError(Exception):
 def contexte(devis: Devis, *, polices_inline: bool = True) -> dict:
     """Tout ce qu'un template peut lire. Documenté par `docs/templates.md` : c'est le
     contrat offert à l'artisan qui écrit sa propre mise en page."""
-    pages, cloture_sur_derniere, total_pages = paginer(devis.lignes, devis.notes)
+    pagination = paginer(devis)
     return {
         "devis": devis,
         "e": devis.entreprise,
+        # Un artisan qui n'a jamais renseigné son identité reçoit celle de la
+        # configuration : une entreprise fictive, ou celle d'un autre artisan préparée
+        # pour un rendez-vous. Le devis sort quand même — la dictée n'attend pas le
+        # compte — mais chaque page le dit, en travers : ce n'est pas un document à
+        # envoyer.
+        "specimen": devis.entreprise == get_config().entreprise,
         "taux_reduit": TAUX_REDUIT,
-        "pages": pages,
-        "cloture_sur_derniere": cloture_sur_derniere,
-        "total_pages": total_pages,
+        "taux_renovation_energetique": TAUX_RENOVATION_ENERGETIQUE,
+        # pages, cloture_sur_derniere, total_pages, pages_observations, notes_cloture
+        **pagination._asdict(),
         "css": _feuille_de_style(polices_inline),
     }
 

@@ -577,6 +577,20 @@
               <label for="ed-client-telephone">Téléphone</label>
               <input id="ed-client-telephone" type="tel" autocomplete="off">
             </div>
+            <!-- Particulier par défaut : ce sont ses règles, les plus protectrices, qui
+                 s'impriment tant que l'artisan n'a rien dit d'autre. -->
+            <div class="champ">
+              <label for="ed-client-type">Type de client</label>
+              <select id="ed-client-type">
+                <option value="particulier">Particulier</option>
+                <option value="professionnel">Professionnel</option>
+              </select>
+            </div>
+            <div class="champ__aide champ--large">
+              Particulier : rétractation de 14 jours, acompte exigible après 7 jours. Une
+              entreprise de cinq salariés au plus, qui commande hors de son activité
+              principale, garde ces droits (art. L221-3 du Code de la consommation).
+            </div>
           </div>
 
           <!-- Un client professionnel est dans l'annuaire, comme l'artisan lui-même.
@@ -605,16 +619,31 @@
               <label for="ed-objet">Objet des travaux</label>
               <input id="ed-objet" autocomplete="off">
             </div>
+            <!-- Le logement qui fonde le taux réduit, quand ce n'est pas celui du client :
+                 résidence secondaire, logement loué, bien d'une SCI. -->
+            <div class="champ champ--large">
+              <label for="ed-chantier">Adresse du chantier <span class="champ__note">si ce n'est pas celle du client</span></label>
+              <input id="ed-chantier" autocomplete="off" spellcheck="false">
+            </div>
             <div class="champ">
               <label for="ed-duree">Durée annoncée</label>
               <input id="ed-duree" autocomplete="off" placeholder="2 jours">
             </div>
             <div class="champ">
+              <label for="ed-debut">Début des travaux <span class="champ__note">vide : ligne à remplir</span></label>
+              <input id="ed-debut" autocomplete="off">
+            </div>
+            <div class="champ">
               <label for="ed-tva">TVA</label>
               <select id="ed-tva">
+                <option value="0.055">5,5 % — rénovation énergétique</option>
                 <option value="0.10">10 % — rénovation d'un logement</option>
                 <option value="0.20">20 % — neuf, local professionnel</option>
+                <!-- Réservé à l'entreprise en franchise : ce n'est pas un taux qu'on
+                     choisit, c'est son régime. Voir `ouvrirEdition`. -->
+                <option value="0" id="ed-tva-franchise" hidden disabled>Non applicable — franchise en base, art. 293 B</option>
               </select>
+              <div class="champ__aide" id="ed-tva-aide"></div>
             </div>
           </div>
 
@@ -791,7 +820,7 @@
 
     <div class="template__pied">
       <!-- Partir d'une page blanche pour écrire un devis conforme n'a aucun sens :
-           le modèle livré passe déjà les quatorze contrôles. -->
+           le modèle livré passe déjà tous les contrôles de mentions. -->
       <a href="/api/template/modele" id="lien-modele">
         <svg aria-hidden="true"><use href="#i-document"/></svg>
         <span>Télécharger le template livré comme point de départ</span>
@@ -898,6 +927,11 @@
           est une mention obligatoire pour les métiers du bâtiment.
         </p>
         <div class="grille">
+          <!-- Mention obligatoire que l'annuaire ne fournit pas. -->
+          <div class="champ champ--large">
+            <label for="e-immatriculation">Immatriculation <span class="champ__note">RCS et ville du greffe, ou répertoire des métiers</span></label>
+            <input id="e-immatriculation" autocomplete="off">
+          </div>
           <div class="champ">
             <label for="e-telephone">Téléphone</label>
             <input id="e-telephone" inputmode="tel" autocomplete="tel">
@@ -914,9 +948,38 @@
             <label for="e-assurance_police">N° de police</label>
             <input id="e-assurance_police" class="num">
           </div>
+          <!-- La loi demande les coordonnées de l'assureur et la zone couverte, sur chaque
+               devis. Pas d'exemple en substitution : il se lirait comme une réponse. -->
+          <div class="champ champ--large">
+            <label for="e-assurance_coordonnees">Adresse de l'assureur</label>
+            <input id="e-assurance_coordonnees" autocomplete="off">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-assurance_couverture">Couverture géographique <span class="champ__note">telle qu'écrite au contrat</span></label>
+            <input id="e-assurance_couverture" autocomplete="off">
+          </div>
+          <!-- Obligatoire dès que le client est un particulier : celui auquel
+               l'entreprise a adhéré, souvent par sa fédération ou sa chambre de métiers. -->
+          <div class="champ champ--large">
+            <label for="e-mediateur">Médiateur de la consommation <span class="champ__note">nom et adresse</span></label>
+            <input id="e-mediateur" autocomplete="off">
+          </div>
+          <div class="champ champ--large">
+            <label for="e-mediateur_site">Site internet du médiateur</label>
+            <input id="e-mediateur_site" inputmode="url" autocomplete="off" spellcheck="false">
+          </div>
           <div class="champ champ--large">
             <label for="e-iban">IBAN <span class="champ__note">pour l'acompte</span></label>
             <input id="e-iban" class="num" autocomplete="off">
+          </div>
+          <!-- L'annuaire ne dit pas si l'entreprise collecte la TVA. Une micro-entreprise
+               en franchise qui la facturerait la devrait au Trésor (art. 283-3 du CGI). -->
+          <div class="champ champ--large">
+            <label for="e-franchise_tva">Régime de TVA</label>
+            <select id="e-franchise_tva">
+              <option value="non">Assujetti à la TVA</option>
+              <option value="oui">Franchise en base (micro-entreprise) — TVA non applicable, art. 293 B du CGI</option>
+            </select>
           </div>
         </div>
       </div>

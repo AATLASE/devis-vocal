@@ -42,20 +42,28 @@ def firebase_simule(monkeypatch):
     monkeypatch.setattr(templates, "_actif", lambda: False)
 
 
-# Un template minimal mais honnête : il imprime les quatorze mentions attendues.
-# Sert de témoin — quand un test échoue, il doit être clair que c'est le sujet du
-# test qui a bougé, pas le template d'appui.
+# Un template minimal mais honnête : il imprime toutes les mentions attendues sur le
+# devis d'exemple, établi pour un particulier, au taux de 10 %. Sert de témoin — quand
+# un test échoue, il doit être clair que c'est le sujet du test qui a bougé, pas le
+# template d'appui.
 TEMPLATE_CONFORME = """<!doctype html><html><body>
 <h1>Devis {{ devis.numero }}</h1>
-<p>{{ e.nom }} — {{ e.adresse }}, {{ e.code_postal_ville }}</p>
-<p>SIRET {{ e.siret }} · TVA {{ e.tva_intracom }}</p>
+<p>{{ e.nom }}, {{ e.forme_juridique }} — {{ e.adresse }}, {{ e.code_postal_ville }}</p>
+<p>SIRET {{ e.siret }} · {{ e.immatriculation }} · TVA {{ e.tva_intracom }}</p>
 <p>{{ e.assurance }} — police {{ e.assurance_police }}</p>
+<p>Assureur : {{ e.assurance_coordonnees }}, couverture : {{ e.assurance_couverture }}</p>
 <p>Émis le {{ devis.date_emission | date_fr }}, valable jusqu'au {{ devis.date_validite | date_fr }}</p>
 <p>Client : {{ devis.client.nom }}</p>
 <table>{% for ligne in devis.lignes %}<tr><td>{{ ligne.designation }}</td></tr>{% endfor %}</table>
+<p>Début des travaux : ……</p>
 <p>Total HT {{ devis.total_ht | montant }}</p>
-<p>TVA {{ devis.montant_tva | montant }}</p>
+<p>TVA {{ devis.montant_tva | montant }}, taux réduit de l'art. 279-0 bis du CGI</p>
 <p>Total TTC {{ devis.total_ttc | montant }}</p>
+<p>Acompte {{ devis.montant_acompte | montant }}</p>
+<p>Intérêt au taux légal en cas de retard de paiement.</p>
+<p>Médiateur : {{ e.mediateur }}, {{ e.mediateur_site }}</p>
+<p>Formulaire de rétractation. (*) Rayez la mention inutile.</p>
+<p>Je demande que les travaux commencent avant la fin du délai de rétractation.</p>
 <p>Bon pour accord</p>
 </body></html>"""
 
@@ -162,12 +170,100 @@ def test_l_assurance_exige_l_assureur_et_la_police():
     assert templates.valider(police_seule)[2] == ["L'assurance professionnelle"]
 
 
+@pytest.mark.parametrize("retrait, mention", [
+    (", {{ e.forme_juridique }}", "La forme juridique"),
+    ("{{ e.immatriculation }} · ", "L'immatriculation (RCS ou RM)"),
+    ("<p>Assureur : {{ e.assurance_coordonnees }}, couverture : {{ e.assurance_couverture }}</p>",
+     "Les coordonnées de l'assureur et la couverture géographique"),
+    ("<p>Début des travaux : ……</p>", "La date ou le délai d'exécution"),
+    ("<p>Acompte {{ devis.montant_acompte | montant }}</p>", "L'acompte et les conditions de règlement"),
+    ("<p>Intérêt au taux légal en cas de retard de paiement.</p>", "Les pénalités de retard"),
+    ("<p>Médiateur : {{ e.mediateur }}, {{ e.mediateur_site }}</p>",
+     "Le médiateur de la consommation et son site"),
+    (", taux réduit de l'art. 279-0 bis du CGI", "L'attestation du taux réduit (art. 279-0 bis du CGI)"),
+    ("<p>Formulaire de rétractation. (*) Rayez la mention inutile.</p>",
+     "Le droit de rétractation et son formulaire"),
+    ("<p>Je demande que les travaux commencent avant la fin du délai de rétractation.</p>",
+     "La demande d'exécution avant la fin du délai de rétractation"),
+])
+def test_chaque_mention_ajoutee_est_reperee_quand_elle_manque(retrait, mention):
+    assert retrait in TEMPLATE_CONFORME, "le témoin n'exerce pas le cas"
+
+    _, _, manquantes = templates.valider(TEMPLATE_CONFORME.replace(retrait, ""))
+
+    assert manquantes == [mention]
+
+
+def test_le_template_livre_prive_de_ses_conditions_n_est_plus_conforme():
+    """Le cas de la revue : retirer la dernière page — médiation, rétractation,
+    pénalités, fondement du taux de TVA — laissait le template « conforme »."""
+    livre = (pdf.TEMPLATES / "devis.html").read_text(encoding="utf-8")
+    debut = livre.index("{# ---- mentions légales")
+    sans_conditions = livre[:debut] + "</body></html>"
+
+    _, _, manquantes = templates.valider(sans_conditions)
+
+    for mention in ("Les pénalités de retard", "Le médiateur de la consommation et son site",
+                    "Le droit de rétractation et son formulaire",
+                    "L'attestation du taux réduit (art. 279-0 bis du CGI)",
+                    "Les coordonnées de l'assureur et la couverture géographique"):
+        assert mention in manquantes, mention
+
+
+def test_le_template_livre_sans_forme_juridique_n_est_plus_conforme():
+    livre = (pdf.TEMPLATES / "devis.html").read_text(encoding="utf-8")
+    sans_forme = (livre
+                  .replace("e.forme_juridique or 'Forme juridique à compléter'", "''")
+                  .replace("e.forme_juridique or 'forme juridique à compléter'", "''"))
+    assert sans_forme != livre
+
+    assert "La forme juridique" in templates.valider(sans_forme)[2]
+
+
+@pytest.mark.parametrize("franchise, taux, professionnel", [
+    (True, Decimal("0"), False),
+    (False, Decimal("0.055"), False),
+    (False, Decimal("0.20"), True),
+])
+def test_le_template_livre_est_conforme_dans_tous_les_regimes(franchise, taux, professionnel):
+    """Franchise, 5,5 %, client professionnel : la liste des mentions suit le devis, et
+    le template livré les imprime toutes."""
+    exemple = templates.devis_exemple().model_copy(deep=True)
+    exemple.entreprise.franchise_tva = franchise
+    exemple.taux_tva = taux
+    exemple.client.professionnel = professionnel
+
+    assert templates.controler_les_mentions(render_html(exemple), exemple) == []
+
+
+def test_en_franchise_la_mention_293_b_est_exigee_a_la_place_du_numero():
+    exemple = templates.devis_exemple().model_copy(deep=True)
+    exemple.entreprise.franchise_tva = True
+    rendu = render_html(exemple, template=TEMPLATE_CONFORME)
+
+    manquantes = templates.controler_les_mentions(rendu, exemple)
+
+    assert "La mention « TVA non applicable, art. 293 B du CGI »" in manquantes
+    assert "Le numéro de TVA intracommunautaire" not in manquantes
+
+
+def test_a_5_5_pourcent_l_article_278_0_bis_a_est_exige():
+    exemple = templates.devis_exemple().model_copy(deep=True)
+    exemple.taux_tva = Decimal("0.055")
+    rendu = render_html(exemple, template=TEMPLATE_CONFORME)
+
+    assert "L'attestation du taux réduit (art. 278-0 bis A du CGI)" in (
+        templates.controler_les_mentions(rendu, exemple))
+
+
 def test_les_valeurs_de_l_identite_d_exemple_ne_se_recouvrent_pas():
     """Le contrôle cherche des valeurs : il ne vaut que si aucune n'est contenue dans
     une autre."""
     e = templates.ENTREPRISE_EXEMPLE
     valeurs = [e.nom, e.adresse, e.code_postal_ville, e.siret, e.tva_intracom,
-               e.assurance, e.assurance_police, e.telephone, e.email, e.iban]
+               e.assurance, e.assurance_police, e.telephone, e.email, e.iban,
+               e.forme_juridique, e.immatriculation, e.assurance_coordonnees,
+               e.assurance_couverture, e.mediateur, e.mediateur_site]
 
     for valeur in valeurs:
         autres = [autre for autre in valeurs if autre is not valeur]

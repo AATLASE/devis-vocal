@@ -384,6 +384,12 @@ class EntrepriseSaisie(BaseModel):
     assurance: str | None = None
     assurance_police: str | None = None
     iban: str | None = None
+    franchise_tva: bool = False
+    immatriculation: str | None = None
+    assurance_coordonnees: str | None = None
+    assurance_couverture: str | None = None
+    mediateur: str | None = None
+    mediateur_site: str | None = None
 
     def fusionner(self, defaut: Entreprise) -> Entreprise:
         """L'identité saisie, sans rien emprunter à celle du serveur.
@@ -404,8 +410,16 @@ class EntrepriseSaisie(BaseModel):
         if not (self.nom or "").strip():
             return defaut
         # Partir des champs du contrat, pas de ceux de la saisie : si `Entreprise` en
-        # gagne un, une identité gardée dans un navigateur reste valide — vide là aussi.
+        # gagne un, une identité gardée dans un navigateur reste valide — vide là aussi,
+        # ou à la valeur par défaut du contrat quand il en a une.
         saisie = self.model_dump()
-        return Entreprise(**{
-            champ: (saisie.get(champ) or "").strip() for champ in Entreprise.model_fields
-        })
+        champs: dict[str, object] = {}
+        for champ, definition in Entreprise.model_fields.items():
+            valeur = saisie.get(champ)
+            if isinstance(valeur, str):
+                champs[champ] = valeur.strip()
+            elif valeur is not None:
+                champs[champ] = valeur  # une case à cocher : la franchise de TVA
+            elif definition.is_required():
+                champs[champ] = ""
+        return Entreprise(**champs)

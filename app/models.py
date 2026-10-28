@@ -16,7 +16,7 @@ Ce module ne dépend d'aucune configuration ni d'aucune clé : il s'importe et s
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 
@@ -48,6 +48,9 @@ class Unite(str, Enum):
 
 
 class TauxTVA(str, Enum):
+    # Amélioration énergétique d'un logement achevé depuis plus de 2 ans (278-0 bis A).
+    # Ajouté après coup : les extractions déjà enregistrées restent valides.
+    ENERGIE = "5.5"
     REDUIT = "10"  # rénovation d'un logement achevé depuis plus de 2 ans
     NORMAL = "20"  # neuf, local professionnel, ou cas non qualifié
 
@@ -60,7 +63,7 @@ class LigneExtraction(BaseModel):
     quantite: float
     unite: Unite
     prix_unitaire_ht: float
-    a_valider: bool  # True dès que le prix est une estimation et non un prix dicté
+    a_valider: bool  # True dès que la quantité ou le prix est une estimation, non une valeur dictée
 
 
 class DevisExtraction(BaseModel):
@@ -99,11 +102,30 @@ class Entreprise(BaseModel):
     assurance_police: str
     iban: str
 
+    # Ajoutés après coup, tous avec une valeur par défaut : une identité gardée dans un
+    # navigateur, ou un devis établi avant leur ajout, reste valide.
+    franchise_tva: bool = False  # franchise en base, art. 293 B du CGI : aucune TVA facturée
+    immatriculation: str = ""    # « RCS Lyon », « RM 69 » : imprimée à côté du SIRET
+    # L'assurance décennale se décrit en entier sur le devis (loi 96-603, art. 22-2) :
+    # l'assureur, ses coordonnées, et la zone que couvre le contrat, telle que saisie.
+    assurance_coordonnees: str = ""
+    assurance_couverture: str = ""
+    # Le médiateur de la consommation auquel l'entreprise a adhéré : ses coordonnées et
+    # l'adresse de son site (art. L616-1 et R616-1 du Code de la consommation).
+    mediateur: str = ""
+    mediateur_site: str = ""
+
 
 class Client(BaseModel):
     nom: str | None = None
     adresse: str | None = None
     telephone: str | None = None
+    # Ajoutés après coup, renseignés à l'écran seulement — le modèle ne les dicte pas.
+    # Par défaut, le client est un particulier : ce sont ses règles, les plus
+    # protectrices (rétractation, acompte différé), qui s'impriment tant qu'on n'a rien
+    # dit d'autre.
+    professionnel: bool = False
+    adresse_chantier: str | None = None  # quand les travaux ne sont pas chez le client
 
 
 class LigneDevis(BaseModel):
@@ -126,6 +148,9 @@ class Devis(BaseModel):
     client: Client
     type_travaux: str | None = None
     duree_estimee: str | None = None
+    # La date ou le délai d'exécution (art. L111-1 du Code de la consommation). Saisi à
+    # l'écran, jamais déduit : absent, le devis laisse une ligne à remplir à la main.
+    debut_travaux: str | None = None
 
     lignes: list[LigneDevis]
     notes: list[str] = Field(default_factory=list)
@@ -137,15 +162,17 @@ class Devis(BaseModel):
     acompte_pct: Decimal
     montant_acompte: Decimal
 
-    # Part du HT reposant sur des prix estimés. C'est un total : il se calcule ici,
-    # jamais dans le navigateur. L'écran de relecture l'affiche sous les totaux.
+    # Part du HT reposant sur des lignes estimées, en quantité ou en prix. C'est un
+    # total : il se calcule ici, jamais dans le navigateur. L'écran de relecture
+    # l'affiche sous les totaux.
     total_ht_estime: Decimal = Decimal("0")
 
     transcription: str = ""  # affichée dans le navigateur, jamais dans le PDF
 
     @property
     def a_des_prix_estimes(self) -> bool:
-        """Pilote l'astérisque et la note de bas de tableau dans le PDF."""
+        """Pilote la dague et la note de bas de tableau dans le PDF. Le nom est resté
+        celui d'avant : une ligne estimée l'est en quantité ou en prix."""
         return any(ligne.a_valider for ligne in self.lignes)
 
     @property
@@ -228,6 +255,30 @@ class Profil(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def heure_de_paris(instant: datetime | None = None) -> datetime:
+    """L'heure légale de la France métropolitaine, quel que soit le fuseau du serveur.
+
+    Le conteneur tourne en UTC : sans ça, un devis dicté le 1er janvier à 0 h 30 sortait
+    « émis le 31 décembre », et le numéro portait une heure fausse d'une ou deux heures.
+
+    Pas de `zoneinfo` : il lui faut la base des fuseaux, absente de Windows et de bien
+    des images Docker. La règle européenne suffit — UTC+1, et UTC+2 du dernier dimanche
+    de mars au dernier dimanche d'octobre, à 1 h UTC (directive 2000/84/CE).
+
+    `instant` porte un fuseau ; absent, c'est maintenant. Le résultat n'en porte pas :
+    c'est l'heure telle qu'elle s'écrit sur le devis.
+    """
+    utc = (instant or datetime.now(timezone.utc)).astimezone(timezone.utc)
+
+    def bascule(mois: int) -> datetime:
+        """Le dernier dimanche du mois (mars ou octobre, qui ont 31 jours), à 1 h UTC."""
+        fin = datetime(utc.year, mois, 31, 1, tzinfo=timezone.utc)
+        return fin - timedelta(days=(fin.weekday() + 1) % 7)
+
+    ete = bascule(3) <= utc < bascule(10)
+    return (utc + timedelta(hours=2 if ete else 1)).replace(tzinfo=None)
+
+
 def to_devis(
     extraction: DevisExtraction,
     *,
@@ -241,12 +292,20 @@ def to_devis(
     """Transforme une extraction LLM en devis chiffré.
 
     Fonction pure : mêmes entrées, même sortie. `maintenant` est injectable pour que
-    les tests soient déterministes.
+    les tests soient déterministes ; absent, c'est l'heure de Paris.
     """
-    maintenant = maintenant or datetime.now()
+    maintenant = maintenant or heure_de_paris()
     emission = maintenant.date()
 
-    taux_tva = tva_forcee if tva_forcee is not None else Decimal(extraction.taux_tva_suggere.value) / 100
+    # La franchise en base est un régime de l'entreprise, pas un choix de devis : une
+    # entreprise qui n'est pas redevable de la TVA ne la facture jamais, quel que soit
+    # le taux que le modèle suggère ou que l'artisan choisit.
+    if entreprise.franchise_tva:
+        taux_tva = Decimal("0")
+    elif tva_forcee is not None:
+        taux_tva = tva_forcee
+    else:
+        taux_tva = Decimal(extraction.taux_tva_suggere.value) / 100
 
     lignes: list[LigneDevis] = []
     for source in extraction.lignes:
