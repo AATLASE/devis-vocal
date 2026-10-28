@@ -130,8 +130,13 @@ def devis_exemple(entreprise: Entreprise | None = None) -> Devis:
 # Nettoyage
 # ---------------------------------------------------------------------------
 
-_SCRIPT = re.compile(r"<script\b[^>]*>.*?</script\s*>", re.IGNORECASE | re.DOTALL)
-_SCRIPT_OUVERT = re.compile(r"<script\b[^>]*/?>", re.IGNORECASE)
+# Une balise `<script>` sans fermeture emporte tout ce qui la suit, comme dans un
+# navigateur, qui lit alors la fin du document comme du script. C'est aussi ce qui
+# garde le filtre linéaire : chaque passage s'arrête à une fermeture ou à la fin du
+# texte, et ne recommence jamais le même parcours. L'ancienne expression repartait à
+# chaque ouverture non refermée vers la fin du fichier — deux minutes de calcul pour
+# un fichier de 512 Ko fait de `<script>` répétés.
+_SCRIPT = re.compile(r"<script\b[^>]*(?:>|\Z).*?(?:</script\s*>|\Z)", re.IGNORECASE | re.DOTALL)
 _ATTRIBUT_EVENEMENT = re.compile(r"""\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)""", re.IGNORECASE)
 
 
@@ -139,17 +144,16 @@ def nettoyer(html: str) -> str:
     """Retire le JavaScript du template.
 
     Un devis est un document, pas une application : rien de ce qu'un script pourrait
-    faire n'a sa place dans un PDF. Et Chromium exécute vraiment ce qu'on lui donne —
-    un template avec un `fetch` ferait dépendre le rendu du réseau au moment précis où
-    on montre le devis à un artisan, et pourrait poster ailleurs ce qu'il contient.
+    faire n'a sa place dans un PDF.
 
-    Le filtre est un jeu d'expressions régulières, donc perfectible face à quelqu'un
-    qui chercherait à le contourner. Ce n'est pas la frontière de sécurité : celle-ci
-    est le bac à sable Jinja de `pdf.py`, plus le fait qu'un artisan ne téléverse un
-    template que sur son propre compte. C'est une mesure d'hygiène du document.
+    Le filtre travaille sur le source Jinja, avant le rendu : il ne voit ni ce qu'une
+    expression reconstitue, ni ce que les expressions régulières ne savent pas lire. Ce
+    n'est donc pas la frontière de sécurité. Celle-ci est dans `pdf._rendre`, où
+    Chromium imprime sans JavaScript et sans réseau, et dans le bac à sable Jinja. Ce
+    filtre-ci est une mesure d'hygiène : le template enregistré, et l'aperçu HTML que
+    l'artisan affiche dans son propre navigateur, n'emportent pas de script visible.
     """
     html = _SCRIPT.sub("", html)
-    html = _SCRIPT_OUVERT.sub("", html)
     return _ATTRIBUT_EVENEMENT.sub("", html)
 
 

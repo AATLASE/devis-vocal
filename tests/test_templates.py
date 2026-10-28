@@ -170,6 +170,25 @@ def test_le_javascript_est_retire_du_document(template):
     assert "onload" not in propre.lower()
 
 
+@pytest.mark.parametrize("motif", ["<script>", "<script "])
+def test_le_nettoyage_reste_lineaire_sur_des_scripts_jamais_refermes(motif):
+    """L'ancienne expression repartait vers la fin du fichier à chaque ouverture sans
+    fermeture : deux minutes de calcul pour 512 Ko, dans la boucle du serveur."""
+    hostile = motif * (512 * 1024 // len(motif))
+
+    debut = time.perf_counter()
+    propre = templates.nettoyer(hostile)
+
+    assert time.perf_counter() - debut < 2
+    assert "script" not in propre.lower()
+
+
+def test_un_script_jamais_referme_emporte_la_suite_comme_dans_un_navigateur():
+    """Un navigateur lit tout ce qui suit un `<script>` non refermé comme du script :
+    le retirer avec la suite ne change rien à ce qui s'imprime."""
+    assert templates.nettoyer("<p>avant</p><script src='x.js'/><p>après</p>") == "<p>avant</p>"
+
+
 @pytest.mark.parametrize("template", [
     # Deux boucles imbriquées : 10^10 tours, des minutes de calcul.
     "{% set r = range(100000) %}{% for i in r %}{% for j in r %}{% endfor %}{% endfor %}",
