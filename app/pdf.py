@@ -365,8 +365,15 @@ async def arreter() -> None:
         _playwright = None
 
 
+# Le plus long qu'un PDF ait le droit de prendre. Un devis de soixante lignes sort en
+# quelques secondes ; au-delà, quelque chose ne va pas, et la place revient aux autres.
+DELAI_RENDU_S = 20
+
+
 async def render(devis: Devis, template: str | None = None) -> bytes:
-    """Produit le PDF du devis. `template` : le HTML de l'artisan, sinon celui livré."""
+    """Produit le PDF du devis. `template` : le HTML de l'artisan, sinon celui livré.
+
+    Lève `TimeoutError` passé `DELAI_RENDU_S`."""
     global _places
     await demarrer()  # filet : permet d'appeler render() depuis un test, hors application
     assert _navigateur is not None
@@ -377,7 +384,11 @@ async def render(devis: Devis, template: str | None = None) -> bytes:
         _places = asyncio.Semaphore(get_config().rendus_simultanes)
 
     async with _places:
-        return await _rendre(devis, template)
+        # Le délai couvre tout le rendu, Jinja compris. Sans lui, une page qui ne finit
+        # pas garde sa place jusqu'au redémarrage, et deux suffisent pour que plus
+        # personne n'obtienne de PDF. Pour `/api/pdf`, le `TimeoutError` est une erreur
+        # comme une autre : il retombe sur le template livré.
+        return await asyncio.wait_for(_rendre(devis, template), DELAI_RENDU_S)
 
 
 async def _rendre(devis: Devis, template: str | None) -> bytes:

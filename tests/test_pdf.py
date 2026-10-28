@@ -11,13 +11,17 @@ import asyncio
 import re
 import struct
 import threading
+import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from playwright.async_api import Page
 
+from app import pdf as pdf_module
 from app import templates
+from app.config import get_config
 from app.models import DevisExtraction, LigneDevis, Unite, to_devis
 from app.pdf import (
     arreter,
@@ -208,6 +212,37 @@ async def test_un_template_ne_sort_ni_sur_le_reseau_ni_en_javascript(service_int
     assert b"/Width 37" not in contenu
     assert b"js-a-tourne" not in contenu
     assert re.search(rb"/Count (\d+)", contenu).group(1) == b"1"
+
+
+async def test_un_rendu_qui_ne_finit_pas_est_coupe_et_rend_sa_place(monkeypatch):
+    """Sans délai, une page qui ne finissait pas gardait sa place jusqu'au redémarrage :
+    avec deux places, deux requêtes suffisaient pour que plus personne n'ait de PDF.
+
+    Ici une seule place, et une impression qui n'aboutit jamais."""
+    monkeypatch.setenv("RENDUS_SIMULTANES", "1")
+    get_config.cache_clear()
+    monkeypatch.setattr(pdf_module, "DELAI_RENDU_S", 1)
+    await arreter()  # un sémaphore neuf, créé avec cette configuration
+
+    async def interminable(self, **_options):
+        await asyncio.Event().wait()
+
+    devis = devis_de("peinture")
+    try:
+        with monkeypatch.context() as m:
+            m.setattr(Page, "pdf", interminable)
+            debut = time.monotonic()
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(render(devis), 20)
+            assert time.monotonic() - debut < 10, "coupé par le filet du test, pas par le délai"
+
+        assert not pdf_module._places.locked()
+        assert pdf_module._navigateur.contexts == [], "la page n'a pas été refermée"
+        # La place est revenue : avec une seule, ce rendu attendrait sinon pour toujours.
+        contenu = await asyncio.wait_for(render(devis), 30)
+        assert contenu[:4] == b"%PDF"
+    finally:
+        await arreter()
 
 
 # --- Pagination : fonction pure, aucun navigateur ---
