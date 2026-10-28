@@ -970,8 +970,8 @@ function peindreRelecture(d) {
   $('rel-numero').textContent = 'Devis n° ' + d.numero;
   $('rel-objet').textContent = d.type_travaux || 'Travaux à préciser';
   $('rel-client').textContent =
-    [d.client.nom, d.client.adresse, d.client.telephone].filter(Boolean).join(' · ') ||
-    'Client à compléter';
+    ([d.client.nom, d.client.adresse, d.client.telephone].filter(Boolean).join(' · ') ||
+     'Client à compléter') + (d.client.professionnel ? ' · professionnel' : ' · particulier');
 
   $('rel-duree').textContent =
     'Transcription de la note vocale' + (dureeVocal ? ' · ' + dureeVocal : '');
@@ -1209,6 +1209,7 @@ function ouvrirEdition() {
   $('ed-client-nom').value = d.client.nom || '';
   $('ed-client-adresse').value = d.client.adresse || '';
   $('ed-client-telephone').value = d.client.telephone || '';
+  $('ed-client-type').value = d.client.professionnel ? 'professionnel' : 'particulier';
   $('ed-objet').value = d.type_travaux || '';
   $('ed-duree').value = d.duree_estimee || '';
   // En franchise, le taux n'est pas un choix : le sélecteur montre le régime et se
@@ -1253,6 +1254,7 @@ async function validerEdition(e) {
       nom: $('ed-client-nom').value,
       adresse: $('ed-client-adresse').value,
       telephone: $('ed-client-telephone').value,
+      professionnel: $('ed-client-type').value === 'professionnel',
     },
     type_travaux: $('ed-objet').value,
     duree_estimee: $('ed-duree').value,
@@ -1400,6 +1402,9 @@ async function chercherClientPro(requete) {
 function choisirClientPro(e) {
   $('ed-client-nom').value = e.nom;
   $('ed-client-adresse').value = [e.adresse, e.code_postal_ville].filter(Boolean).join(', ');
+  // Trouvé dans l'annuaire, c'est une entreprise. L'artisan peut revenir sur ce choix :
+  // une petite entreprise qui commande hors de son métier garde les droits du particulier.
+  $('ed-client-type').value = 'professionnel';
   $('ed-pro-recherche').value = '';
   $('ed-pro-resultats').hidden = true;
   $('ed-pro-etat').textContent = 'Rempli depuis l’annuaire. Ajoutez le téléphone si vous l’avez.';

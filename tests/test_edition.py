@@ -179,6 +179,18 @@ def test_le_taux_de_5_5_pourcent_est_accepte():
     assert corrige.taux_tva_libelle == "5,5"
 
 
+def test_le_type_de_client_choisi_a_l_ecran_est_garde():
+    """Le modèle ne le dicte pas : c'est l'écran qui dit qu'un client est professionnel,
+    et le recalcul ne doit pas le perdre en route."""
+    devis = devis_sdb()
+    assert devis.client.professionnel is False  # particulier tant qu'on n'a rien dit
+
+    client = {**devis.client.model_dump(), "professionnel": True}
+    corrige = recalculer(devis, corrections_depuis(devis, client=client), max_lignes=60)
+
+    assert corrige.client.professionnel is True
+
+
 def test_un_taux_nul_est_refuse_hors_franchise():
     """Zéro n'est pas un taux qu'on choisit : c'est le régime d'une entreprise."""
     devis = devis_sdb()

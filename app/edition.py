@@ -149,8 +149,12 @@ def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> De
 
     # Une correction n'est pas un nouveau devis : il garde son numéro et sa date. Un
     # client qui reçoit la version corrigée doit pouvoir la rapprocher de la première.
+    # Ce que le modèle ne dicte pas, et que seul l'écran renseigne, est reporté ici.
     return corrige.model_copy(update={
         "numero": devis.numero,
         "date_emission": devis.date_emission,
         "date_validite": devis.date_validite,
+        "client": corrige.client.model_copy(update={
+            "professionnel": corrections.client.professionnel,
+        }),
     })

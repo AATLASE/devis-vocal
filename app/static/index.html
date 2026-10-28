@@ -577,6 +577,20 @@
               <label for="ed-client-telephone">Téléphone</label>
               <input id="ed-client-telephone" type="tel" autocomplete="off">
             </div>
+            <!-- Particulier par défaut : ce sont ses règles, les plus protectrices, qui
+                 s'impriment tant que l'artisan n'a rien dit d'autre. -->
+            <div class="champ">
+              <label for="ed-client-type">Type de client</label>
+              <select id="ed-client-type">
+                <option value="particulier">Particulier</option>
+                <option value="professionnel">Professionnel</option>
+              </select>
+            </div>
+            <div class="champ__aide champ--large">
+              Particulier : rétractation de 14 jours, acompte exigible après 7 jours. Une
+              entreprise de cinq salariés au plus, qui commande hors de son activité
+              principale, garde ces droits (art. L221-3 du Code de la consommation).
+            </div>
           </div>
 
           <!-- Un client professionnel est dans l'annuaire, comme l'artisan lui-même.

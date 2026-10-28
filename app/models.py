@@ -111,6 +111,10 @@ class Client(BaseModel):
     nom: str | None = None
     adresse: str | None = None
     telephone: str | None = None
+    # Ajouté après coup, renseigné à l'écran seulement — le modèle ne le dicte pas. Par
+    # défaut, le client est un particulier : ce sont ses règles, les plus protectrices
+    # (rétractation, acompte différé), qui s'impriment tant qu'on n'a rien dit d'autre.
+    professionnel: bool = False
 
 
 class LigneDevis(BaseModel):

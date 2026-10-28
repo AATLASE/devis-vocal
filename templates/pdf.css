@@ -206,6 +206,33 @@ html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   font-size: 10px; color: var(--dv-muted);
 }
 
+/* Client particulier : la case de la demande d'exécution anticipée (art. L221-25),
+   dessinée plutôt que tapée — les polices du document n'ont pas le glyphe ☐, et la
+   police de repli varie d'une machine à l'autre. */
+.doc-accord__case { margin-top: 8px; }
+.doc-case {
+  display: inline-block; width: 8px; height: 8px; margin-right: 6px;
+  border: 1px solid var(--dv-ink); vertical-align: -1px;
+}
+
+/* Le formulaire type de rétractation, à découper : un trait tireté le sépare des
+   conditions. Les lignes à remplir sont tracées en pointillés jusqu'à la marge. */
+.doc-retractation {
+  margin-top: 4px; padding-top: 14px; border-top: 1px dashed var(--dv-rule-strong);
+}
+.doc-retractation h4 {
+  margin: 0 0 6px;
+  font-family: var(--dv-mono); font-size: 8.5px; font-weight: 400;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--dv-accent);
+}
+.doc-retractation p { margin: 0 0 7px; font-size: 9.5px; line-height: 1.6; color: var(--dv-text); }
+.doc-retractation__consigne { color: var(--dv-muted); }
+.doc-retractation__champ { display: flex; gap: 6px; }
+.doc-retractation__champ::after {
+  content: ""; flex: 1; border-bottom: 1px dotted var(--dv-rule-strong); margin-bottom: 3px;
+}
+.doc-retractation__ligne { height: 14px; margin: 0 0 9px; border-bottom: 1px dotted var(--dv-rule-strong); }
+
 /* Devis sans aucune ligne chiffrable. Le parcours n'y mène pas — le produit
    refuse d'établir le devis — mais le template ne doit pas casser pour autant. */
 .doc-table__vide {

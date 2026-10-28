@@ -90,8 +90,10 @@ HAUTEUR_NOTE_DAGUE = 25                 # la note « † Prix non dicté… », 
 
 # Ce que la page 1 peut porter quand la clôture l'accompagne. Frontière relevée sur
 # 72 rendus réels balayant 2 à 7 lignes et 0 à 5 observations de deux longueurs : le
-# dernier cas qui tient mesure 450 px, le premier qui déborde 452. On se pose à 445.
-BUDGET_PAGE_1_AVEC_CLOTURE = 445
+# dernier cas qui tient mesure 450 px, le premier qui déborde 452. On se posait à 445 ;
+# la case de l'exécution anticipée, imprimée pour un particulier, grandit le bon pour
+# accord de 33 px : 412.
+BUDGET_PAGE_1_AVEC_CLOTURE = 412
 
 
 def _hauteur_lignes(lignes: list[LigneDevis]) -> int:

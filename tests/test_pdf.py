@@ -90,6 +90,37 @@ def test_a_5_5_pourcent_le_devis_cite_l_article_278_0_bis_a():
     assert "279-0 bis" not in html and "taux normal" not in html
 
 
+def _texte_imprime(devis) -> str:
+    """Le texte que le PDF imprime : sans `<title>`, styles ni commentaires, blancs unifiés."""
+    return templates._texte_rendu(render_html(devis))
+
+
+def test_un_particulier_recoit_le_formulaire_et_un_acompte_differe():
+    """Le parcours visé est une vente hors établissement : formulaire type (L221-5),
+    aucun paiement avant sept jours (L221-10), demande expresse d'exécution anticipée
+    (L221-25). Particulier est la valeur par défaut d'un client."""
+    texte = _texte_imprime(devis_de("elec"))
+
+    assert "formulaire de rétractation" in texte
+    assert "je/nous (*) vous notifie/notifions (*)" in texte
+    assert "(*) rayez la mention inutile." in texte
+    assert "exigible après 7 jours" in texte
+    assert "je demande que les travaux commencent avant la fin du délai de rétractation" in texte
+    assert "à la commande" not in texte
+
+
+def test_un_client_professionnel_n_a_ni_formulaire_ni_acompte_differe():
+    devis = devis_de("elec").model_copy(deep=True)
+    devis.client.professionnel = True
+    texte = _texte_imprime(devis)
+
+    assert "formulaire de rétractation" not in texte
+    assert "exigible après 7 jours" not in texte
+    assert "avant la fin du délai de rétractation" not in texte
+    assert "à la commande" in texte
+    assert "l221-3" in texte
+
+
 def test_les_prix_estimes_sont_signales_dans_le_html():
     # Sur le papier, le signal est le dague : c'est ce qui survit à une imprimante
     # noir et blanc, là où la teinte brique disparaît.

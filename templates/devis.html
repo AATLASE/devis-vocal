@@ -92,7 +92,9 @@
       <div class="ttc"><span>Total TTC</span><span>{{ devis.total_ttc | euro }}</span></div>
       {%- endif %}
       <div class="acompte">
-        <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% à la commande</span>
+        {#- Chez un particulier, aucun paiement avant sept jours (art. L221-10 du Code de
+            la consommation) : « à la commande » y réclamerait un acompte interdit. #}
+        <span>Acompte {{ devis.acompte_pct | pourcent }}&#8239;% {{ 'à la commande' if devis.client.professionnel else 'après 7 jours' }}</span>
         <span class="num">{{ devis.montant_acompte | euro }}</span>
       </div>
     </div>
@@ -105,6 +107,13 @@
       <h3>Bon pour accord</h3>
       <p>Date et signature du client, précédées de la mention manuscrite
       « Bon pour accord, devis reçu avant l'exécution des travaux ».</p>
+      {%- if not devis.client.professionnel %}
+      {#- La demande expresse de l'article L221-25 : sans elle, un client qui se rétracte
+          ne doit rien pour les travaux déjà faits. Ses suites sont sur la page des
+          conditions, avec le droit de rétractation. #}
+      <p class="doc-accord__case"><span class="doc-case"></span>Je demande que les travaux commencent avant la fin
+      du délai de rétractation (art. L221-25 du Code de la consommation).</p>
+      {%- endif %}
       <div class="doc-accord__date">Fait à ……………………………, le ……… / ……… / {{ devis.date_emission.year }}</div>
     </div>
     <div class="doc-accord__sign">
@@ -229,8 +238,14 @@
     </div>
     <div class="doc-mention">
       <h4>Conditions de règlement</h4>
+      {%- if devis.client.professionnel %}
       <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;% à la commande, soit
       {{ devis.montant_acompte | euro }}, solde à la réception des travaux. Règlement par
+      {%- else %}
+      <p>Acompte de {{ devis.acompte_pct | pourcent }}&#8239;%, soit {{ devis.montant_acompte | euro }},
+      exigible après 7 jours à compter de la signature du devis (art. L221-10 du Code de la
+      consommation), solde à la réception des travaux. Règlement par
+      {%- endif %}
       virement ou par chèque à 30 jours. Aucun escompte n'est accordé pour paiement anticipé.</p>
       {#- Le paragraphe ci-dessus demande un virement : sans coordonnées bancaires, il
           demande au client de deviner où payer. L'IBAN n'apparaît que s'il est réellement
@@ -270,9 +285,17 @@
     </div>
     <div class="doc-mention">
       <h4>Droit de rétractation</h4>
-      <p>Pour tout contrat conclu hors établissement, le client dispose d'un délai de quatorze
-      (14) jours à compter de la signature pour exercer son droit de rétractation, conformément
-      à l'article L221-18 du Code de la consommation.</p>
+      {%- if devis.client.professionnel %}
+      <p>Le client professionnel ne bénéficie du droit de rétractation que dans les cas
+      prévus à l'article L221-3 du Code de la consommation.</p>
+      {%- else %}
+      <p>Pour un contrat conclu hors établissement ou à distance, le client dispose d'un délai
+      de quatorze (14) jours à compter de la signature du devis pour se rétracter, sans avoir
+      à se justifier (art. L221-18 du Code de la consommation). Il notifie sa décision au moyen
+      du formulaire ci-dessous ou de toute autre déclaration dénuée d'ambiguïté. S'il a demandé
+      que les travaux commencent avant la fin de ce délai, il doit, en cas de rétractation, un
+      montant proportionné aux travaux exécutés jusqu'à sa décision (art. L221-25).</p>
+      {%- endif %}
     </div>
     <div class="doc-mention">
       <h4>Assurance décennale</h4>
@@ -293,6 +316,29 @@
       complémentaire soumis à l'accord du client.</p>
     </div>
   </section>
+
+  {%- if not devis.client.professionnel %}
+  {#- Le formulaire type de l'annexe à l'article R221-1, texte officiel inchangé. Sans
+      lui, le délai de rétractation est prolongé de douze mois (art. L221-20). Seul
+      l'en-tête « à l'attention de » est rempli : c'est au professionnel de le faire. #}
+  <section class="doc-retractation">
+    <h4>Formulaire de rétractation</h4>
+    <p class="doc-retractation__consigne">(Veuillez compléter et renvoyer le présent formulaire
+    uniquement si vous souhaitez vous rétracter du contrat.)</p>
+    <p>À l'attention de {{ e.nom }}, {{ e.adresse or 'adresse à compléter' }},
+    {{ e.code_postal_ville or 'code postal à compléter' }}{% if e.email %}, {{ e.email }}{% endif %} :</p>
+    <p>Je/nous (*) vous notifie/notifions (*) par la présente ma/notre (*) rétractation du contrat
+    portant sur la vente du bien (*)/pour la prestation de services (*) ci-dessous :</p>
+    <div class="doc-retractation__ligne"></div>
+    <p class="doc-retractation__champ">Commandé le (*)/reçu le (*) :</p>
+    <p class="doc-retractation__champ">Nom du (des) consommateur(s) :</p>
+    <p class="doc-retractation__champ">Adresse du (des) consommateur(s) :</p>
+    <p>Signature du (des) consommateur(s) (uniquement en cas de notification du présent formulaire
+    sur papier) :</p>
+    <p class="doc-retractation__champ">Date :</p>
+    <p class="doc-retractation__consigne">(*) Rayez la mention inutile.</p>
+  </section>
+  {%- endif %}
 
   <footer class="doc-runfoot doc-runfoot--rule push">
     <div>{{ e.nom }} · {{ e.forme_juridique or 'forme juridique à compléter' }} · SIRET {{ e.siret or 'à compléter' }}</div>
