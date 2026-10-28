@@ -8,7 +8,7 @@ l'œil sur le PDF, pas dans un test.
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -22,6 +22,7 @@ from app.models import (
     TauxTVA,
     Unite,
     arrondi,
+    heure_de_paris,
     to_devis,
 )
 
@@ -204,6 +205,35 @@ def test_la_validite_decale_la_date():
 
 def test_le_numero_est_deterministe():
     assert devis_de("sdb").numero == "DEV-20260827-1432"
+
+
+UTC = timezone.utc
+
+
+@pytest.mark.parametrize("utc, paris", [
+    # Le cas du constat : 1er janvier, 0 h 30 à Paris, 23 h 30 la veille à Greenwich.
+    (datetime(2026, 12, 31, 23, 30, tzinfo=UTC), datetime(2027, 1, 1, 0, 30)),
+    (datetime(2026, 7, 1, 12, 0, tzinfo=UTC), datetime(2026, 7, 1, 14, 0)),
+    # Les deux bascules de 2026 : dimanche 29 mars et dimanche 25 octobre, à 1 h UTC.
+    (datetime(2026, 3, 29, 0, 59, tzinfo=UTC), datetime(2026, 3, 29, 1, 59)),
+    (datetime(2026, 3, 29, 1, 0, tzinfo=UTC), datetime(2026, 3, 29, 3, 0)),
+    (datetime(2026, 10, 25, 0, 59, tzinfo=UTC), datetime(2026, 10, 25, 2, 59)),
+    (datetime(2026, 10, 25, 1, 0, tzinfo=UTC), datetime(2026, 10, 25, 2, 0)),
+])
+def test_l_heure_du_devis_est_celle_de_paris(utc, paris):
+    """Le conteneur tourne en UTC : le numéro et les dates suivaient Greenwich."""
+    assert heure_de_paris(utc) == paris
+
+
+def test_sans_instant_impose_le_devis_est_date_a_l_heure_de_paris(monkeypatch):
+    import app.models
+
+    monkeypatch.setattr(app.models, "heure_de_paris", lambda: datetime(2027, 1, 1, 0, 30))
+    devis = to_devis(charge("sdb"), entreprise=ENTREPRISE)
+
+    assert devis.numero == "DEV-20270101-0030"
+    assert devis.date_emission == date(2027, 1, 1)
+    assert devis.date_validite == date(2027, 1, 31)
 
 
 # ---------------------------------------------------------------------------

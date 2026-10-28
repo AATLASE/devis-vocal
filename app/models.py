@@ -16,7 +16,7 @@ Ce module ne dépend d'aucune configuration ni d'aucune clé : il s'importe et s
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 
@@ -253,6 +253,30 @@ class Profil(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def heure_de_paris(instant: datetime | None = None) -> datetime:
+    """L'heure légale de la France métropolitaine, quel que soit le fuseau du serveur.
+
+    Le conteneur tourne en UTC : sans ça, un devis dicté le 1er janvier à 0 h 30 sortait
+    « émis le 31 décembre », et le numéro portait une heure fausse d'une ou deux heures.
+
+    Pas de `zoneinfo` : il lui faut la base des fuseaux, absente de Windows et de bien
+    des images Docker. La règle européenne suffit — UTC+1, et UTC+2 du dernier dimanche
+    de mars au dernier dimanche d'octobre, à 1 h UTC (directive 2000/84/CE).
+
+    `instant` porte un fuseau ; absent, c'est maintenant. Le résultat n'en porte pas :
+    c'est l'heure telle qu'elle s'écrit sur le devis.
+    """
+    utc = (instant or datetime.now(timezone.utc)).astimezone(timezone.utc)
+
+    def bascule(mois: int) -> datetime:
+        """Le dernier dimanche du mois (mars ou octobre, qui ont 31 jours), à 1 h UTC."""
+        fin = datetime(utc.year, mois, 31, 1, tzinfo=timezone.utc)
+        return fin - timedelta(days=(fin.weekday() + 1) % 7)
+
+    ete = bascule(3) <= utc < bascule(10)
+    return (utc + timedelta(hours=2 if ete else 1)).replace(tzinfo=None)
+
+
 def to_devis(
     extraction: DevisExtraction,
     *,
@@ -266,9 +290,9 @@ def to_devis(
     """Transforme une extraction LLM en devis chiffré.
 
     Fonction pure : mêmes entrées, même sortie. `maintenant` est injectable pour que
-    les tests soient déterministes.
+    les tests soient déterministes ; absent, c'est l'heure de Paris.
     """
-    maintenant = maintenant or datetime.now()
+    maintenant = maintenant or heure_de_paris()
     emission = maintenant.date()
 
     # La franchise en base est un régime de l'entreprise, pas un choix de devis : une
