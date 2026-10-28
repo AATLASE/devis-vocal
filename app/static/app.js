@@ -40,6 +40,11 @@ function noeud(balise, classe, texte) {
 /* ---- état -------------------------------------------------------------- */
 
 let devisCourant = null;
+// Le taux de TVA d'un devis qui sort du modèle est déduit du vocal, et le PDF en tire
+// une attestation juridique. Il reste signalé « à confirmer » tant que l'artisan n'est
+// pas passé par l'édition, où le sélecteur de taux est sous ses yeux. Rien de calculé
+// ici : c'est un signal d'écran, le serveur ne garde rien.
+let tvaAConfirmer = false;
 // Le vocal et la transcription survivent à l'échec de l'étape qui les suit. C'est ce
 // qui permet de rejouer la seule étape qui a raté, au lieu de renvoyer l'artisan
 // dicter — et il n'y a aucune raison de le faire reparler quand le fournisseur de
@@ -90,6 +95,7 @@ function reinitialiser() {
   fermerEdition();
   leverGardeHistorique();
   devisCourant = null;
+  tvaAConfirmer = false;
   devisEnvoye = false;
   pdfPret = null;
   vocalCourant = null;
@@ -921,6 +927,8 @@ async function lancer(fichier, texte, dureeSecondes) {
 
     devisCourant = await chiffrer(transcription);
     devisEnvoye = false;
+    // En franchise, il n'y a pas de taux à confirmer : c'est le régime de l'entreprise.
+    tvaAConfirmer = !(devisCourant.entreprise && devisCourant.entreprise.franchise_tva);
     peindreEtapes(2);
 
     await devoilement;
@@ -1043,6 +1051,11 @@ function peindreTotaux(d) {
   if (Number(d.total_ht_estime) > 0) {
     totaux.append(noeud('div', 'totaux__note',
       `Dont ${euro(d.total_ht_estime)} de prix estimés. Relisez ces lignes avant l'envoi.`));
+  }
+  if (tvaAConfirmer && !franchise) {
+    totaux.append(noeud('div', 'totaux__note',
+      `TVA à ${pourcent(d.taux_tva)}${NB}% choisie automatiquement d'après le vocal. ` +
+      'Le devis atteste ce taux : confirmez-le dans Modifier.'));
   }
 }
 
@@ -1206,6 +1219,9 @@ function ouvrirEdition() {
   $('ed-tva').value = franchise ? '0'
     : Number(d.taux_tva) > 0.15 ? '0.20'
     : Number(d.taux_tva) < 0.08 ? '0.055' : '0.10';
+  $('ed-tva-aide').textContent = tvaAConfirmer
+    ? 'Choisi automatiquement d’après le vocal : vérifiez-le, le devis l’atteste.'
+    : '';
   $('ed-lignes').replaceChildren(...d.lignes.map(editeurDeLigne));
   $('ed-notes').value = d.notes.join('\n');
   $('ed-erreur').textContent = '';
@@ -1268,6 +1284,7 @@ async function validerEdition(e) {
   }
 
   devisEnvoye = false;   // le devis a changé : celui qui est parti n'est plus celui-ci
+  tvaAConfirmer = false; // le taux a été validé avec le sélecteur sous les yeux
   fermerEdition();
   peindreRelecture(devisCourant);
   // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
