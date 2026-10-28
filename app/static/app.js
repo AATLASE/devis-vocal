@@ -676,6 +676,7 @@ function fermerMicro() {
 }
 
 async function demarrerDictee() {
+  if (demarrage || enregistreur) return;
   fermerRelu();
 
   const format = formatDisponible();
@@ -684,11 +685,15 @@ async function demarrerDictee() {
     return;
   }
 
+  demarrage = true;
+  $('dictee-aide').textContent = 'Ouverture du micro…';
   try {
     micro = await navigator.mediaDevices.getUserMedia({ audio: CONTRAINTES_MICRO });
   } catch (err) {
     refuserDictee(raisonMicro(err));
     return;
+  } finally {
+    demarrage = false;
   }
 
   niveauMesure = ouvrirNiveau(micro);
