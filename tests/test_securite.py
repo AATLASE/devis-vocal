@@ -85,6 +85,82 @@ async def test_health_repond_completement_avec_le_code(porte_fermee, monkeypatch
     assert info["mode"] == "fixtures"
 
 
+async def test_un_code_accentue_ne_fait_pas_tomber_le_service(monkeypatch):
+    """`compare_digest` sur deux chaînes lève une TypeError au premier caractère non
+    ASCII : avec « maçon-2026 », /health répondait 500, le healthcheck échouait en
+    permanence et le site devenait inaccessible."""
+    monkeypatch.setenv("ACCES_CODE", "maçon-2026")
+    client = TestClient(app)
+
+    assert client.get("/health").status_code == 200
+    assert client.get("/health").json()["acces"] == "requis"
+    assert client.get("/api/entreprise", headers={"X-Acces": "macon-2026"}).status_code == 401
+
+    # Le bon code, tel que l'envoie `fetch` : un octet latin-1 par caractère. Construit
+    # à la main, le client de test réencodant ses en-têtes en UTF-8.
+    navigateur = requete()
+    navigateur.scope["headers"] = [(b"x-acces", "maçon-2026".encode("latin-1"))]
+    assert (await health(navigateur))["acces"] == "ouvert"
+
+
+def test_un_en_tete_accentue_est_refuse_sans_erreur(porte_fermee):
+    client = TestClient(app)
+    reponse = client.get("/api/entreprise", headers={"X-Acces": "chantier-2026é".encode("latin-1")})
+    assert reponse.status_code == 401
+
+
+@pytest.mark.parametrize("code", ["chef-d’œuvre", "maçon’2026", "chantier-🔨"])
+def test_un_code_que_le_navigateur_ne_sait_pas_envoyer_est_refuse_au_demarrage(monkeypatch, code):
+    """Hors du latin-1, `fetch` refuse d'envoyer l'en-tête : la porte ne s'ouvrirait
+    jamais, sans que rien le dise. Mieux vaut un démarrage qui échoue en le disant."""
+    monkeypatch.setenv("ACCES_CODE", code)
+    with pytest.raises(ValueError, match="ACCES_CODE"):
+        get_config()
+
+
+# ---------------------------------------------------------------------------
+# Les essais de code
+# ---------------------------------------------------------------------------
+
+
+def test_les_codes_faux_sont_limites(porte_fermee):
+    """Un 401 n'était compté nulle part : 50 codes faux donnaient 50 × 401, et un code
+    dit de vive voix se devinait par dictionnaire à la vitesse du réseau."""
+    client = TestClient(app)
+    for n in range(securite.ESSAIS_PAR_FENETRE):
+        assert client.get("/api/entreprise", headers={"X-Acces": f"essai-{n}"}).status_code == 401
+
+    assert client.get("/api/entreprise", headers={"X-Acces": "essai-suivant"}).status_code == 429
+    # Le bon code est refusé lui aussi : sinon il se reconnaîtrait au seul fait de passer.
+    assert client.get("/api/entreprise", headers={"X-Acces": CODE}).status_code == 429
+
+
+async def test_health_ne_sert_pas_d_oracle(porte_fermee):
+    """/health dit si un code est bon. Ses essais sont comptés comme les autres, et
+    une adresse qui les a épuisés n'apprend plus rien — bon code compris."""
+    attaquant = "198.51.100.66"
+    for n in range(securite.ESSAIS_PAR_FENETRE):
+        assert (await health(requete({"X-Acces": f"essai-{n}"}, ip=attaquant)))["acces"] == "requis"
+
+    bloque = await health(requete({"X-Acces": CODE}, ip=attaquant))
+    assert bloque.status_code == 429
+    assert b'"acces":"requis"' in bloque.body        # la page lit toujours « requis »
+
+    # Les autres adresses ne sont pas touchées, et le healthcheck, qui n'envoie pas de
+    # code, n'est jamais compté ni refusé.
+    assert (await health(requete({"X-Acces": CODE}, ip="203.0.113.50")))["acces"] == "ouvert"
+    assert await health(requete(ip=attaquant)) == {"status": "ok", "acces": "requis"}
+
+
+def test_l_absence_de_code_n_est_pas_un_essai(porte_fermee):
+    """La première visite et le healthcheck arrivent sans code : les compter bloquerait
+    un artisan avant même qu'il ait tapé quoi que ce soit."""
+    client = TestClient(app)
+    for _ in range(securite.ESSAIS_PAR_FENETRE + 5):
+        assert client.get("/api/entreprise").status_code == 401
+    assert client.get("/health", headers={"X-Acces": CODE}).json()["acces"] == "ouvert"
+
+
 # ---------------------------------------------------------------------------
 # Le débit
 # ---------------------------------------------------------------------------
@@ -264,6 +340,7 @@ def test_la_csp_reste_fermee_sans_firebase():
     assert "script-src 'self';" in csp + ";"
     assert "gstatic" not in csp
     assert "googleapis" not in csp
+    assert "apis.google.com" not in csp
 
 
 def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_path):
@@ -282,6 +359,9 @@ def test_la_csp_laisse_passer_le_sdk_quand_firebase_est_arme(monkeypatch, tmp_pa
 
     csp = securite.politique()
     assert "https://www.gstatic.com" in csp                      # le SDK
+    # « Continuer avec Google » : le SDK charge api.js avant d'ouvrir la fenêtre, et
+    # échouait en `auth/internal-error` à chaque essai tant que la CSP le refusait.
+    assert "https://apis.google.com" in directives(csp)["script-src"]
     assert "https://identitytoolkit.googleapis.com" in csp       # la connexion
     assert "https://securetoken.googleapis.com" in csp           # le rafraîchissement
     assert "https://mon-projet.firebaseapp.com" in csp           # la fenêtre Google
@@ -304,6 +384,25 @@ def test_l_apercu_garde_son_style_et_les_scripts_restent_fermes():
     assert csp["script-src"] == ["'self'"]
     assert csp["img-src"] == ["'self'", "data:"]
     assert csp["font-src"] == ["'self'"]
+
+
+def test_un_proxy_auquel_on_ne_fait_pas_confiance_est_signale(caplog):
+    """Derrière un proxy qu'uvicorn ne croit pas, tous les artisans partagent un seul
+    débit. Rien ne le montre avant le 429 : le journal le dit, avec l'adresse à déclarer."""
+    relaye = requete({"X-Forwarded-For": "198.51.100.4"}, ip="10.0.1.7")
+    with caplog.at_level("WARNING", logger="devis-vocal"):
+        securite.verifier_debit(relaye)
+        securite.verifier_debit(relaye)
+    signalements = [r for r in caplog.records if "FORWARDED_ALLOW_IPS" in r.getMessage()]
+    assert len(signalements) == 1                 # une fois, pas à chaque requête
+    assert "10.0.1.7" in signalements[0].getMessage()
+
+
+def test_un_proxy_de_confiance_n_est_pas_signale(caplog):
+    """uvicorn a cru le proxy : l'adresse retenue est celle de l'en-tête."""
+    with caplog.at_level("WARNING", logger="devis-vocal"):
+        securite.verifier_debit(requete({"X-Forwarded-For": "198.51.100.4"}, ip="198.51.100.4"))
+    assert not [r for r in caplog.records if "FORWARDED_ALLOW_IPS" in r.getMessage()]
 
 
 def test_le_micro_reste_autorise():
@@ -335,6 +434,38 @@ def test_le_code_ouvre_les_routes_protegees(client, monkeypatch):
 # ---------------------------------------------------------------------------
 # Le journal
 # ---------------------------------------------------------------------------
+
+
+def test_le_suivi_ne_garde_pas_ce_que_l_artisan_cherche():
+    """L'adresse d'un client tapée dans l'autocomplétion voyage dans la query string,
+    et la ligne d'accès d'uvicorn — comme celle de httpx vers la Base Adresse — la
+    gardait trente jours."""
+    import logging
+
+    import httpx
+
+    from app.suivi import sans_recherche
+
+    acces = logging.LogRecord(
+        "uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+        ("203.0.113.7:4567", "GET", "/api/adresse?q=12%20rue%20des%20Lilas", "1.1", 200), None,
+    )
+    sortant = logging.LogRecord(
+        "httpx", logging.INFO, "", 0, 'HTTP Request: %s %s "%s %d %s"',
+        ("GET", httpx.URL("https://data.geopf.fr/geocodage/completion?text=12+rue+des+Lilas"),
+         "HTTP/1.1", 200, "OK"), None,
+    )
+    for ligne in (acces, sortant):
+        assert sans_recherche(ligne)
+        assert "Lilas" not in ligne.getMessage()
+
+    assert "GET /api/adresse HTTP/1.1\" 200" in acces.getMessage()
+
+
+def test_le_contenu_des_devis_n_est_pas_journalise_par_defaut():
+    """La transcription et l'extraction portent le nom, l'adresse et le téléphone du
+    client : « le serveur ne garde rien »."""
+    assert get_config().log_contenu is False
 
 
 @pytest.mark.parametrize("nom", [

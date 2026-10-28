@@ -306,8 +306,9 @@ qu'on a écrit noierait les vraies pannes.
 
 Le fichier est archivé chaque nuit sous `logs/devis-vocal.log.2026-09-01` — le chemin à
 ouvrir ne change jamais, la journée d'un rendez-vous reste retrouvable. Trente jours
-gardés, dossier ignoré par git. `LOG_CONTENU=false` cesse d'y recopier les
-transcriptions et les extractions si le fichier devient lourd.
+gardés, dossier ignoré par git. Les transcriptions et les extractions n'y sont recopiées
+qu'avec `LOG_CONTENU=true`, à réserver à son poste : elles portent les coordonnées des
+clients.
 
 > À ne pas confondre avec le journal ci-dessus : celui-ci suit l'exécution, l'autre
 > garde les vocaux. Le suivi recopie des transcriptions, donc parfois des noms et des
@@ -548,5 +549,35 @@ volumes persistants pour `/app/var` et `/app/journal`.
 Pour l'authentification, Coolify injecte des variables et ne dépose pas de fichiers :
 utiliser `FIREBASE_CREDENTIALS_JSON` — le JSON du compte de service sur une ligne —
 plutôt que `FIREBASE_CREDENTIALS`, qui attend un chemin.
+
+**`FORWARDED_ALLOW_IPS`, à poser absolument.** Le proxy de Coolify (Traefik) tourne
+dans un autre conteneur. Tant qu'uvicorn ne lui fait pas confiance, il ignore son
+`X-Forwarded-For` : toutes les requêtes semblent venir du proxy, et la limite de débit
+comme le compteur de codes faux deviennent communs à tous les artisans — deux personnes
+qui tapent une adresse suffisent à faire refuser la dictée d'une troisième. uvicorn lit
+cette variable dans l'environnement ; y mettre le sous-réseau du réseau Docker que le
+proxy partage avec l'application. Sur le VPS :
+
+```bash
+# les réseaux du proxy, et son adresse sur chacun
+docker inspect coolify-proxy --format '{{range $n, $r := .NetworkSettings.Networks}}{{$n}} {{$r.IPAddress}}{{"\n"}}{{end}}'
+# le sous-réseau de celui qu'il partage avec l'application (`coolify` par défaut)
+docker network inspect coolify --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+Puis, dans les variables Coolify : `FORWARDED_ALLOW_IPS=10.0.1.0/24` (la valeur trouvée).
+Un sous-réseau plutôt que l'adresse seule du proxy, qui change quand Coolify le recrée.
+C'est sûr tant que seul le proxy joint l'application : **ne pas publier le port 8000
+sur l'hôte** (« Ports Exposes » à 8000, « Ports Mappings » vide), et jamais `*`.
+
+Pour vérifier : tant que la valeur est fausse, le journal de l'application affiche une
+fois « Requête relayée par …, qui n'est pas dans FORWARDED_ALLOW_IPS », avec l'adresse
+du proxy. Plus de message après redéploiement : c'est réglé.
+
+Deux autres variables à ne pas recopier telles quelles d'un `.env` de développement :
+`LOG_CONTENU` reste à `false` — sinon les noms, adresses et téléphones des clients
+passent dans les journaux du conteneur, que Docker garde de son côté — et `ACCES_CODE`
+ne doit contenir ni « œ » ni apostrophe typographique, que le navigateur ne sait pas
+envoyer : l'application refuse alors de démarrer, et le dit dans son journal.
 
 Docker n'est **pas** nécessaire pour développer.

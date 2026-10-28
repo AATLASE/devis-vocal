@@ -67,19 +67,67 @@ def acces_requis() -> bool:
     return bool(get_config().acces_code)
 
 
+# Les codes faux, comptés à part et bien plus serré que le débit. Sans eux, un code
+# donné de vive voix — un mot, une date — se devine par dictionnaire à la vitesse du
+# réseau : un 401 n'était jamais compté nulle part. Dix essais par adresse et par dix
+# minutes laissent largement de quoi se tromper au clavier d'un téléphone.
+ESSAIS_PAR_FENETRE = 10
+FENETRE_ESSAIS_S = 600
+
+_echecs: dict[str, deque[float]] = defaultdict(deque)
+
+
 def verifier_acces(request: Request) -> None:
-    """Refuse la requête si le code est absent ou faux."""
+    """Refuse la requête si le code est absent ou faux, et limite les essais."""
     if not acces_requis():
         return
 
     fourni = request.headers.get(ENTETE_ACCES, "")
-    attendu = get_config().acces_code
+    if not fourni:
+        # Pas de code, pas d'essai : c'est la première visite, ou le healthcheck.
+        raise HTTPException(status_code=401, detail="Code d'accès invalide.")
+
+    # Une adresse qui a épuisé ses essais est refusée avant toute comparaison, bon code
+    # compris : sinon le bon code se reconnaîtrait au seul fait de ne pas être refusé.
+    adresse = _client(request)
+    if _essais_epuises(adresse):
+        raise HTTPException(
+            status_code=429,
+            detail="Trop d'essais de code d'accès. Patientez quelques minutes.",
+        )
 
     # `compare_digest` compare en temps constant. Un `==` classique s'arrête au
     # premier caractère différent, et le temps de réponse trahit alors combien de
     # caractères sont justes — de quoi retrouver le code lettre par lettre.
-    if not hmac.compare_digest(fourni, attendu):
+    # Sur des octets : appliqué à des chaînes, il lève une TypeError dès qu'un
+    # caractère sort de l'ASCII — un code « maçon-2026 » faisait répondre 500 partout.
+    attendu = get_config().acces_code
+    if not hmac.compare_digest(fourni.encode("utf-8"), attendu.encode("utf-8")):
+        _noter_un_echec(adresse)
         raise HTTPException(status_code=401, detail="Code d'accès invalide.")
+
+
+def _essais_epuises(adresse: str) -> bool:
+    fenetre = _echecs.get(adresse)
+    if fenetre is None:
+        return False
+    maintenant = time.monotonic()
+    while fenetre and maintenant - fenetre[0] > FENETRE_ESSAIS_S:
+        fenetre.popleft()
+    if not fenetre:
+        del _echecs[adresse]
+        return False
+    return len(fenetre) >= ESSAIS_PAR_FENETRE
+
+
+def _noter_un_echec(adresse: str) -> None:
+    maintenant = time.monotonic()
+    # Même précaution que pour le débit : une adresse qui ne revient pas ne doit pas
+    # rester en mémoire pour toujours.
+    if len(_echecs) > 2048:
+        for perimee in [a for a, f in _echecs.items() if maintenant - f[-1] > FENETRE_ESSAIS_S]:
+            del _echecs[perimee]
+    _echecs[adresse].append(maintenant)
 
 
 # ---------------------------------------------------------------------------
@@ -96,15 +144,44 @@ _fenetres: dict[str, deque[float]] = defaultdict(deque)
 _etat: dict | None = None
 
 
+_proxy_signale = False
+
+
 def _client(request: Request) -> str:
     """L'adresse de l'appelant.
 
-    Derrière un reverse proxy, uvicorn doit tourner avec `--proxy-headers` pour que
-    ce soit l'adresse réelle et non celle du proxy. On ne lit pas `X-Forwarded-For`
-    nous-mêmes : cet en-tête est écrit par le client, donc n'importe qui pourrait
-    s'inventer une adresse neuve à chaque requête et contourner toute limite.
+    Derrière un reverse proxy, uvicorn doit faire confiance à ce proxy — variable
+    FORWARDED_ALLOW_IPS — pour que ce soit l'adresse réelle et non celle du proxy. On
+    ne lit pas `X-Forwarded-For` nous-mêmes : cet en-tête est écrit par le client, donc
+    n'importe qui pourrait s'inventer une adresse neuve à chaque requête et contourner
+    toute limite.
     """
-    return request.client.host if request.client else "inconnu"
+    adresse = request.client.host if request.client else "inconnu"
+    _signaler_un_proxy_ignore(request, adresse)
+    return adresse
+
+
+def _signaler_un_proxy_ignore(request: Request, adresse: str) -> None:
+    """Dit une fois, dans le journal, qu'un proxy relaie sans qu'on le croie.
+
+    Quand uvicorn fait confiance au proxy, l'adresse retenue est l'une de celles de
+    `X-Forwarded-For`. Si elle n'y figure pas, c'est l'adresse du proxy lui-même : tous
+    les artisans partagent alors un seul débit et un seul compteur d'essais. La panne
+    est invisible à l'usage — jusqu'au 429 — et l'adresse à déclarer est justement
+    celle-ci : on la donne.
+    """
+    global _proxy_signale
+    relais = request.headers.get("x-forwarded-for")
+    if _proxy_signale or not relais:
+        return
+    if adresse not in {morceau.strip() for morceau in relais.split(",")}:
+        _proxy_signale = True
+        logger.warning(
+            "Requête relayée par %s, qui n'est pas dans FORWARDED_ALLOW_IPS : le débit et "
+            "les essais de code sont comptés pour tout le monde sur cette adresse. "
+            "Déclarer ce proxy ou son sous-réseau (README, § Sur Coolify).",
+            adresse,
+        )
 
 
 def verifier_debit(request: Request) -> None:
@@ -137,7 +214,8 @@ def verifier_debit(request: Request) -> None:
 
 
 def _neuf() -> dict:
-    return {"jour": "", "devis_jour": 0, "mois": "", "devis_mois": 0}
+    return {"jour": "", "devis_jour": 0, "transcriptions_jour": 0,
+            "mois": "", "devis_mois": 0, "transcriptions_mois": 0}
 
 
 def _charger() -> dict:
@@ -186,12 +264,32 @@ def consommer_devis() -> None:
     """Plafonds de dépense. C'est le garde-fou du portefeuille.
 
     Le code d'accès protège du passant ; celui-ci protège du code qui a circulé, du
-    script laissé en boucle et de l'erreur de manipulation. Il compte les devis parce
-    que c'est l'opération qui coûte de l'argent — une transcription chez Groq est
-    gratuite, un chiffrage ne l'est pas.
+    script laissé en boucle et de l'erreur de manipulation. Il compte les opérations
+    qui coûtent de l'argent : le chiffrage ici, la transcription juste en dessous.
 
     Deux échelles : le jour attrape l'emballement, le mois attrape la fuite lente
     qu'un plafond journalier laisse passer sans jamais broncher.
+    """
+    _consommer("devis", "de devis autorisés")
+
+
+def consommer_transcription() -> None:
+    """Même garde-fou pour la transcription, sur son propre compteur.
+
+    Elle a longtemps échappé aux plafonds, sur l'idée qu'une transcription chez Groq
+    est gratuite. Elle passe maintenant par OpenAI, facturée à la minute d'audio, et un
+    script pouvait l'appeler en boucle pendant que /health annonçait zéro devis. Un
+    compteur à elle plutôt que celui des devis : une dictée en coûterait sinon deux, et
+    le plafond annoncé ne voudrait plus rien dire.
+    """
+    _consommer("transcriptions", "de transcriptions autorisées")
+
+
+def _consommer(quoi: str, libelle: str) -> None:
+    """Compte une opération payante, ou la refuse si le plafond est atteint.
+
+    Appelée avant l'appel au fournisseur, jamais après : la dépense est engagée dès
+    que la requête part, qu'elle aboutisse ou non.
     """
     config = get_config()
     etat = _charger()
@@ -200,28 +298,28 @@ def consommer_devis() -> None:
     jour = aujourd_hui.isoformat()
     mois = aujourd_hui.strftime("%Y-%m")
 
+    # Le jour et le mois sont communs aux deux compteurs : quand ils tournent, tout repart.
     if etat["jour"] != jour:
-        etat["jour"], etat["devis_jour"] = jour, 0
+        etat["jour"], etat["devis_jour"], etat["transcriptions_jour"] = jour, 0, 0
     if etat["mois"] != mois:
-        etat["mois"], etat["devis_mois"] = mois, 0
+        etat["mois"], etat["devis_mois"], etat["transcriptions_mois"] = mois, 0, 0
 
     for plafond, consomme, echelle, reprise in (
-        (config.devis_par_jour, etat["devis_jour"], "aujourd'hui", "demain"),
-        (config.devis_par_mois, etat["devis_mois"], "ce mois-ci", "le mois prochain"),
+        (config.devis_par_jour, etat[f"{quoi}_jour"], "aujourd'hui", "demain"),
+        (config.devis_par_mois, etat[f"{quoi}_mois"], "ce mois-ci", "le mois prochain"),
     ):
         if plafond > 0 and consomme >= plafond:
             logger.error(
-                "Plafond atteint (%d devis %s). Aucun appel payant ne partira avant %s.",
-                plafond, echelle, reprise,
+                "Plafond atteint (%d %s %s). Aucun appel payant ne partira avant %s.",
+                plafond, quoi, echelle, reprise,
             )
             raise HTTPException(
                 status_code=429,
-                detail=f"Le nombre de devis autorisés {echelle} est atteint. "
-                       f"Réessayez {reprise}.",
+                detail=f"Le nombre {libelle} {echelle} est atteint. Réessayez {reprise}.",
             )
 
-    etat["devis_jour"] += 1
-    etat["devis_mois"] += 1
+    etat[f"{quoi}_jour"] += 1
+    etat[f"{quoi}_mois"] += 1
     _sauver()
 
 
@@ -230,20 +328,26 @@ def compteurs() -> dict[str, int]:
     config = get_config()
     etat = _charger()
     aujourd_hui = date.today()
+    du_jour = etat["jour"] == aujourd_hui.isoformat()
+    du_mois = etat["mois"] == aujourd_hui.strftime("%Y-%m")
     return {
-        "devis_du_jour": etat["devis_jour"] if etat["jour"] == aujourd_hui.isoformat() else 0,
+        "devis_du_jour": etat["devis_jour"] if du_jour else 0,
         "plafond_jour": config.devis_par_jour,
-        "devis_du_mois": etat["devis_mois"] if etat["mois"] == aujourd_hui.strftime("%Y-%m") else 0,
+        "devis_du_mois": etat["devis_mois"] if du_mois else 0,
         "plafond_mois": config.devis_par_mois,
+        "transcriptions_du_jour": etat["transcriptions_jour"] if du_jour else 0,
+        "transcriptions_du_mois": etat["transcriptions_mois"] if du_mois else 0,
         "adresses_suivies": len(_fenetres),
     }
 
 
 def reinitialiser() -> None:
     """Remet les compteurs à zéro. Utilisé par les tests, jamais par l'application."""
-    global _etat
+    global _etat, _proxy_signale
     _fenetres.clear()
+    _echecs.clear()
     _etat = None
+    _proxy_signale = False
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +450,12 @@ SOCLE = {
 # refuse sans rien casser d'autre. C'est précisément ce qui est arrivé.
 SDK_FIREBASE = "https://www.gstatic.com"
 
+# « Continuer avec Google » passe par `signInWithPopup`, dont le SDK charge d'abord
+# `apis.google.com/js/api.js` — avant même d'ouvrir la fenêtre, et dès l'initialisation
+# sur mobile. Refusé, il fait échouer la connexion en `auth/internal-error`, à chaque
+# essai, sur le premier bouton du premier écran.
+SCRIPT_GOOGLE = "https://apis.google.com"
+
 # Les points d'entrée que le SDK appelle : vérification des identifiants, puis
 # rafraîchissement du jeton toutes les heures.
 API_FIREBASE = [
@@ -360,7 +470,7 @@ def politique() -> str:
 
     config = get_config()
     if config.auth_active:
-        directives["script-src"].append(SDK_FIREBASE)
+        directives["script-src"].extend([SDK_FIREBASE, SCRIPT_GOOGLE])
         directives["connect-src"].extend(API_FIREBASE)
         # La connexion Google passe par une page d'aide hébergée sur le domaine
         # d'authentification du projet.

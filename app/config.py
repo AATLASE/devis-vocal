@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import Entreprise
@@ -143,8 +143,10 @@ class Config(BaseSettings):
     log_dir: Path = RACINE / "logs"
     log_retention_jours: int = 30
     # Recopie la transcription et le JSON d'extraction dans le log. C'est ce qui rend
-    # un devis raté compréhensible après coup ; c'est aussi ce qui fait le volume.
-    log_contenu: bool = True
+    # un devis raté compréhensible après coup — mais ils portent le nom, l'adresse et le
+    # téléphone du client, gardés trente jours. Éteint par défaut : « le serveur ne
+    # garde rien ». À allumer sur son poste pour comprendre un devis sorti de travers.
+    log_contenu: bool = False
 
     # --- Règles de devis ---
     tva_defaut: Decimal = Decimal("0.10")  # rénovation logement > 2 ans
@@ -164,6 +166,25 @@ class Config(BaseSettings):
     # donne de vive voix en rendez-vous, en attendant les comptes.
     acces_code: str = ""
 
+    @field_validator("acces_code")
+    @classmethod
+    def _code_transmissible(cls, code: str) -> str:
+        """Refuse au démarrage un code que le navigateur ne saurait pas envoyer.
+
+        Le code voyage dans un en-tête, et `fetch` n'y accepte que le latin-1 : « maçon »
+        passe, « œuvre » ou une apostrophe typographique font échouer chaque appel. Une
+        porte dont la clé ne peut pas être tapée ne s'ouvre jamais — et rien ne le dirait.
+        """
+        try:
+            code.encode("latin-1")
+        except UnicodeEncodeError as err:
+            raise ValueError(
+                f"ACCES_CODE contient « {code[err.start:err.end]} », que le navigateur ne "
+                "sait pas envoyer. Choisis un code sans ce caractère : les accents du "
+                "français passent, pas « œ », les apostrophes typographiques ni les emojis."
+            ) from None
+        return code
+
     # Débit par adresse, sur une minute glissante. Trente laisse passer un artisan
     # pressé qui reclique, et arrête une boucle.
     limite_par_minute: int = 30
@@ -175,8 +196,18 @@ class Config(BaseSettings):
     # Deux échelles, parce qu'une seule ne suffit pas : un plafond journalier de 80
     # laisse passer 2 400 devis dans le mois, ce qui n'est plus un démonstrateur mais
     # une facture. Le mensuel attrape la fuite lente que le journalier laisse filer.
+    #
+    # Les transcriptions, payantes elles aussi chez OpenAI, sont comptées à part sous
+    # les mêmes plafonds : 80 devis et 80 transcriptions par jour.
     devis_par_jour: int = 80
     devis_par_mois: int = 400
+
+    # Délai maximal d'un appel au fournisseur, en secondes, avec une seule nouvelle
+    # tentative. Sans eux, le SDK attend jusqu'à 600 s et réessaie deux fois : une
+    # demi-heure devant une barre de progression. À relever pour un modèle local lent
+    # (Ollama, Whisper sur processeur).
+    delai_chiffrage_s: float = 90
+    delai_transcription_s: float = 60
 
     # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
     # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en

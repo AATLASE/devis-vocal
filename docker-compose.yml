@@ -29,10 +29,14 @@ services:
     # sans quoi la limitation de débit compte une seule adresse pour tout le monde —
     # celle du proxy — et se déclenche pour tous dès qu'une personne insiste.
     #
-    # Mais cet en-tête est écrit par le client. `--forwarded-allow-ips` dit à qui on
-    # accorde le droit de l'écrire, et la valeur par défaut ci-dessous ne fait
-    # confiance qu'à la machine elle-même. Un `*` rendrait la limitation inutile :
-    # n'importe qui se forgerait une adresse neuve à chaque requête.
+    # Mais cet en-tête est écrit par le client. FORWARDED_ALLOW_IPS dit à qui on
+    # accorde le droit de l'écrire ; uvicorn la lit dans l'environnement du conteneur,
+    # et par défaut ne fait confiance qu'à la machine elle-même. Un `*` rendrait la
+    # limitation inutile : n'importe qui se forgerait une adresse neuve à chaque requête.
+    #
+    # Surtout pas `--forwarded-allow-ips=${FORWARDED_ALLOW_IPS}` sur cette ligne : Compose
+    # remplace ce `${…}` au lancement par la valeur du `.env` — 127.0.0.1 — et celle
+    # que pose docker-compose.prod.yml pour Caddy n'était alors jamais lue.
     #
     # Avec un proxy dans un autre conteneur, poser FORWARDED_ALLOW_IPS sur SON adresse
     # — et seulement après avoir fermé le port 8000 au monde extérieur.
@@ -40,4 +44,3 @@ services:
       python -m uvicorn app.main:app
       --host 0.0.0.0 --port 8000
       --proxy-headers
-      --forwarded-allow-ips=${FORWARDED_ALLOW_IPS:-127.0.0.1}

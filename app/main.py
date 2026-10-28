@@ -44,7 +44,8 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -132,7 +133,16 @@ async def health(request: Request) -> dict[str, str]:
     if securite.acces_requis():
         try:
             securite.verifier_acces(request)
-        except HTTPException:
+        except HTTPException as err:
+            # /health dit si le code est bon : c'est un oracle, donc les essais faux y
+            # sont comptés comme ailleurs. Une adresse qui les a épuisés reçoit 429,
+            # avec le même « requis » que lit la page, sans rien apprendre de plus.
+            # Le healthcheck, lui, n'envoie pas de code et n'est jamais compté.
+            if err.status_code == 429:
+                return JSONResponse(
+                    status_code=429,
+                    content={"status": "ok", "acces": "requis", "detail": err.detail},
+                )
             return {"status": "ok", "acces": "requis"}
 
     config = get_config()
@@ -154,10 +164,16 @@ async def health(request: Request) -> dict[str, str]:
 async def api_transcribe(audio: UploadFile) -> dict[str, str]:
     contenu = await audio.read()
     nom = audio.filename or "audio.m4a"
+    # Compté avant l'appel, comme le chiffrage : la transcription est facturée à la
+    # minute d'audio dès que la requête part chez le fournisseur.
+    securite.consommer_transcription()
     try:
         with suivi.etape("transcription", attendu=TranscriptionError,
                          fichier=nom, ko=len(contenu) / 1024) as detail:
-            transcription = transcribe(contenu, nom)
+            # Hors de la boucle : le client du fournisseur est synchrone, et l'attendre
+            # ici gelait le serveur entier — page, aperçu, PDF, /health — pour tous
+            # les artisans, le temps de chaque appel.
+            transcription = await run_in_threadpool(transcribe, contenu, nom)
             detail["caracteres"] = len(transcription)
         suivi.bloc("transcription", transcription)
         # Le vocal d'un vrai artisan ne repasse pas deux fois : on le garde si le
@@ -174,12 +190,16 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
 async def api_devis(demande: DemandeDevis) -> Devis:
     config = get_config()
     # Compté avant l'appel, pas après : ce qu'on protège, c'est la dépense, et elle
-    # est engagée dès que la requête part chez le fournisseur.
+    # est engagée dès que la requête part chez le fournisseur. Compté ici, dans la
+    # boucle, et pas dans le fil d'exécution : deux devis simultanés ne doivent pas
+    # lire le même compteur avant que l'un l'ait incrémenté.
     securite.consommer_devis()
     try:
         with suivi.etape("structuration", attendu=StructurationError,
                          caracteres=len(demande.transcription)) as detail:
-            extraction = structure(demande.transcription)
+            # Vingt à quarante secondes d'appel synchrone : hors de la boucle, sinon
+            # plus personne n'est servi pendant ce temps. Voir api_transcribe.
+            extraction = await run_in_threadpool(structure, demande.transcription)
             detail["lignes"] = len(extraction.lignes)
             detail["estimees"] = sum(1 for ligne in extraction.lignes if ligne.a_valider)
     except StructurationError as err:

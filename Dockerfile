@@ -18,4 +18,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
 
+# Pas de `--forwarded-allow-ips` ici : uvicorn lit lui-même FORWARDED_ALLOW_IPS dans
+# l'environnement, et cette forme de CMD ne remplacerait pas un `${…}`. Derrière le
+# proxy de Coolify, c'est cette variable qu'il faut poser — voir README, § Sur Coolify.
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
