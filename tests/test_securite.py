@@ -85,6 +85,39 @@ async def test_health_repond_completement_avec_le_code(porte_fermee, monkeypatch
     assert info["mode"] == "fixtures"
 
 
+async def test_un_code_accentue_ne_fait_pas_tomber_le_service(monkeypatch):
+    """`compare_digest` sur deux chaînes lève une TypeError au premier caractère non
+    ASCII : avec « maçon-2026 », /health répondait 500, le healthcheck échouait en
+    permanence et le site devenait inaccessible."""
+    monkeypatch.setenv("ACCES_CODE", "maçon-2026")
+    client = TestClient(app)
+
+    assert client.get("/health").status_code == 200
+    assert client.get("/health").json()["acces"] == "requis"
+    assert client.get("/api/entreprise", headers={"X-Acces": "macon-2026"}).status_code == 401
+
+    # Le bon code, tel que l'envoie `fetch` : un octet latin-1 par caractère. Construit
+    # à la main, le client de test réencodant ses en-têtes en UTF-8.
+    navigateur = requete()
+    navigateur.scope["headers"] = [(b"x-acces", "maçon-2026".encode("latin-1"))]
+    assert (await health(navigateur))["acces"] == "ouvert"
+
+
+def test_un_en_tete_accentue_est_refuse_sans_erreur(porte_fermee):
+    client = TestClient(app)
+    reponse = client.get("/api/entreprise", headers={"X-Acces": "chantier-2026é".encode("latin-1")})
+    assert reponse.status_code == 401
+
+
+@pytest.mark.parametrize("code", ["chef-d’œuvre", "maçon’2026", "chantier-🔨"])
+def test_un_code_que_le_navigateur_ne_sait_pas_envoyer_est_refuse_au_demarrage(monkeypatch, code):
+    """Hors du latin-1, `fetch` refuse d'envoyer l'en-tête : la porte ne s'ouvrirait
+    jamais, sans que rien le dise. Mieux vaut un démarrage qui échoue en le disant."""
+    monkeypatch.setenv("ACCES_CODE", code)
+    with pytest.raises(ValueError, match="ACCES_CODE"):
+        get_config()
+
+
 # ---------------------------------------------------------------------------
 # Le débit
 # ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.models import Entreprise
@@ -163,6 +163,25 @@ class Config(BaseSettings):
     # ligne. Ce n'est pas une authentification : c'est un mot de passe unique qu'on
     # donne de vive voix en rendez-vous, en attendant les comptes.
     acces_code: str = ""
+
+    @field_validator("acces_code")
+    @classmethod
+    def _code_transmissible(cls, code: str) -> str:
+        """Refuse au démarrage un code que le navigateur ne saurait pas envoyer.
+
+        Le code voyage dans un en-tête, et `fetch` n'y accepte que le latin-1 : « maçon »
+        passe, « œuvre » ou une apostrophe typographique font échouer chaque appel. Une
+        porte dont la clé ne peut pas être tapée ne s'ouvre jamais — et rien ne le dirait.
+        """
+        try:
+            code.encode("latin-1")
+        except UnicodeEncodeError as err:
+            raise ValueError(
+                f"ACCES_CODE contient « {code[err.start:err.end]} », que le navigateur ne "
+                "sait pas envoyer. Choisis un code sans ce caractère : les accents du "
+                "français passent, pas « œ », les apostrophes typographiques ni les emojis."
+            ) from None
+        return code
 
     # Débit par adresse, sur une minute glissante. Trente laisse passer un artisan
     # pressé qui reclique, et arrête une boucle.

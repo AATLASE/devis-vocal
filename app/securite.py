@@ -78,7 +78,9 @@ def verifier_acces(request: Request) -> None:
     # `compare_digest` compare en temps constant. Un `==` classique s'arrête au
     # premier caractère différent, et le temps de réponse trahit alors combien de
     # caractères sont justes — de quoi retrouver le code lettre par lettre.
-    if not hmac.compare_digest(fourni, attendu):
+    # Sur des octets : appliqué à des chaînes, il lève une TypeError dès qu'un
+    # caractère sort de l'ASCII — un code « maçon-2026 » faisait répondre 500 partout.
+    if not hmac.compare_digest(fourni.encode("utf-8"), attendu.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Code d'accès invalide.")
 
 
