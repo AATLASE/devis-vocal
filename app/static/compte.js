@@ -7,9 +7,10 @@
 
    Module ESM, chargé après `app.js`, et dans cet ordre pour une raison : le SDK
    Firebase n'existe qu'en ESM, alors qu'`app.js` est un script classique dont les
-   fonctions (`montrer`, `$`, `telecharger`) sont des globales. La dépendance ne va
-   que dans ce sens — `app.js` ne connaît de ce fichier que `window.Compte`, et se
-   passe très bien de son absence.
+   fonctions (`montrer`, `$`, `telecharger`, `enteteAcces`) sont des globales. La
+   dépendance ne va que dans ce sens — `app.js` ne connaît de ce fichier que
+   `window.Compte`, n'émet pour lui que l'événement `porte-franchie`, et se passe très
+   bien de son absence.
 
    Deux règles tiennent tout le reste :
 
@@ -359,19 +360,9 @@ let profil = null;
 async function appelProfil(options = {}) {
   const reponse = await fetch('/api/profil', {
     ...options,
-    headers: {
-      ...(options.headers || {}),
-      Authorization: 'Bearer ' + (await window.Compte.jeton()),
-    },
+    headers: await entetes(options.headers),
   });
-  if (!reponse.ok) {
-    let detail = 'Erreur ' + reponse.status + '.';
-    try {
-      const corps = await reponse.json();
-      if (corps.detail) detail = corps.detail;
-    } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
-    throw new Error(detail);
-  }
+  if (!reponse.ok) throw new Error(await motif(reponse));
   return await reponse.json();
 }
 
@@ -707,11 +698,18 @@ async function ouvrirTemplate() {
   direTemplate('');
   choisir(null);
   try {
-    peindreTemplate(await (await fetch('/api/template', {
-      headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
-    })).json());
-  } catch (_) {
-    direTemplate("L'état du template n'a pas pu être lu. Le devis sort sur la mise en page livrée.", 'alerte');
+    const reponse = await fetch('/api/template', { headers: await entetes() });
+    // Un refus n'est pas un état : peint tel quel, il affichait « le template livré,
+    // toutes les mentions garanties » par-dessus un template non conforme.
+    if (!reponse.ok) throw new Error(await motif(reponse));
+    peindreTemplate(await reponse.json());
+  } catch (err) {
+    // On ne sait pas ce qui est posé : on ne l'affirme pas.
+    $('template-nom').textContent = 'État inconnu';
+    $('template-meta').textContent = '';
+    $('template-alerte').hidden = true;
+    $('btn-template-retirer').hidden = true;
+    direTemplate("L'état du template n'a pas pu être lu. " + err.message, 'alerte');
   }
 }
 
@@ -754,17 +752,10 @@ async function envoyerTemplate(url, methode) {
   donnees.append('template', fichierChoisi);
   const reponse = await fetch(url, {
     method: methode,
-    headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
+    headers: await entetes(),
     body: donnees,
   });
-  if (!reponse.ok) {
-    let detail = 'Erreur ' + reponse.status + '.';
-    try {
-      const corps = await reponse.json();
-      if (corps.detail) detail = corps.detail;
-    } catch (_) { /* réponse non JSON : le message générique fera l'affaire */ }
-    throw new Error(detail);
-  }
+  if (!reponse.ok) throw new Error(await motif(reponse));
   return reponse;
 }
 
@@ -821,13 +812,28 @@ async function retirer() {
   try {
     const reponse = await fetch('/api/template', {
       method: 'DELETE',
-      headers: { Authorization: 'Bearer ' + (await window.Compte.jeton()) },
+      headers: await entetes(),
     });
-    if (!reponse.ok) throw new Error('La suppression a échoué.');
+    if (!reponse.ok) throw new Error('La suppression a échoué. ' + await motif(reponse));
     peindreTemplate({ pose: false });
     direTemplate('Vos devis sortent de nouveau sur la mise en page livrée.', 'ok');
   } catch (err) {
     direTemplate(err.message, 'alerte');
+  }
+}
+
+/* Le template livré, comme point de départ. Un lien nu ne peut porter aucun en-tête :
+   derrière la porte, le navigateur affichait le refus en JSON brut. On le récupère donc
+   comme les autres appels, puis on le remet en fichier. */
+async function telechargerModele(e) {
+  e.preventDefault();
+  direTemplate('');
+  try {
+    const reponse = await fetch('/api/template/modele', { headers: enteteAcces() });
+    if (!reponse.ok) throw new Error(await motif(reponse));
+    telecharger(await reponse.blob(), 'devis-modele.html');
+  } catch (err) {
+    direTemplate('Le template livré n’a pas pu être téléchargé. ' + err.message, 'alerte');
   }
 }
 
@@ -858,6 +864,7 @@ function brancherTemplate() {
   $('btn-template-apercu').addEventListener('click', (e) => apercu(e.currentTarget));
   $('btn-template-poser').addEventListener('click', (e) => poser(e.currentTarget));
   $('btn-template-retirer').addEventListener('click', retirer);
+  $('lien-modele').addEventListener('click', telechargerModele);
 }
 
 demarrer();
