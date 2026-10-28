@@ -50,6 +50,9 @@ let dureeVocal = null;
 let chrono = null;
 let revelation = null;
 let fournisseur = 'openai';   // renseigné par /health
+// Vrai une fois le PDF partagé ou enregistré : le devis est alors entre les mains de
+// l'artisan, et le quitter ne demande plus de confirmation.
+let devisEnvoye = false;
 
 /* ---- navigation -------------------------------------------------------- */
 
@@ -85,7 +88,9 @@ function reinitialiser() {
   arreterDictee(true);
   fermerRelu();
   fermerEdition();
+  leverGardeHistorique();
   devisCourant = null;
+  devisEnvoye = false;
   pdfPret = null;
   vocalCourant = null;
   transcriptionCourante = null;
@@ -99,6 +104,57 @@ function reinitialiser() {
   peindreDictee(false);
   montrer('accueil');
 }
+
+/* ---- ne pas perdre un devis -------------------------------------------- */
+/* Le devis et le vocal ne vivent que dans cette page : le serveur n'en garde rien,
+   c'est voulu. Un geste retour, un tirer-pour-rafraîchir ou un toucher malheureux
+   sur « Nouveau devis » ne doivent donc pas les effacer sans le demander — le perdre,
+   c'est redicter, et payer un chiffrage de plus. */
+
+const devisAPerdre = () => !!(devisCourant && devisCourant.lignes.length && !devisEnvoye);
+
+function confirmerAbandon() {
+  return !devisAPerdre() || window.confirm(
+    "Abandonner ce devis ? Il n'est enregistré nulle part : il faudrait le dicter de nouveau.");
+}
+
+/* Ce que déclenchent « Nouveau devis », « Recommencer » et la marque. `reinitialiser`
+   reste sans question : le code qui l'appelle sait déjà ce qu'il fait. */
+function recommencer() {
+  if (confirmerAbandon()) reinitialiser();
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if (!devisAPerdre() && !vocalPret && !enregistreur) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+/* Le geste retour d'Android quitte la page. Une entrée d'historique posée à l'entrée
+   en relecture l'absorbe : le retour demande alors s'il faut abandonner le devis. */
+let gardeHistorique = false;
+
+function poserGardeHistorique() {
+  if (gardeHistorique) return;
+  history.pushState({ devisVocal: true }, '');
+  gardeHistorique = true;
+}
+
+/* Le devis est abandonné par un bouton : l'entrée posée pour lui n'a plus d'objet, et
+   la laisser obligerait à un retour de plus pour quitter la page. */
+function leverGardeHistorique() {
+  if (!gardeHistorique) return;
+  gardeHistorique = false;
+  history.back();   // le `popstate` qui suit trouve la garde levée et ne fait rien
+}
+
+window.addEventListener('popstate', () => {
+  if (!gardeHistorique) return;
+  gardeHistorique = false;   // le geste vient de consommer l'entrée
+  if (!devisCourant) return;
+  if (confirmerAbandon()) reinitialiser();
+  else poserGardeHistorique();
+});
 
 /* Un repli et son lien vont par deux : le panneau se ferme, et le lien doit le
    dire — `aria-expanded` est ce qui l'annonce au lecteur d'écran, et ce qui fait
@@ -864,6 +920,7 @@ async function lancer(fichier, texte, dureeSecondes) {
       : Promise.resolve(($('transcription-directe').textContent = transcription));
 
     devisCourant = await chiffrer(transcription);
+    devisEnvoye = false;
     peindreEtapes(2);
 
     await devoilement;
@@ -882,6 +939,7 @@ async function lancer(fichier, texte, dureeSecondes) {
       vueRelecture = 'detail';
       appliquerVue();
       peindreApercu();
+      poserGardeHistorique();
       setTimeout(() => montrer('relecture'), 500);
     }
   } catch (err) {
@@ -1187,6 +1245,7 @@ async function validerEdition(e) {
     bouton.disabled = false;
   }
 
+  devisEnvoye = false;   // le devis a changé : celui qui est parti n'est plus celui-ci
   fermerEdition();
   peindreRelecture(devisCourant);
   // Le PDF déjà fabriqué et l'aperçu sont ceux d'avant la correction.
@@ -1651,6 +1710,7 @@ async function envoyerPdf() {
         title: `Devis ${devisCourant.numero}`,
       });
       partage = true;
+      devisEnvoye = true;
     } catch (err) {
       // Une feuille de partage vraiment ouverte, puis refermée par l'artisan, prend
       // au moins quelques centaines de millisecondes. Un refus instantané veut dire
@@ -1662,6 +1722,7 @@ async function envoyerPdf() {
 
   if (!partage) {
     telecharger(blob, nom);
+    devisEnvoye = true;
     // Sur un téléphone, un téléchargement se signale par une notification qu'on
     // rate. Le bouton, lui, est sous le doigt.
     libelle.textContent = 'Devis enregistré';
@@ -1806,7 +1867,7 @@ if (saitPartagerUnPdf()) {
 }
 
 document.querySelectorAll('[data-recommencer]').forEach((b) =>
-  b.addEventListener('click', reinitialiser));
+  b.addEventListener('click', recommencer));
 
 /* ---- ossature et relecture --------------------------------------------- */
 
@@ -1816,7 +1877,9 @@ document.querySelectorAll('[data-recommencer]').forEach((b) =>
    `compte.js` pose son propre retour depuis l'écran du template. */
 $('marque').addEventListener('click', () => {
   if ($('ecran-traitement').classList.contains('is-active')) return;
-  reinitialiser();
+  // Devant la porte, l'accueil ne s'atteint qu'avec le code.
+  if ($('ecran-porte').classList.contains('is-active')) return;
+  recommencer();
 });
 
 /* Le commutateur des deux vues du devis. */

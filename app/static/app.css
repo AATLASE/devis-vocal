@@ -31,6 +31,12 @@ html {
   scroll-padding-top: calc(var(--dv-entete-h) + var(--dv-s-4));
 }
 
+/* Pas de tirer-pour-rafraîchir : sur Chrome Android comme sur Safari, remonter un peu
+   trop vite en haut d'un devis rechargeait la page — et le devis, qui ne vit qu'ici,
+   disparaissait. Posé sur les deux : selon le navigateur, c'est l'un ou l'autre qui
+   porte le défilement du document. */
+html, body { overscroll-behavior-y: contain; }
+
 /* `hidden` doit cacher, sans exception.
 
    Le navigateur applique `[hidden] { display: none }` depuis sa propre feuille,
@@ -1838,9 +1844,12 @@ body.menu-anime.menu-ouvert .menu-voile {
 .edition__erreur:empty { min-height: 0; margin-top: 0; }
 .edition__actions { display: flex; gap: 12px; margin-top: 22px; }
 
-/* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. */
+/* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. « Nouveau
+   devis » non plus : à portée de pouce sous le formulaire, il effaçait la correction
+   en cours. On sort de l'édition par « Annuler ». */
 .relecture.en-edition #btn-pdf,
-.relecture.en-edition #btn-modifier { display: none; }
+.relecture.en-edition #btn-modifier,
+.relecture.en-edition [data-recommencer] { display: none; }
 
 @media (max-width: 640px) {
   /* La désignation prend tout le rang à côté de la croix : c'est le texte le plus
