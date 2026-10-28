@@ -306,6 +306,25 @@ def test_l_apercu_garde_son_style_et_les_scripts_restent_fermes():
     assert csp["font-src"] == ["'self'"]
 
 
+def test_un_proxy_auquel_on_ne_fait_pas_confiance_est_signale(caplog):
+    """Derrière un proxy qu'uvicorn ne croit pas, tous les artisans partagent un seul
+    débit. Rien ne le montre avant le 429 : le journal le dit, avec l'adresse à déclarer."""
+    relaye = requete({"X-Forwarded-For": "198.51.100.4"}, ip="10.0.1.7")
+    with caplog.at_level("WARNING", logger="devis-vocal"):
+        securite.verifier_debit(relaye)
+        securite.verifier_debit(relaye)
+    signalements = [r for r in caplog.records if "FORWARDED_ALLOW_IPS" in r.getMessage()]
+    assert len(signalements) == 1                 # une fois, pas à chaque requête
+    assert "10.0.1.7" in signalements[0].getMessage()
+
+
+def test_un_proxy_de_confiance_n_est_pas_signale(caplog):
+    """uvicorn a cru le proxy : l'adresse retenue est celle de l'en-tête."""
+    with caplog.at_level("WARNING", logger="devis-vocal"):
+        securite.verifier_debit(requete({"X-Forwarded-For": "198.51.100.4"}, ip="198.51.100.4"))
+    assert not [r for r in caplog.records if "FORWARDED_ALLOW_IPS" in r.getMessage()]
+
+
 def test_le_micro_reste_autorise():
     """Une Permissions-Policy trop zélée couperait la dictée — la fonction centrale
     du produit — sans le moindre message d'erreur."""

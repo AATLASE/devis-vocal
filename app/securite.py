@@ -96,15 +96,44 @@ _fenetres: dict[str, deque[float]] = defaultdict(deque)
 _etat: dict | None = None
 
 
+_proxy_signale = False
+
+
 def _client(request: Request) -> str:
     """L'adresse de l'appelant.
 
-    Derrière un reverse proxy, uvicorn doit tourner avec `--proxy-headers` pour que
-    ce soit l'adresse réelle et non celle du proxy. On ne lit pas `X-Forwarded-For`
-    nous-mêmes : cet en-tête est écrit par le client, donc n'importe qui pourrait
-    s'inventer une adresse neuve à chaque requête et contourner toute limite.
+    Derrière un reverse proxy, uvicorn doit faire confiance à ce proxy — variable
+    FORWARDED_ALLOW_IPS — pour que ce soit l'adresse réelle et non celle du proxy. On
+    ne lit pas `X-Forwarded-For` nous-mêmes : cet en-tête est écrit par le client, donc
+    n'importe qui pourrait s'inventer une adresse neuve à chaque requête et contourner
+    toute limite.
     """
-    return request.client.host if request.client else "inconnu"
+    adresse = request.client.host if request.client else "inconnu"
+    _signaler_un_proxy_ignore(request, adresse)
+    return adresse
+
+
+def _signaler_un_proxy_ignore(request: Request, adresse: str) -> None:
+    """Dit une fois, dans le journal, qu'un proxy relaie sans qu'on le croie.
+
+    Quand uvicorn fait confiance au proxy, l'adresse retenue est l'une de celles de
+    `X-Forwarded-For`. Si elle n'y figure pas, c'est l'adresse du proxy lui-même : tous
+    les artisans partagent alors un seul débit et un seul compteur d'essais. La panne
+    est invisible à l'usage — jusqu'au 429 — et l'adresse à déclarer est justement
+    celle-ci : on la donne.
+    """
+    global _proxy_signale
+    relais = request.headers.get("x-forwarded-for")
+    if _proxy_signale or not relais:
+        return
+    if adresse not in {morceau.strip() for morceau in relais.split(",")}:
+        _proxy_signale = True
+        logger.warning(
+            "Requête relayée par %s, qui n'est pas dans FORWARDED_ALLOW_IPS : le débit et "
+            "les essais de code sont comptés pour tout le monde sur cette adresse. "
+            "Déclarer ce proxy ou son sous-réseau (README, § Sur Coolify).",
+            adresse,
+        )
 
 
 def verifier_debit(request: Request) -> None:
@@ -241,9 +270,10 @@ def compteurs() -> dict[str, int]:
 
 def reinitialiser() -> None:
     """Remet les compteurs à zéro. Utilisé par les tests, jamais par l'application."""
-    global _etat
+    global _etat, _proxy_signale
     _fenetres.clear()
     _etat = None
+    _proxy_signale = False
 
 
 # ---------------------------------------------------------------------------

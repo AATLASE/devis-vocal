@@ -549,4 +549,28 @@ Pour l'authentification, Coolify injecte des variables et ne dépose pas de fich
 utiliser `FIREBASE_CREDENTIALS_JSON` — le JSON du compte de service sur une ligne —
 plutôt que `FIREBASE_CREDENTIALS`, qui attend un chemin.
 
+**`FORWARDED_ALLOW_IPS`, à poser absolument.** Le proxy de Coolify (Traefik) tourne
+dans un autre conteneur. Tant qu'uvicorn ne lui fait pas confiance, il ignore son
+`X-Forwarded-For` : toutes les requêtes semblent venir du proxy, et la limite de débit
+comme le compteur de codes faux deviennent communs à tous les artisans — deux personnes
+qui tapent une adresse suffisent à faire refuser la dictée d'une troisième. uvicorn lit
+cette variable dans l'environnement ; y mettre le sous-réseau du réseau Docker que le
+proxy partage avec l'application. Sur le VPS :
+
+```bash
+# les réseaux du proxy, et son adresse sur chacun
+docker inspect coolify-proxy --format '{{range $n, $r := .NetworkSettings.Networks}}{{$n}} {{$r.IPAddress}}{{"\n"}}{{end}}'
+# le sous-réseau de celui qu'il partage avec l'application (`coolify` par défaut)
+docker network inspect coolify --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}'
+```
+
+Puis, dans les variables Coolify : `FORWARDED_ALLOW_IPS=10.0.1.0/24` (la valeur trouvée).
+Un sous-réseau plutôt que l'adresse seule du proxy, qui change quand Coolify le recrée.
+C'est sûr tant que seul le proxy joint l'application : **ne pas publier le port 8000
+sur l'hôte** (« Ports Exposes » à 8000, « Ports Mappings » vide), et jamais `*`.
+
+Pour vérifier : tant que la valeur est fausse, le journal de l'application affiche une
+fois « Requête relayée par …, qui n'est pas dans FORWARDED_ALLOW_IPS », avec l'adresse
+du proxy. Plus de message après redéploiement : c'est réglé.
+
 Docker n'est **pas** nécessaire pour développer.
