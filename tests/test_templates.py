@@ -11,11 +11,12 @@ mémoire et `render_html` n'a besoin de rien d'autre que Jinja.
 
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 
 import pytest
 
-from app import templates
+from app import pdf, templates
 from app.config import get_config
 from app.templates import TemplateRefuse
 from app.pdf import render_html
@@ -167,6 +168,39 @@ def test_le_javascript_est_retire_du_document(template):
     assert "ailleurs.example" not in propre
     assert "script" not in propre.lower()
     assert "onload" not in propre.lower()
+
+
+@pytest.mark.parametrize("template", [
+    # Deux boucles imbriquées : 10^10 tours, des minutes de calcul.
+    "{% set r = range(100000) %}{% for i in r %}{% for j in r %}{% endfor %}{% endfor %}",
+    # Une macro qui s'appelle deux fois : 2^40 appels.
+    "{% macro m(n) %}{% if n %}{{ m(n - 1) }}{{ m(n - 1) }}{% endif %}{% endmacro %}{{ m(40) }}",
+])
+def test_un_template_qui_calcule_sans_fin_est_coupe(monkeypatch, template):
+    """Le bac à sable plafonne chaque `range`, pas leur imbrication. Sans délai, ce
+    template tenait le serveur des minutes — trois boucles, des jours."""
+    monkeypatch.setattr(pdf, "DELAI_JINJA_S", 0.5)
+
+    debut = time.perf_counter()
+    with pytest.raises(TemplateRefuse, match="dépassé"):
+        templates.valider(template)
+
+    assert time.perf_counter() - debut < 5
+
+
+@pytest.mark.parametrize("template", [
+    "{{ 10 ** (10 ** 9) }}",                     # un entier de plusieurs centaines de Mo
+    "{{ 'x' * 1000000000 }}",                    # un Go de texte
+    "{% for i in range(100000) %}{{ 'x' * 1000 }}{% endfor %}",  # cent millions de caractères
+])
+def test_un_template_demesure_est_refuse_sans_calculer(template):
+    """Ces calculs-là tournent en C, là où le délai ne peut pas interrompre : on les
+    refuse avant de les faire."""
+    debut = time.perf_counter()
+    with pytest.raises(TemplateRefuse, match="démesur"):
+        templates.valider(template)
+
+    assert time.perf_counter() - debut < 5
 
 
 def test_le_nettoyage_epargne_le_contenu_legitime():

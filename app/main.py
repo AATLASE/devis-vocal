@@ -38,6 +38,7 @@ facultatif, et un artisan non connecté dicte son devis exactement comme avant.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from decimal import Decimal
@@ -328,15 +329,19 @@ async def api_apercu(
     # Même repli que pour le PDF, et pour la même raison : le template a été validé
     # sur le devis d'exemple, pas sur celui-là. Mieux vaut un aperçu sur la mise en
     # page livrée qu'un cadre vide au moment de relire son devis.
+    # Le rendu tourne hors de la boucle : le Jinja d'un template tiers est du calcul
+    # qu'on n'a pas écrit, et le serveur doit continuer de répondre aux autres.
     repli = False
     try:
-        html = pdf_module.render_html(devis, template, polices_inline=False)
+        html = await asyncio.to_thread(
+            pdf_module.render_html, devis, template, polices_inline=False
+        )
     except Exception:
         if not template:
             raise HTTPException(status_code=500, detail="L'aperçu n'a pas pu être produit.") from None
         logger.warning("  apercu template de %s en échec, repli sur le template livré", utilisateur.uid)
         try:
-            html = pdf_module.render_html(devis, polices_inline=False)
+            html = await asyncio.to_thread(pdf_module.render_html, devis, polices_inline=False)
             repli = True
         except Exception:
             raise HTTPException(status_code=500, detail="L'aperçu n'a pas pu être produit.") from None
@@ -456,10 +461,15 @@ async def api_template_poser(
     utilisateur: Utilisateur = Depends(utilisateur_requis),
 ) -> dict:
     """Valide et enregistre le template. Un template qui ne rend pas est refusé ici,
-    pas au moment où l'artisan veut son PDF devant un client."""
+    pas au moment où l'artisan veut son PDF devant un client.
+
+    La validation rend le template : elle tourne hors de la boucle, comme tout rendu
+    d'un template tiers."""
     html = await _lire_le_html(template)
     try:
-        pose = templates_module.enregistrer(utilisateur.uid, template.filename or "", html)
+        pose = await asyncio.to_thread(
+            templates_module.enregistrer, utilisateur.uid, template.filename or "", html
+        )
     except TemplateRefuse as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     logger.info(
@@ -490,7 +500,7 @@ async def api_template_apercu(
     """
     html = await _lire_le_html(template)
     try:
-        propre, _, _ = templates_module.valider(html)
+        propre, _, _ = await asyncio.to_thread(templates_module.valider, html)
     except TemplateRefuse as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
 

@@ -131,3 +131,82 @@ async def test_les_totaux_ne_dependent_pas_de_l_identite(mode_fixtures):
     assert nu.total_ht == habille.total_ht
     assert nu.total_ttc == habille.total_ttc
     assert nu.montant_acompte == habille.montant_acompte
+
+
+# ---------------------------------------------------------------------------
+# Le compte et le template
+# ---------------------------------------------------------------------------
+#
+# Ces routes passent par l'application entière, middlewares compris, mais sans son
+# `lifespan` : aucun de ces tests ne lance Chromium.
+
+
+@pytest.fixture
+async def client():
+    import httpx
+
+    from app.main import app
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+def _fichier(html: str) -> dict:
+    return {"template": ("template.html", html.encode("utf-8"), "text/html")}
+
+
+async def test_un_template_qui_calcule_longtemps_ne_gele_pas_le_serveur(client, monkeypatch):
+    """Le rendu d'un template tiers tournait dans la boucle du seul worker : pendant
+    qu'il calculait, plus aucune requête n'était servie, `/health` compris. Il tourne
+    désormais à côté, et s'arrête au délai."""
+    import asyncio
+    import threading
+
+    from app import authentification, pdf
+    from app import templates
+    from app.authentification import Utilisateur
+
+    monkeypatch.setenv("FIREBASE_CREDENTIALS_JSON", '{"type": "service_account"}')
+    get_config.cache_clear()
+    monkeypatch.setattr(authentification, "verifier_jeton",
+                        lambda _jeton: Utilisateur(uid="artisan-1"))
+    monkeypatch.setattr(pdf, "DELAI_JINJA_S", 2)
+
+    def pas_de_firestore():
+        raise AssertionError("aucun test n'appelle Firestore")
+
+    monkeypatch.setattr(templates, "_firestore", pas_de_firestore)
+
+    # Pour ne demander la configuration qu'une fois le rendu du template commencé.
+    commence = threading.Event()
+    rendre = templates.render_html
+
+    def rendre_en_le_signalant(*args, **kwargs):
+        commence.set()
+        return rendre(*args, **kwargs)
+
+    monkeypatch.setattr(templates, "render_html", rendre_en_le_signalant)
+
+    ordre: list[str] = []
+    lourd = "{% set r = range(100000) %}{% for i in r %}{% for j in r %}{% endfor %}{% endfor %}"
+
+    async def poser():
+        reponse = await client.put("/api/template", files=_fichier(lourd),
+                                   headers={"Authorization": "Bearer jeton"})
+        ordre.append("template")
+        return reponse
+
+    async def demander():
+        while not commence.is_set():
+            await asyncio.sleep(0.01)
+        reponse = await client.get("/api/firebase")
+        ordre.append("firebase")
+        return reponse
+
+    pose, config = await asyncio.wait_for(asyncio.gather(poser(), demander()), 30)
+
+    assert ordre == ["firebase", "template"]
+    assert config.status_code == 200
+    assert pose.status_code == 400
+    assert "dépassé" in pose.json()["detail"]

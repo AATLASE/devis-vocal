@@ -126,12 +126,15 @@ d'architecture centrale du projet : un total faux devant un artisan tue la démo
 ## Ce qui est refusé, et pourquoi
 
 Le template est refusé à l'enregistrement — jamais au moment où vous voulez votre PDF
-devant un client — dans quatre cas :
+devant un client — dans cinq cas :
 
 - **fichier vide** ;
 - **plus de 512 Ko** — les images doivent être des URI `data:` compactes ;
 - **syntaxe Jinja fautive** — une balise `{% for %}` non refermée, par exemple ;
-- **erreur au rendu** sur le devis d'exemple.
+- **erreur au rendu** sur le devis d'exemple ;
+- **rendu démesuré** — plus de 5 secondes de calcul, plus de 10 millions de caractères
+  produits, ou une multiplication ou une puissance géante. Un template de devis se rend
+  en quelques millisecondes : ces bornes n'arrêtent que ce qui ferait tomber le serveur.
 
 Deux choses sont retirées sans que le template soit refusé :
 
