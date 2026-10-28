@@ -619,9 +619,19 @@
               <label for="ed-objet">Objet des travaux</label>
               <input id="ed-objet" autocomplete="off">
             </div>
+            <!-- Le logement qui fonde le taux réduit, quand ce n'est pas celui du client :
+                 résidence secondaire, logement loué, bien d'une SCI. -->
+            <div class="champ champ--large">
+              <label for="ed-chantier">Adresse du chantier <span class="champ__note">si ce n'est pas celle du client</span></label>
+              <input id="ed-chantier" autocomplete="off" spellcheck="false">
+            </div>
             <div class="champ">
               <label for="ed-duree">Durée annoncée</label>
               <input id="ed-duree" autocomplete="off" placeholder="2 jours">
+            </div>
+            <div class="champ">
+              <label for="ed-debut">Début des travaux <span class="champ__note">vide : ligne à remplir</span></label>
+              <input id="ed-debut" autocomplete="off">
             </div>
             <div class="champ">
               <label for="ed-tva">TVA</label>

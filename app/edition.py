@@ -76,6 +76,7 @@ class Corrections(BaseModel):
     client: Client
     type_travaux: str | None = None
     duree_estimee: str | None = None
+    debut_travaux: str | None = None
     taux_tva: Decimal
     lignes: list[LigneCorrigee]
     notes: list[str] = []
@@ -154,7 +155,9 @@ def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> De
         "numero": devis.numero,
         "date_emission": devis.date_emission,
         "date_validite": devis.date_validite,
+        "debut_travaux": _texte(corrections.debut_travaux),
         "client": corrige.client.model_copy(update={
             "professionnel": corrections.client.professionnel,
+            "adresse_chantier": _texte(corrections.client.adresse_chantier),
         }),
     })

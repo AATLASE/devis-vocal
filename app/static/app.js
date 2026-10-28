@@ -1211,7 +1211,9 @@ function ouvrirEdition() {
   $('ed-client-telephone').value = d.client.telephone || '';
   $('ed-client-type').value = d.client.professionnel ? 'professionnel' : 'particulier';
   $('ed-objet').value = d.type_travaux || '';
+  $('ed-chantier').value = d.client.adresse_chantier || '';
   $('ed-duree').value = d.duree_estimee || '';
+  $('ed-debut').value = d.debut_travaux || '';
   // En franchise, le taux n'est pas un choix : le sélecteur montre le régime et se
   // fige. Le serveur l'applique de toute façon, quel que soit le taux envoyé.
   const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
@@ -1255,9 +1257,11 @@ async function validerEdition(e) {
       adresse: $('ed-client-adresse').value,
       telephone: $('ed-client-telephone').value,
       professionnel: $('ed-client-type').value === 'professionnel',
+      adresse_chantier: $('ed-chantier').value,
     },
     type_travaux: $('ed-objet').value,
     duree_estimee: $('ed-duree').value,
+    debut_travaux: $('ed-debut').value,
     taux_tva: $('ed-tva').value,
     lignes,
     notes: $('ed-notes').value.split('\n').map((n) => n.trim()).filter(Boolean),

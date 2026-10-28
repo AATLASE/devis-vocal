@@ -121,6 +121,20 @@ def test_un_client_professionnel_n_a_ni_formulaire_ni_acompte_differe():
     assert "l221-3" in texte
 
 
+def test_le_debut_des_travaux_est_toujours_imprime_sans_rien_inventer():
+    """L111-1 3° : la date ou le délai d'exécution. Non dicté, une ligne à remplir ;
+    saisi à l'écran, la valeur saisie."""
+    sans = _texte_imprime(devis_de("elec"))
+    assert "début des travaux …………………………" in sans
+
+    devis = devis_de("elec").model_copy(deep=True)
+    devis.debut_travaux = "Semaine du 16 novembre"
+    devis.client.adresse_chantier = "5 rue Xavier Privas, 69002 Lyon"
+    avec = _texte_imprime(devis)
+    assert "début des travaux semaine du 16 novembre" in avec
+    assert "chantier : 5 rue xavier privas, 69002 lyon" in avec
+
+
 def test_l_immatriculation_est_imprimee_a_cote_du_siret():
     """RCS et ville du greffe (art. R123-237 du Code de commerce), ou répertoire des
     métiers : à côté du SIRET, et dans le pied de la page des conditions."""

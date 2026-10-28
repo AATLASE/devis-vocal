@@ -162,6 +162,10 @@
         {%- if devis.duree_estimee %}
         <div><span>Durée estimée</span><span>{{ devis.duree_estimee }}</span></div>
         {%- endif %}
+        {#- La date ou le délai d'exécution est une mention due (art. L111-1 du Code de la
+            consommation), et une durée ne dit pas quand. Rien de dicté : une ligne à
+            remplir à la main, jamais une date inventée. #}
+        <div><span>Début des travaux</span><span>{{ devis.debut_travaux or '…………………………' }}</span></div>
       </div>
     </div>
   </header>
@@ -179,6 +183,7 @@
       <div class="doc-label">Objet des travaux</div>
       <p>
         {{ devis.type_travaux or 'Nature des travaux à préciser' }}.
+        {%- if devis.client.adresse_chantier %}<br>Chantier : {{ devis.client.adresse_chantier }}{% endif %}
         {%- if devis.taux_tva in (taux_reduit, taux_renovation_energetique) %}<br>Logement d'habitation achevé depuis plus de deux ans.{% endif %}
       </p>
     </div>

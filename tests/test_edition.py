@@ -43,6 +43,7 @@ def corrections_depuis(devis, **remplacements) -> Corrections:
         "client": devis.client.model_dump(),
         "type_travaux": devis.type_travaux,
         "duree_estimee": devis.duree_estimee,
+        "debut_travaux": devis.debut_travaux,
         "taux_tva": str(devis.taux_tva),
         "lignes": [ligne.model_dump(mode="json") for ligne in devis.lignes],
         "notes": devis.notes,
@@ -189,6 +190,21 @@ def test_le_type_de_client_choisi_a_l_ecran_est_garde():
     corrige = recalculer(devis, corrections_depuis(devis, client=client), max_lignes=60)
 
     assert corrige.client.professionnel is True
+
+
+def test_le_debut_des_travaux_et_le_chantier_saisis_a_l_ecran_sont_gardes():
+    devis = devis_sdb()
+    client = {**devis.client.model_dump(), "adresse_chantier": " 5 rue X, 69001 Lyon "}
+    corrige = recalculer(devis, corrections_depuis(
+        devis, client=client, debut_travaux=" Semaine du 16 novembre "), max_lignes=60)
+
+    assert corrige.debut_travaux == "Semaine du 16 novembre"
+    assert corrige.client.adresse_chantier == "5 rue X, 69001 Lyon"
+
+    # Vidés par l'artisan, ils redeviennent absents : le devis laisse la ligne en blanc.
+    vide = recalculer(corrige, corrections_depuis(
+        corrige, client={**client, "adresse_chantier": "  "}, debut_travaux=""), max_lignes=60)
+    assert vide.debut_travaux is None and vide.client.adresse_chantier is None
 
 
 def test_un_taux_nul_est_refuse_hors_franchise():

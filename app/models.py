@@ -120,10 +120,12 @@ class Client(BaseModel):
     nom: str | None = None
     adresse: str | None = None
     telephone: str | None = None
-    # Ajouté après coup, renseigné à l'écran seulement — le modèle ne le dicte pas. Par
-    # défaut, le client est un particulier : ce sont ses règles, les plus protectrices
-    # (rétractation, acompte différé), qui s'impriment tant qu'on n'a rien dit d'autre.
+    # Ajoutés après coup, renseignés à l'écran seulement — le modèle ne les dicte pas.
+    # Par défaut, le client est un particulier : ce sont ses règles, les plus
+    # protectrices (rétractation, acompte différé), qui s'impriment tant qu'on n'a rien
+    # dit d'autre.
     professionnel: bool = False
+    adresse_chantier: str | None = None  # quand les travaux ne sont pas chez le client
 
 
 class LigneDevis(BaseModel):
@@ -146,6 +148,9 @@ class Devis(BaseModel):
     client: Client
     type_travaux: str | None = None
     duree_estimee: str | None = None
+    # La date ou le délai d'exécution (art. L111-1 du Code de la consommation). Saisi à
+    # l'écran, jamais déduit : absent, le devis laisse une ligne à remplir à la main.
+    debut_travaux: str | None = None
 
     lignes: list[LigneDevis]
     notes: list[str] = Field(default_factory=list)
