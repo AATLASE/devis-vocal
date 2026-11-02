@@ -498,6 +498,16 @@
           </div>
           <div class="synthese__detail" id="rel-synthese-detail"></div>
         </div>
+        <!-- Tout ce que l'artisan doit relire, en un seul endroit, plutôt qu'un badge
+             répété sur chaque ligne. Disparaît quand il n'y a plus rien à vérifier. -->
+        <div class="a-verifier" id="rel-a-verifier" hidden>
+          <div class="a-verifier__titre">À vérifier avant l'envoi</div>
+          <ul class="a-verifier__points" id="rel-a-verifier-points"></ul>
+          <button class="btn btn--ghost" type="button" id="btn-verifier">
+            <svg aria-hidden="true"><use href="#i-crayon"/></svg>
+            <span>Vérifier</span>
+          </button>
+        </div>
       </div>
       <div class="relecture__actions">
         <button class="btn btn--large" id="btn-pdf">

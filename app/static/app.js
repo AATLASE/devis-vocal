@@ -978,6 +978,7 @@ function peindreRelecture(d) {
   $('rel-transcription').textContent = d.transcription;
 
   peindreSynthese(d);
+  peindreAVerifier(d);
 
   const aValider = d.lignes.filter((l) => l.a_valider).length;
   $('rel-compte').textContent = aValider === 0
@@ -1003,16 +1004,38 @@ function peindreSynthese(d) {
   $('rel-synthese-detail').textContent = detail.join(' · ');
 }
 
+/* Ce qui reste à relire : les lignes estimées et le taux de TVA déduit du vocal. Les
+   deux signaux disaient la même chose à trois endroits ; ils n'en ont plus qu'un. */
+function peindreAVerifier(d) {
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  const points = [];
+  const estimees = d.lignes.filter((l) => l.a_valider).length;
+  if (estimees > 0) {
+    const s = estimees > 1 ? 's' : '';
+    points.push(`${estimees} ligne${s} estimée${s}, en quantité ou en prix · ` +
+      `${euro(d.total_ht_estime)} HT`);
+  }
+  if (tvaAConfirmer && !franchise) {
+    points.push(`TVA à ${pourcent(d.taux_tva)}${NB}% choisie d'après le vocal : ` +
+      'le devis atteste ce taux, confirmez-le');
+  }
+  $('rel-a-verifier-points').replaceChildren(...points.map((p) => noeud('li', null, p)));
+  $('rel-a-verifier').hidden = points.length === 0;
+}
+
 function rangDeLigne(l) {
   const rang = noeud('div', 'table__row table__line');
 
   const gauche = noeud('div');
   gauche.append(noeud('div', 'table__desc', l.designation));
   if (l.detail) gauche.append(noeud('div', 'table__detail', l.detail));
-  // Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
-  // alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche.
-  // La quantité autant que le prix : un métrage non dicté est estimé lui aussi.
-  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Quantité ou prix estimé · à vérifier'));
+  // Le signal d'honnêteté, la même marque que sur le PDF. L'explication, elle, est
+  // dite une fois, dans l'encadré « À vérifier » en tête de relecture.
+  if (l.a_valider) {
+    const marque = noeud('div', 'tag-estime', 'estimé †');
+    marque.title = 'Quantité ou prix estimé : à vérifier';
+    gauche.append(marque);
+  }
 
   // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
   // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
@@ -1063,17 +1086,6 @@ function peindreTotaux(d) {
     rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), true),
     rang('totaux__acompte', `Acompte ${pourcent(d.acompte_pct)}${NB}%`, euro(d.montant_acompte), true),
   );
-
-  if (Number(d.total_ht_estime) > 0) {
-    totaux.append(noeud('div', 'totaux__note',
-      `Dont ${euro(d.total_ht_estime)} sur des lignes estimées, en quantité ou en prix. ` +
-      'Relisez-les avant l’envoi.'));
-  }
-  if (tvaAConfirmer && !franchise) {
-    totaux.append(noeud('div', 'totaux__note',
-      `TVA à ${pourcent(d.taux_tva)}${NB}% choisie automatiquement d'après le vocal. ` +
-      'Le devis atteste ce taux : confirmez-le dans Modifier.'));
-  }
 }
 
 /* ---- 3 bis. édition ---------------------------------------------------- */
@@ -1436,6 +1448,7 @@ function choisirClientPro(e) {
 /* ---- branchements de l'édition ----------------------------------------- */
 
 $('btn-modifier').addEventListener('click', ouvrirEdition);
+$('btn-verifier').addEventListener('click', ouvrirEdition);
 $('ed-annuler').addEventListener('click', fermerEdition);
 $('rel-edition').addEventListener('submit', validerEdition);
 

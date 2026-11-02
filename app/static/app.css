@@ -1112,6 +1112,28 @@ body.menu-anime.menu-ouvert .menu-voile {
   color: var(--dv-ink);
 }
 .synthese__libelle { font-size: var(--dv-t-sm); font-weight: 500; color: var(--dv-muted); }
+.a-verifier {
+  margin-top: var(--dv-s-6);
+  padding: var(--dv-s-5) var(--dv-s-6);
+  border-left: 3px solid var(--dv-accent);
+  border-radius: var(--dv-radius);
+  background: var(--dv-accent-tint);
+}
+.a-verifier__titre {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--dv-accent);
+}
+.a-verifier__points {
+  margin: var(--dv-s-3) 0 var(--dv-s-4);
+  padding-left: 1.1em;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-snug);
+  color: var(--dv-ink);
+}
+.a-verifier__points li + li { margin-top: var(--dv-s-2); }
 .synthese__detail { margin-top: var(--dv-s-1); font-size: var(--dv-t-sm); color: var(--dv-accent); }
 .relecture__actions { display: flex; gap: var(--dv-s-4); flex-shrink: 0; }
 /* L'échec du PDF, dit sous les boutons et pas sur un écran à part. */
@@ -1227,15 +1249,14 @@ body.menu-anime.menu-ouvert .menu-voile {
 .table__desc { font-size: var(--dv-t-body); line-height: var(--dv-lh-snug); color: var(--dv-ink); }
 .table__detail { margin-top: var(--dv-s-1); font-size: var(--dv-t-xs); line-height: var(--dv-lh-snug); color: var(--dv-muted); }
 
-/* Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
-   alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche. */
+/* Le signal d'honnêteté, la marque du PDF. Discret volontairement : l'explication
+   est dans l'encadré « À vérifier », en tête de relecture. */
 .tag-estime {
   display: inline-flex; align-items: center; gap: var(--dv-s-2);
   margin-top: var(--dv-s-2);
   padding: 2px var(--dv-s-3);
-  border-radius: var(--dv-radius-pill);
+  border-radius: var(--dv-radius);
   background: var(--dv-accent-tint);
-  border: 1px solid var(--dv-accent-edge);
   font-family: var(--dv-mono);
   font-size: 10.5px;
   letter-spacing: .04em;
@@ -1295,14 +1316,6 @@ body.menu-anime.menu-ouvert .menu-voile {
   font-size: var(--dv-t-sm);
   font-weight: 500;
   color: var(--dv-accent);
-}
-.totaux__note {
-  margin-top: var(--dv-s-4);
-  padding-top: var(--dv-s-4);
-  border-top: 1px solid var(--dv-rule-faint);
-  font-size: var(--dv-t-xs);
-  line-height: var(--dv-lh-body);
-  color: var(--dv-muted);
 }
 
 /* ---- l'aperçu A4 ---------------------------------------------------------- */
@@ -1885,6 +1898,10 @@ body.menu-anime.menu-ouvert .menu-voile {
 .relecture.en-edition #btn-pdf,
 .relecture.en-edition #btn-modifier,
 .relecture.en-edition [data-recommencer] { display: none; }
+/* Le total et l'encadré sont ceux d'avant la correction : aucun total n'est
+   affiché pendant la saisie, ils reviennent recalculés à la validation. */
+.relecture.en-edition .synthese,
+.relecture.en-edition .a-verifier { display: none; }
 
 @media (max-width: 640px) {
   /* La désignation prend tout le rang à côté de la croix : c'est le texte le plus
