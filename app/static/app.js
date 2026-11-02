@@ -1709,25 +1709,28 @@ const nomEntreprise = () => (entrepriseCourante && entrepriseCourante.nom) || ''
 /* « Devis Bâti Rénov – Salle de bain Mme Durand.pdf » : le client qui le reçoit sait
    ce que c'est sans l'ouvrir. Les morceaux absents sont omis ; sans aucun, le numéro. */
 function nomDuFichier(d) {
-  const sujet = [d.type_travaux, d.client && d.client.nom].filter(Boolean).join(' ');
-  const parties = [nomEntreprise(), sujet].filter(Boolean);
+  // Chaque morceau est nettoyé et borné à part : un objet trop long ne doit pas
+  // effacer le nom du client, et on coupe entre deux mots, pas au milieu.
+  const propre = (t) => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const borne = (t, max) => (t.length <= max ? t
+    : t.slice(0, max + 1).replace(/\s*\S*$/, '') || t.slice(0, max));
+  const objet = borne(propre(d.type_travaux), 45);
+  const client = borne(propre(d.client && d.client.nom), 30);
+  const sujet = [objet, client].filter(Boolean).join(' ');
+  const parties = [borne(propre(nomEntreprise()), 30), sujet].filter(Boolean);
   if (parties.length === 0) return `${d.numero}.pdf`;
-  const nom = ('Devis ' + parties.join(' – '))
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 80)
-    .trim();
-  return nom + '.pdf';
+  return 'Devis ' + parties.join(' – ') + '.pdf';
 }
 
 /* Le mot qui accompagne le fichier. Pas de civilité inventée : le nom tel qu'il a
    été dicté, ou rien. */
 function messageAuClient(d) {
   const client = d.client && d.client.nom;
+  const objet = String(d.type_travaux || '').trim().replace(/[\s.]+$/, '');
   const lignes = [
     client ? `Bonjour ${client},` : 'Bonjour,',
-    `Voici le devis n° ${d.numero}` + (d.type_travaux ? ` : ${d.type_travaux}.` : '.'),
+    `Voici le devis n° ${d.numero}` + (objet ? ` : ${objet}.` : '.'),
     'Je reste à votre disposition pour toute question.',
   ];
   if (nomEntreprise()) lignes.push(nomEntreprise());
