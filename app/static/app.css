@@ -1843,9 +1843,31 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .edition textarea:focus { outline: none; border-color: var(--dv-accent); }
 
-.edition__erreur { min-height: 20px; margin-top: 22px; font-size: 14px; color: var(--dv-danger); }
-.edition__erreur:empty { min-height: 0; margin-top: 0; }
-.edition__actions { display: flex; gap: 12px; margin-top: 22px; }
+.edition__bandeau {
+  margin: 0 0 var(--dv-s-7);
+  padding: var(--dv-s-3) var(--dv-s-5);
+  border-radius: var(--dv-radius);
+  background: var(--dv-accent-tint);
+  color: var(--dv-accent);
+  font-size: var(--dv-t-sm);
+}
+
+/* La barre de validation colle au bas de l'écran tant que le formulaire défile.
+   Fond opaque et filet au-dessus : les champs passent dessous sans s'y mêler.
+   Valider à droite, sous le pouce ; Annuler en simple texte, à gauche. */
+.edition__barre {
+  position: sticky; bottom: 0; z-index: 5;
+  margin-top: 22px;
+  padding: var(--dv-s-4) 0 max(12px, env(safe-area-inset-bottom));
+  background: var(--dv-bg);
+  border-top: 1px solid var(--dv-rule);
+}
+.edition__erreur { margin-bottom: var(--dv-s-3); font-size: 14px; color: var(--dv-danger); }
+.edition__erreur:empty { display: none; }
+.edition__actions { display: flex; flex-direction: row-reverse; align-items: center; gap: 12px; }
+.edition__actions #ed-valider { flex: 1; }
+.btn--texte { background: none; color: var(--dv-ink); border-color: transparent; }
+.btn--texte:hover { background: none; color: var(--dv-accent); text-decoration: underline; }
 
 /* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. « Nouveau
    devis » non plus : à portée de pouce sous le formulaire, il effaçait la correction
@@ -1862,8 +1884,6 @@ body.menu-anime.menu-ouvert .menu-voile {
   .ligne-ed .champ--prix { grid-column: 3 / -1; }
   .ligne-ed .champ--detail { grid-column: 1 / -1; }
   .ligne-ed__retirer { grid-column: 4; grid-row: 1; justify-self: end; }
-  .edition__actions { flex-direction: column; }
-  .edition__actions .btn { width: 100%; }
 }
 
 

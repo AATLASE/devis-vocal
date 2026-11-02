@@ -556,6 +556,7 @@
              affiché pendant la saisie, et c'est le serveur qui les refait à la
              validation. Un total calculé ici serait un second calcul à garder juste. -->
         <form class="edition" id="rel-edition" hidden novalidate>
+          <p class="edition__bandeau">Modification en cours · les totaux sont recalculés quand vous validez</p>
           <div class="section-head">
             <div class="label">Client</div>
             <div class="rule"></div>
@@ -667,13 +668,18 @@
             <textarea id="ed-notes" rows="4"></textarea>
           </div>
 
-          <div class="edition__erreur" id="ed-erreur" role="alert"></div>
-          <div class="edition__actions">
-            <button type="submit" class="btn btn--large" id="ed-valider">
-              <svg aria-hidden="true"><use href="#i-coche"/></svg>
-              <span>Valider les modifications</span>
-            </button>
-            <button type="button" class="btn btn--ghost btn--large" id="ed-annuler">Annuler</button>
+          <!-- Collée en bas de l'écran : sur téléphone, le formulaire fait plusieurs
+               écrans de haut, et l'artisan doit pouvoir valider sans tout redescendre.
+               L'erreur vit dans la barre pour rester sous les yeux. -->
+          <div class="edition__barre">
+            <div class="edition__erreur" id="ed-erreur" role="alert"></div>
+            <div class="edition__actions">
+              <button type="submit" class="btn btn--large" id="ed-valider">
+                <svg aria-hidden="true"><use href="#i-coche"/></svg>
+                <span>Valider</span>
+              </button>
+              <button type="button" class="btn btn--texte btn--large" id="ed-annuler">Annuler</button>
+            </div>
           </div>
         </form>
       </div>
