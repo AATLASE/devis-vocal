@@ -489,6 +489,15 @@
         <div class="label num" id="rel-numero">Devis n° —</div>
         <h2 id="rel-objet"></h2>
         <div class="relecture__client" id="rel-client"></div>
+        <!-- Le montant, dès l'arrivée : c'est ce que l'artisan cherche d'abord. Rien
+             n'y est calculé, tout vient du devis renvoyé par le serveur. -->
+        <div class="synthese" id="rel-synthese">
+          <div class="synthese__montant">
+            <span class="num" id="rel-synthese-ttc"></span>
+            <span class="synthese__libelle" id="rel-synthese-libelle"></span>
+          </div>
+          <div class="synthese__detail" id="rel-synthese-detail"></div>
+        </div>
       </div>
       <div class="relecture__actions">
         <button class="btn btn--large" id="btn-pdf">

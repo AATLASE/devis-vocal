@@ -977,6 +977,8 @@ function peindreRelecture(d) {
     'Transcription de la note vocale' + (dureeVocal ? ' · ' + dureeVocal : '');
   $('rel-transcription').textContent = d.transcription;
 
+  peindreSynthese(d);
+
   const aValider = d.lignes.filter((l) => l.a_valider).length;
   $('rel-compte').textContent = aValider === 0
     ? 'Toutes les lignes ont été dictées'
@@ -987,6 +989,18 @@ function peindreRelecture(d) {
 
   peindreObservations($('rel-observations'), $('rel-titre-observations'), d.notes);
   peindreTotaux(d);
+}
+
+/* Le total en tête de relecture. Les montants sont ceux du devis, tels que
+   `to_devis()` les a calculés : le navigateur ne fait que les écrire. */
+function peindreSynthese(d) {
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  const n = d.lignes.length;
+  $('rel-synthese-ttc').textContent = euro(d.total_ttc);
+  $('rel-synthese-libelle').textContent = franchise ? 'net à payer' : 'TTC';
+  const detail = [`${n} prestation${n > 1 ? 's' : ''}`];
+  if (Number(d.montant_acompte) > 0) detail.push('acompte ' + euro(d.montant_acompte));
+  $('rel-synthese-detail').textContent = detail.join(' · ');
 }
 
 function rangDeLigne(l) {
@@ -1045,7 +1059,8 @@ function peindreTotaux(d) {
     franchise
       ? rang('totaux__row', 'TVA non applicable · art. 293 B', '—', false)
       : rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
-    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), false),
+    // En mono comme tout chiffre : la serif rend mal l'espace fine de « 3 124,00 € ».
+    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), true),
     rang('totaux__acompte', `Acompte ${pourcent(d.acompte_pct)}${NB}%`, euro(d.montant_acompte), true),
   );
 
