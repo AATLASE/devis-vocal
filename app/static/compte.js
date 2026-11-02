@@ -46,21 +46,15 @@ window.Compte = {
 let auth = null;
 let utilisateur = null;
 
-/* L'artisan qui a choisi « Continuer sans compte » ne doit plus retomber sur la
-   connexion à chaque chargement : ce serait remettre le mur qu'on vient d'ouvrir.
-   Le choix est gardé sur l'appareil ; « Se connecter », dans le menu, le défait.
-   Stockage bloqué : le choix vaut pour la page en cours, ce qui suffit à dicter. */
-const CLE_SANS_COMPTE = 'devis-vocal.sans-compte';
+/* Le compte ne conditionne jamais la dictée (CLAUDE.md § Périmètre) : sans compte,
+   l'app s'ouvre sur le micro. La connexion ne s'affiche que demandée — par
+   « Se connecter », dans le menu — et « Continuer sans compte » la referme. La
+   demande ne vaut que pour la page en cours : au prochain chargement, l'artisan
+   retrouve le micro. */
+let connexionDemandee = false;
 
-let sansCompte = false;
-try { sansCompte = localStorage.getItem(CLE_SANS_COMPTE) === '1'; } catch (_) { /* bloqué */ }
-
-function choisirSansCompte(valeur) {
-  sansCompte = valeur;
-  try {
-    if (valeur) localStorage.setItem(CLE_SANS_COMPTE, '1');
-    else localStorage.removeItem(CLE_SANS_COMPTE);
-  } catch (_) { /* vaut pour la page en cours */ }
+function demanderConnexion(valeur) {
+  connexionDemandee = valeur;
 }
 
 /* ---- l'écran à montrer -------------------------------------------------- */
@@ -270,13 +264,14 @@ function refermerSiPardessus() {
 
 /* Le menu a trois visages : la fiche complète, le compte dont l'inscription n'est
    pas finie — une adresse et la déconnexion, rien d'autre —, et le seul lien
-   « Se connecter » pour qui a choisi de se passer de compte. */
+   « Se connecter » pour qui n'a pas de compte. Il n'existe que si Firebase est
+   actif : sans lui, `peindreMenu` n'est jamais appelée. */
 function peindreMenu() {
   const connecte = !!utilisateur;
   const fiche = connecte && profil && profil.complet ? profil : null;
   const enInscription = connecte && !!profil && !profil.complet;
 
-  $('menu').hidden = !(connecte || sansCompte);
+  $('menu').hidden = false;
 
   const email = connecte ? (utilisateur.email || '') : '';
   const nom = fiche ? fiche.identite
@@ -314,20 +309,20 @@ async function peindreCompte() {
   if (!utilisateur) {
     profil = null;
     peindreMenu();
-    if (sansCompte) {
-      // Pas de retour forcé à l'accueil : l'artisan est peut-être en pleine relecture.
-      if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active')) {
-        montrer('accueil');
-      }
+    if (connexionDemandee) {
+      montrer('connexion');
       return;
     }
-    montrer('connexion');
+    // Pas de retour forcé à l'accueil : l'artisan est peut-être en pleine relecture.
+    if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active')) {
+      montrer('accueil');
+    }
     return;
   }
 
-  // Connecté : le choix « sans compte » n'a plus d'objet, et ne doit pas survivre à
-  // une déconnexion ultérieure.
-  choisirSansCompte(false);
+  // Connecté : la demande de connexion est satisfaite, et ne doit pas survivre à une
+  // déconnexion ultérieure — l'artisan déconnecté retrouve le micro.
+  demanderConnexion(false);
   // Le menu d'abord, avec l'adresse seule : la fiche met un aller-retour à arriver.
   peindreMenu();
 
@@ -530,6 +525,8 @@ async function envoyerProfil() {
 
   const bouton = $('btn-profil');
   const libelle = bouton.textContent;
+  // Fiche absente ou incomplète : c'est la fin de l'inscription, pas une retouche.
+  const inscription = !profil || !profil.complet;
   bouton.disabled = true;
   bouton.textContent = 'Enregistrement…';
   direProfil('');
@@ -549,6 +546,12 @@ async function envoyerProfil() {
   }
 
   peindreMenu();
+  // Juste inscrit, sans identité de devis : l'étape suivante est « Votre
+  // entreprise », recherche déjà lancée sur le nom qu'il vient de donner.
+  if (inscription && window.identiteVide && window.identiteVide()) {
+    window.ouvrirEntreprise(donnees.entreprise);
+    return;
+  }
   montrer('accueil');
 }
 
@@ -638,13 +641,14 @@ function brancher() {
   $('btn-deconnexion').addEventListener('click', () => signOut(auth));
 
   $('btn-sans-compte').addEventListener('click', () => {
-    choisirSansCompte(true);
+    demanderConnexion(false);
     direErreur('');
     peindreCompte();
   });
 
   $('btn-connexion').addEventListener('click', () => {
-    choisirSansCompte(false);
+    refermerSiPardessus();
+    demanderConnexion(true);
     peindreCompte();
   });
 

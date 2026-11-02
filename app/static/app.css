@@ -742,13 +742,23 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 
 /* ---- la carte de dictée -------------------------------------------------- */
-/* L'action principale du produit. Elle porte la boîte de `.dropzone` — même
-   bordure, même respiration — et n'ajoute que ses trois états : au repos, en
-   enregistrement, en réécoute. */
+/* L'action principale du produit. Elle porte la boîte de `.dropzone`, mais pas son
+   tireté : les pointillés disent « déposez un fichier », et ici on parle. Un filet
+   plein, et le micro en disque brique — le seul aplat brique de l'app. La brique
+   pour parler, le noir pour agir. Trois états : au repos, en enregistrement, en
+   réécoute. */
 
-.dictee { user-select: none; position: relative; }
+.dictee { user-select: none; position: relative; border-style: solid; border-color: var(--dv-rule); }
 .dictee:hover { border-color: var(--dv-accent); box-shadow: var(--dv-ombre-2); }
 .dictee:active { transform: scale(.995); }
+.dictee .dropzone__mic {
+  width: 88px; height: 88px;
+  background: var(--dv-accent);
+  border-color: var(--dv-accent);
+  color: var(--dv-paper);
+}
+.dictee .dropzone__mic svg { width: 32px; height: 32px; }
+.dictee:hover .dropzone__mic { transform: scale(1.04); }
 
 .dropzone__mic {
   position: relative;
@@ -866,7 +876,12 @@ body.menu-anime.menu-ouvert .menu-voile {
   box-shadow: none;
 }
 .dictee.relu:hover { border-color: var(--dv-rule); }
-.dictee.relu .dropzone__mic { width: 52px; height: 52px; margin-bottom: var(--dv-s-5); }
+.dictee.relu .dropzone__mic {
+  width: 52px; height: 52px; margin-bottom: var(--dv-s-5);
+  /* La carte n'est plus un bouton : le micro redevient un simple trait. */
+  background: none; color: var(--dv-accent);
+}
+.dictee.relu:hover .dropzone__mic { transform: none; }
 
 .relu { margin-top: var(--dv-s-5); }
 .relu__actions { display: flex; gap: var(--dv-s-4); margin-top: var(--dv-s-5); }
@@ -959,6 +974,21 @@ body.menu-anime.menu-ouvert .menu-voile {
 .paste { display: none; padding-bottom: var(--dv-s-6); }
 .paste.is-open { display: block; animation: entree-repli var(--dv-duree) var(--dv-sortie) both; }
 .paste .btn { margin-top: var(--dv-s-4); width: 100%; }
+.que-dire {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-ink);
+}
+.que-dire__exemple {
+  margin: var(--dv-s-3) 0 0;
+  font-family: var(--dv-serif);
+  font-style: italic;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+}
 @keyframes entree-repli {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: none; }
@@ -1103,6 +1133,38 @@ body.menu-anime.menu-ouvert .menu-voile {
   text-wrap: balance;
 }
 .relecture__client { font-size: var(--dv-t-sm); color: var(--dv-muted); margin-top: var(--dv-s-2); }
+.synthese { margin-top: var(--dv-s-6); }
+.synthese__montant { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--dv-s-3); }
+.synthese__montant .num {
+  font-size: var(--dv-t-h2);
+  font-weight: 500;
+  letter-spacing: -.01em;
+  color: var(--dv-ink);
+}
+.synthese__libelle { font-size: var(--dv-t-sm); font-weight: 500; color: var(--dv-muted); }
+.a-verifier {
+  margin-top: var(--dv-s-6);
+  padding: var(--dv-s-5) var(--dv-s-6);
+  border-left: 3px solid var(--dv-accent);
+  border-radius: var(--dv-radius);
+  background: var(--dv-accent-tint);
+}
+.a-verifier__titre {
+  font-family: var(--dv-mono);
+  font-size: var(--dv-t-xs);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--dv-accent);
+}
+.a-verifier__points {
+  margin: var(--dv-s-3) 0 var(--dv-s-4);
+  padding-left: 1.1em;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-snug);
+  color: var(--dv-ink);
+}
+.a-verifier__points li + li { margin-top: var(--dv-s-2); }
+.synthese__detail { margin-top: var(--dv-s-1); font-size: var(--dv-t-sm); color: var(--dv-accent); }
 .relecture__actions { display: flex; gap: var(--dv-s-4); flex-shrink: 0; }
 /* L'échec du PDF, dit sous les boutons et pas sur un écran à part. */
 .relecture__erreur {
@@ -1217,15 +1279,14 @@ body.menu-anime.menu-ouvert .menu-voile {
 .table__desc { font-size: var(--dv-t-body); line-height: var(--dv-lh-snug); color: var(--dv-ink); }
 .table__detail { margin-top: var(--dv-s-1); font-size: var(--dv-t-xs); line-height: var(--dv-lh-snug); color: var(--dv-muted); }
 
-/* Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
-   alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche. */
+/* Le signal d'honnêteté, la marque du PDF. Discret volontairement : l'explication
+   est dans l'encadré « À vérifier », en tête de relecture. */
 .tag-estime {
   display: inline-flex; align-items: center; gap: var(--dv-s-2);
   margin-top: var(--dv-s-2);
   padding: 2px var(--dv-s-3);
-  border-radius: var(--dv-radius-pill);
+  border-radius: var(--dv-radius);
   background: var(--dv-accent-tint);
-  border: 1px solid var(--dv-accent-edge);
   font-family: var(--dv-mono);
   font-size: 10.5px;
   letter-spacing: .04em;
@@ -1285,14 +1346,6 @@ body.menu-anime.menu-ouvert .menu-voile {
   font-size: var(--dv-t-sm);
   font-weight: 500;
   color: var(--dv-accent);
-}
-.totaux__note {
-  margin-top: var(--dv-s-4);
-  padding-top: var(--dv-s-4);
-  border-top: 1px solid var(--dv-rule-faint);
-  font-size: var(--dv-t-xs);
-  line-height: var(--dv-lh-body);
-  color: var(--dv-muted);
 }
 
 /* ---- l'aperçu A4 ---------------------------------------------------------- */
@@ -1403,6 +1456,8 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .vide .observations { margin-bottom: var(--dv-s-10); }
 .vide .observation { font-size: var(--dv-t-body); }
+.vide__conseils { margin-bottom: var(--dv-s-10); }
+.vide__conseils .label { margin-bottom: var(--dv-s-3); }
 .vide__actions { display: flex; gap: var(--dv-s-4); flex-wrap: wrap; }
 
 
@@ -1843,9 +1898,31 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .edition textarea:focus { outline: none; border-color: var(--dv-accent); }
 
-.edition__erreur { min-height: 20px; margin-top: 22px; font-size: 14px; color: var(--dv-danger); }
-.edition__erreur:empty { min-height: 0; margin-top: 0; }
-.edition__actions { display: flex; gap: 12px; margin-top: 22px; }
+.edition__bandeau {
+  margin: 0 0 var(--dv-s-7);
+  padding: var(--dv-s-3) var(--dv-s-5);
+  border-radius: var(--dv-radius);
+  background: var(--dv-accent-tint);
+  color: var(--dv-accent);
+  font-size: var(--dv-t-sm);
+}
+
+/* La barre de validation colle au bas de l'écran tant que le formulaire défile.
+   Fond opaque et filet au-dessus : les champs passent dessous sans s'y mêler.
+   Valider à droite, sous le pouce ; Annuler en simple texte, à gauche. */
+.edition__barre {
+  position: sticky; bottom: 0; z-index: 5;
+  margin-top: 22px;
+  padding: var(--dv-s-4) 0 max(12px, env(safe-area-inset-bottom));
+  background: var(--dv-bg);
+  border-top: 1px solid var(--dv-rule);
+}
+.edition__erreur { margin-bottom: var(--dv-s-3); font-size: 14px; color: var(--dv-danger); }
+.edition__erreur:empty { display: none; }
+.edition__actions { display: flex; flex-direction: row-reverse; align-items: center; gap: 12px; }
+.edition__actions #ed-valider { flex: 1; }
+.btn--texte { background: none; color: var(--dv-ink); border-color: transparent; }
+.btn--texte:hover { background: none; color: var(--dv-accent); text-decoration: underline; }
 
 /* Pendant la saisie, le PDF prêt est celui d'avant : on ne le propose pas. « Nouveau
    devis » non plus : à portée de pouce sous le formulaire, il effaçait la correction
@@ -1853,6 +1930,10 @@ body.menu-anime.menu-ouvert .menu-voile {
 .relecture.en-edition #btn-pdf,
 .relecture.en-edition #btn-modifier,
 .relecture.en-edition [data-recommencer] { display: none; }
+/* Le total et l'encadré sont ceux d'avant la correction : aucun total n'est
+   affiché pendant la saisie, ils reviennent recalculés à la validation. */
+.relecture.en-edition .synthese,
+.relecture.en-edition .a-verifier { display: none; }
 
 @media (max-width: 640px) {
   /* La désignation prend tout le rang à côté de la croix : c'est le texte le plus
@@ -1862,8 +1943,6 @@ body.menu-anime.menu-ouvert .menu-voile {
   .ligne-ed .champ--prix { grid-column: 3 / -1; }
   .ligne-ed .champ--detail { grid-column: 1 / -1; }
   .ligne-ed__retirer { grid-column: 4; grid-row: 1; justify-self: end; }
-  .edition__actions { flex-direction: column; }
-  .edition__actions .btn { width: 100%; }
 }
 
 

@@ -184,11 +184,11 @@
       <svg aria-hidden="true"><use href="#i-sortie"/></svg>
       <span>Se déconnecter</span>
     </button>
-    <!-- Seul lien du menu pour qui a choisi de continuer sans compte : le chemin du
-         retour vers la connexion, sans rien imposer. -->
+    <!-- Seul lien du menu sans compte : l'app s'ouvre sur le micro, et la connexion
+         ne vient que si l'artisan la demande. Le libellé dit ce qu'elle apporte. -->
     <button class="menu__lien" id="btn-connexion" type="button" hidden>
       <svg aria-hidden="true"><use href="#i-entree"/></svg>
-      <span>Se connecter</span>
+      <span>Se connecter · garder mon modèle de devis</span>
     </button>
   </nav>
 </aside>
@@ -407,9 +407,17 @@
       </div>
     </div>
 
-    <!-- Les deux chemins de repli. Chaque panneau suit son propre lien : ouverts
-         tous les deux, on doit voir lequel appartient à quoi. -->
+    <!-- Les replis. Le premier dit quoi dicter, avant le premier enregistrement ;
+         les deux suivants sont les chemins de repli. Chaque panneau suit son propre
+         lien : ouverts ensemble, on doit voir lequel appartient à quoi. -->
     <div class="replis">
+      <button class="paste-toggle" id="conseils-bascule" type="button"
+              aria-expanded="false" aria-controls="conseils">
+        <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span>Que dire ?</span>
+      </button>
+      <div class="paste" id="conseils" data-que-dire></div>
+
       <button class="paste-toggle" id="depot-bascule" type="button"
               aria-expanded="false" aria-controls="depot-repli">
         <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
@@ -489,6 +497,25 @@
         <div class="label num" id="rel-numero">Devis n° —</div>
         <h2 id="rel-objet"></h2>
         <div class="relecture__client" id="rel-client"></div>
+        <!-- Le montant, dès l'arrivée : c'est ce que l'artisan cherche d'abord. Rien
+             n'y est calculé, tout vient du devis renvoyé par le serveur. -->
+        <div class="synthese" id="rel-synthese">
+          <div class="synthese__montant">
+            <span class="num" id="rel-synthese-ttc"></span>
+            <span class="synthese__libelle" id="rel-synthese-libelle"></span>
+          </div>
+          <div class="synthese__detail" id="rel-synthese-detail"></div>
+        </div>
+        <!-- Tout ce que l'artisan doit relire, en un seul endroit, plutôt qu'un badge
+             répété sur chaque ligne. Disparaît quand il n'y a plus rien à vérifier. -->
+        <div class="a-verifier" id="rel-a-verifier" hidden>
+          <div class="a-verifier__titre">À vérifier avant l'envoi</div>
+          <ul class="a-verifier__points" id="rel-a-verifier-points"></ul>
+          <button class="btn btn--ghost" type="button" id="btn-verifier">
+            <svg aria-hidden="true"><use href="#i-crayon"/></svg>
+            <span>Vérifier</span>
+          </button>
+        </div>
       </div>
       <div class="relecture__actions">
         <button class="btn btn--large" id="btn-pdf">
@@ -556,6 +583,7 @@
              affiché pendant la saisie, et c'est le serveur qui les refait à la
              validation. Un total calculé ici serait un second calcul à garder juste. -->
         <form class="edition" id="rel-edition" hidden novalidate>
+          <p class="edition__bandeau">Modification en cours · les totaux sont recalculés quand vous validez</p>
           <div class="section-head">
             <div class="label">Client</div>
             <div class="rule"></div>
@@ -667,13 +695,18 @@
             <textarea id="ed-notes" rows="4"></textarea>
           </div>
 
-          <div class="edition__erreur" id="ed-erreur" role="alert"></div>
-          <div class="edition__actions">
-            <button type="submit" class="btn btn--large" id="ed-valider">
-              <svg aria-hidden="true"><use href="#i-coche"/></svg>
-              <span>Valider les modifications</span>
-            </button>
-            <button type="button" class="btn btn--ghost btn--large" id="ed-annuler">Annuler</button>
+          <!-- Collée en bas de l'écran : sur téléphone, le formulaire fait plusieurs
+               écrans de haut, et l'artisan doit pouvoir valider sans tout redescendre.
+               L'erreur vit dans la barre pour rester sous les yeux. -->
+          <div class="edition__barre">
+            <div class="edition__erreur" id="ed-erreur" role="alert"></div>
+            <div class="edition__actions">
+              <button type="submit" class="btn btn--large" id="ed-valider">
+                <svg aria-hidden="true"><use href="#i-coche"/></svg>
+                <span>Valider</span>
+              </button>
+              <button type="button" class="btn btn--texte btn--large" id="ed-annuler">Annuler</button>
+            </div>
           </div>
         </form>
       </div>
@@ -724,6 +757,10 @@
     </div>
     <div class="label" id="vide-titre-observations">Observations</div>
     <div class="observations" id="vide-observations"></div>
+    <div class="vide__conseils">
+      <div class="label label--accent">Pour la prochaine fois</div>
+      <div data-que-dire></div>
+    </div>
     <div class="vide__actions">
       <button class="btn btn--large" data-recommencer>
         <svg aria-hidden="true"><use href="#i-micro"/></svg>
@@ -733,6 +770,19 @@
     </div>
   </div>
 </section>
+
+<!-- Quoi dicter : écrit une fois, recopié par app.js sous le micro et sur l'écran
+     « pas assez d'éléments ». -->
+<template id="modele-que-dire">
+  <ul class="que-dire">
+    <li>Le client et l'adresse du chantier</li>
+    <li>Les travaux, pièce par pièce</li>
+    <li>Les quantités : m², mètres, nombre</li>
+    <li>Vos prix, si vous les avez</li>
+  </ul>
+  <p class="que-dire__exemple">« Salle de bain chez Mme Renard, 14 rue des Lilas à Lyon. Dépose
+    de la baignoire, pose d'un receveur 90 × 120, 8 m² de faïence à 45 € le m². »</p>
+</template>
 
 <!-- 5 .......................................................... erreur -->
 <!-- Absent du handoff : l'API peut échouer, et il faut bien le dire. Même

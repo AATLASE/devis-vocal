@@ -977,6 +977,9 @@ function peindreRelecture(d) {
     'Transcription de la note vocale' + (dureeVocal ? ' · ' + dureeVocal : '');
   $('rel-transcription').textContent = d.transcription;
 
+  peindreSynthese(d);
+  peindreAVerifier(d);
+
   const aValider = d.lignes.filter((l) => l.a_valider).length;
   $('rel-compte').textContent = aValider === 0
     ? 'Toutes les lignes ont été dictées'
@@ -989,16 +992,50 @@ function peindreRelecture(d) {
   peindreTotaux(d);
 }
 
+/* Le total en tête de relecture. Les montants sont ceux du devis, tels que
+   `to_devis()` les a calculés : le navigateur ne fait que les écrire. */
+function peindreSynthese(d) {
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  const n = d.lignes.length;
+  $('rel-synthese-ttc').textContent = euro(d.total_ttc);
+  $('rel-synthese-libelle').textContent = franchise ? 'net à payer' : 'TTC';
+  const detail = [`${n} prestation${n > 1 ? 's' : ''}`];
+  if (Number(d.montant_acompte) > 0) detail.push('acompte ' + euro(d.montant_acompte));
+  $('rel-synthese-detail').textContent = detail.join(' · ');
+}
+
+/* Ce qui reste à relire : les lignes estimées et le taux de TVA déduit du vocal. Les
+   deux signaux disaient la même chose à trois endroits ; ils n'en ont plus qu'un. */
+function peindreAVerifier(d) {
+  const franchise = !!(d.entreprise && d.entreprise.franchise_tva);
+  const points = [];
+  const estimees = d.lignes.filter((l) => l.a_valider).length;
+  if (estimees > 0) {
+    const s = estimees > 1 ? 's' : '';
+    points.push(`${estimees} ligne${s} estimée${s}, en quantité ou en prix · ` +
+      `${euro(d.total_ht_estime)} HT`);
+  }
+  if (tvaAConfirmer && !franchise) {
+    points.push(`TVA à ${pourcent(d.taux_tva)}${NB}% choisie d'après le vocal : ` +
+      'le devis atteste ce taux, confirmez-le');
+  }
+  $('rel-a-verifier-points').replaceChildren(...points.map((p) => noeud('li', null, p)));
+  $('rel-a-verifier').hidden = points.length === 0;
+}
+
 function rangDeLigne(l) {
   const rang = noeud('div', 'table__row table__line');
 
   const gauche = noeud('div');
   gauche.append(noeud('div', 'table__desc', l.designation));
   if (l.detail) gauche.append(noeud('div', 'table__detail', l.detail));
-  // Le signal d'honnêteté. Discret volontairement : c'est une information, pas une
-  // alarme. Ce qui le rend repérable, c'est sa répétition dans la colonne de gauche.
-  // La quantité autant que le prix : un métrage non dicté est estimé lui aussi.
-  if (l.a_valider) gauche.append(noeud('div', 'tag-estime', 'Quantité ou prix estimé · à vérifier'));
+  // Le signal d'honnêteté, la même marque que sur le PDF. L'explication, elle, est
+  // dite une fois, dans l'encadré « À vérifier » en tête de relecture.
+  if (l.a_valider) {
+    const marque = noeud('div', 'tag-estime', 'estimé †');
+    marque.title = 'Quantité ou prix estimé : à vérifier';
+    gauche.append(marque);
+  }
 
   // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
   // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
@@ -1045,20 +1082,10 @@ function peindreTotaux(d) {
     franchise
       ? rang('totaux__row', 'TVA non applicable · art. 293 B', '—', false)
       : rang('totaux__row', `TVA ${pourcent(d.taux_tva)}${NB}%`, euro(d.montant_tva), true),
-    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), false),
+    // En mono comme tout chiffre : la serif rend mal l'espace fine de « 3 124,00 € ».
+    rang('totaux__ttc', franchise ? 'Net à payer' : 'Total TTC', euro(d.total_ttc), true),
     rang('totaux__acompte', `Acompte ${pourcent(d.acompte_pct)}${NB}%`, euro(d.montant_acompte), true),
   );
-
-  if (Number(d.total_ht_estime) > 0) {
-    totaux.append(noeud('div', 'totaux__note',
-      `Dont ${euro(d.total_ht_estime)} sur des lignes estimées, en quantité ou en prix. ` +
-      'Relisez-les avant l’envoi.'));
-  }
-  if (tvaAConfirmer && !franchise) {
-    totaux.append(noeud('div', 'totaux__note',
-      `TVA à ${pourcent(d.taux_tva)}${NB}% choisie automatiquement d'après le vocal. ` +
-      'Le devis atteste ce taux : confirmez-le dans Modifier.'));
-  }
 }
 
 /* ---- 3 bis. édition ---------------------------------------------------- */
@@ -1421,6 +1448,7 @@ function choisirClientPro(e) {
 /* ---- branchements de l'édition ----------------------------------------- */
 
 $('btn-modifier').addEventListener('click', ouvrirEdition);
+$('btn-verifier').addEventListener('click', ouvrirEdition);
 $('ed-annuler').addEventListener('click', fermerEdition);
 $('rel-edition').addEventListener('submit', validerEdition);
 
@@ -1674,6 +1702,41 @@ function saitPartagerUnPdf() {
    l'appareil de l'artisan : l'ancre doit être dans le document — Safari ignore les
    ancres détachées — et l'URL du blob ne doit pas être révoquée dans la foulée du
    clic, sinon le téléchargement est annulé avant d'avoir commencé. */
+/* Le nom de l'entreprise ne vient que de l'identité saisie par l'artisan : celle de
+   la configuration est un spécimen, et signer un message de son nom serait mentir. */
+const nomEntreprise = () => (entrepriseCourante && entrepriseCourante.nom) || '';
+
+/* « Devis Bâti Rénov – Salle de bain Mme Durand.pdf » : le client qui le reçoit sait
+   ce que c'est sans l'ouvrir. Les morceaux absents sont omis ; sans aucun, le numéro. */
+function nomDuFichier(d) {
+  // Chaque morceau est nettoyé et borné à part : un objet trop long ne doit pas
+  // effacer le nom du client, et on coupe entre deux mots, pas au milieu.
+  const propre = (t) => String(t || '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  const borne = (t, max) => (t.length <= max ? t
+    : t.slice(0, max + 1).replace(/\s*\S*$/, '') || t.slice(0, max));
+  const objet = borne(propre(d.type_travaux), 45);
+  const client = borne(propre(d.client && d.client.nom), 30);
+  const sujet = [objet, client].filter(Boolean).join(' ');
+  const parties = [borne(propre(nomEntreprise()), 30), sujet].filter(Boolean);
+  if (parties.length === 0) return `${d.numero}.pdf`;
+  return 'Devis ' + parties.join(' – ') + '.pdf';
+}
+
+/* Le mot qui accompagne le fichier. Pas de civilité inventée : le nom tel qu'il a
+   été dicté, ou rien. */
+function messageAuClient(d) {
+  const client = d.client && d.client.nom;
+  const objet = String(d.type_travaux || '').trim().replace(/[\s.]+$/, '');
+  const lignes = [
+    client ? `Bonjour ${client},` : 'Bonjour,',
+    `Voici le devis n° ${d.numero}` + (objet ? ` : ${objet}.` : '.'),
+    'Je reste à votre disposition pour toute question.',
+  ];
+  if (nomEntreprise()) lignes.push(nomEntreprise());
+  return lignes.join('\n');
+}
+
 function telecharger(blob, nom) {
   const url = URL.createObjectURL(blob);
   const lien = document.createElement('a');
@@ -1750,7 +1813,7 @@ async function envoyerPdf() {
     libelle.textContent = dit;
   }
 
-  const nom = `${devisCourant.numero}.pdf`;
+  const nom = nomDuFichier(devisCourant);
   let partage = false;
 
   if (saitPartagerUnPdf()) {
@@ -1759,6 +1822,9 @@ async function envoyerPdf() {
       await navigator.share({
         files: [new File([blob], nom, { type: 'application/pdf' })],
         title: `Devis ${devisCourant.numero}`,
+        // Certaines applications ignorent le texte quand il y a un fichier : le
+        // devis part quand même, seul.
+        text: messageAuClient(devisCourant),
       });
       partage = true;
       devisEnvoye = true;
@@ -1833,6 +1899,12 @@ depot.addEventListener('drop', (e) => {
 $('fichier').addEventListener('change', (e) => {
   if (e.target.files.length) lancer(e.target.files[0], null);
 });
+
+// Le même texte aux deux endroits, tiré d'un seul modèle.
+document.querySelectorAll('[data-que-dire]').forEach((el) =>
+  el.append($('modele-que-dire').content.cloneNode(true)));
+$('conseils-bascule').addEventListener('click', () =>
+  ouvrirRepli('conseils', 'conseils-bascule', !$('conseils').classList.contains('is-open')));
 
 $('depot-bascule').addEventListener('click', () =>
   ouvrirRepli('depot-repli', 'depot-bascule', !$('depot-repli').classList.contains('is-open')));
@@ -2220,17 +2292,26 @@ function signalerCapital() {
 
 /* ---- écran ------------------------------------------------------------- */
 
-function ouvrirEntreprise() {
+/* `nom` : celui que l'artisan vient de donner à l'inscription, quand `compte.js`
+   enchaîne sur cet écran. Il lance la recherche dans l'annuaire, sans rien remplir
+   d'autre : la fiche du compte et l'identité du devis restent deux choses. */
+function ouvrirEntreprise(nom) {
+  const vide = !estRemplie(entrepriseCourante);
+  const cherche = vide && typeof nom === 'string' ? nom.trim() : '';
   remplirFormulaire(entrepriseCourante);
-  $('entreprise-recherche').value = '';
+  $('entreprise-recherche').value = cherche;
   viderResultats();
   etatRecherche('Trois lettres suffisent. Ajoutez la ville si le nom est courant.');
   // Une identité déjà renseignée n'a plus rien à chercher : on montre le formulaire.
-  $('entreprise-formulaire').classList.toggle('is-open', estRemplie(entrepriseCourante));
+  $('entreprise-formulaire').classList.toggle('is-open', !vide);
   signalerCapital();
   montrer('entreprise');
-  if (!estRemplie(entrepriseCourante)) $('entreprise-recherche').focus({ preventScroll: true });
+  if (vide) $('entreprise-recherche').focus({ preventScroll: true });
+  if (cherche) chercherEntreprise(cherche);
 }
+// Pour `compte.js`, qui enchaîne l'inscription sur cet écran.
+window.ouvrirEntreprise = ouvrirEntreprise;
+window.identiteVide = () => !estRemplie(entrepriseCourante);
 
 function enregistrerEntreprise() {
   const saisie = lireFormulaire();
@@ -2248,7 +2329,7 @@ function enregistrerEntreprise() {
   montrer('accueil');
 }
 
-$('identite').addEventListener('click', ouvrirEntreprise);
+$('identite').addEventListener('click', () => ouvrirEntreprise());
 $('btn-entreprise-retour').addEventListener('click', () => montrer('accueil'));
 $('btn-entreprise-enregistrer').addEventListener('click', enregistrerEntreprise);
 
