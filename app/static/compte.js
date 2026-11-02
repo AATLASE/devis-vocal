@@ -525,6 +525,8 @@ async function envoyerProfil() {
 
   const bouton = $('btn-profil');
   const libelle = bouton.textContent;
+  // Fiche absente ou incomplète : c'est la fin de l'inscription, pas une retouche.
+  const inscription = !profil || !profil.complet;
   bouton.disabled = true;
   bouton.textContent = 'Enregistrement…';
   direProfil('');
@@ -544,6 +546,12 @@ async function envoyerProfil() {
   }
 
   peindreMenu();
+  // Juste inscrit, sans identité de devis : l'étape suivante est « Votre
+  // entreprise », recherche déjà lancée sur le nom qu'il vient de donner.
+  if (inscription && window.identiteVide && window.identiteVide()) {
+    window.ouvrirEntreprise(donnees.entreprise);
+    return;
+  }
   montrer('accueil');
 }
 

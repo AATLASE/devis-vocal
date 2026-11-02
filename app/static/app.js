@@ -2289,17 +2289,26 @@ function signalerCapital() {
 
 /* ---- écran ------------------------------------------------------------- */
 
-function ouvrirEntreprise() {
+/* `nom` : celui que l'artisan vient de donner à l'inscription, quand `compte.js`
+   enchaîne sur cet écran. Il lance la recherche dans l'annuaire, sans rien remplir
+   d'autre : la fiche du compte et l'identité du devis restent deux choses. */
+function ouvrirEntreprise(nom) {
+  const vide = !estRemplie(entrepriseCourante);
+  const cherche = vide && typeof nom === 'string' ? nom.trim() : '';
   remplirFormulaire(entrepriseCourante);
-  $('entreprise-recherche').value = '';
+  $('entreprise-recherche').value = cherche;
   viderResultats();
   etatRecherche('Trois lettres suffisent. Ajoutez la ville si le nom est courant.');
   // Une identité déjà renseignée n'a plus rien à chercher : on montre le formulaire.
-  $('entreprise-formulaire').classList.toggle('is-open', estRemplie(entrepriseCourante));
+  $('entreprise-formulaire').classList.toggle('is-open', !vide);
   signalerCapital();
   montrer('entreprise');
-  if (!estRemplie(entrepriseCourante)) $('entreprise-recherche').focus({ preventScroll: true });
+  if (vide) $('entreprise-recherche').focus({ preventScroll: true });
+  if (cherche) chercherEntreprise(cherche);
 }
+// Pour `compte.js`, qui enchaîne l'inscription sur cet écran.
+window.ouvrirEntreprise = ouvrirEntreprise;
+window.identiteVide = () => !estRemplie(entrepriseCourante);
 
 function enregistrerEntreprise() {
   const saisie = lireFormulaire();
@@ -2317,7 +2326,7 @@ function enregistrerEntreprise() {
   montrer('accueil');
 }
 
-$('identite').addEventListener('click', ouvrirEntreprise);
+$('identite').addEventListener('click', () => ouvrirEntreprise());
 $('btn-entreprise-retour').addEventListener('click', () => montrer('accueil'));
 $('btn-entreprise-enregistrer').addEventListener('click', enregistrerEntreprise);
 
