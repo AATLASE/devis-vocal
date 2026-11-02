@@ -742,13 +742,23 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 
 /* ---- la carte de dictée -------------------------------------------------- */
-/* L'action principale du produit. Elle porte la boîte de `.dropzone` — même
-   bordure, même respiration — et n'ajoute que ses trois états : au repos, en
-   enregistrement, en réécoute. */
+/* L'action principale du produit. Elle porte la boîte de `.dropzone`, mais pas son
+   tireté : les pointillés disent « déposez un fichier », et ici on parle. Un filet
+   plein, et le micro en disque brique — le seul aplat brique de l'app. La brique
+   pour parler, le noir pour agir. Trois états : au repos, en enregistrement, en
+   réécoute. */
 
-.dictee { user-select: none; position: relative; }
+.dictee { user-select: none; position: relative; border-style: solid; border-color: var(--dv-rule); }
 .dictee:hover { border-color: var(--dv-accent); box-shadow: var(--dv-ombre-2); }
 .dictee:active { transform: scale(.995); }
+.dictee .dropzone__mic {
+  width: 88px; height: 88px;
+  background: var(--dv-accent);
+  border-color: var(--dv-accent);
+  color: var(--dv-paper);
+}
+.dictee .dropzone__mic svg { width: 32px; height: 32px; }
+.dictee:hover .dropzone__mic { transform: scale(1.04); }
 
 .dropzone__mic {
   position: relative;
@@ -866,7 +876,12 @@ body.menu-anime.menu-ouvert .menu-voile {
   box-shadow: none;
 }
 .dictee.relu:hover { border-color: var(--dv-rule); }
-.dictee.relu .dropzone__mic { width: 52px; height: 52px; margin-bottom: var(--dv-s-5); }
+.dictee.relu .dropzone__mic {
+  width: 52px; height: 52px; margin-bottom: var(--dv-s-5);
+  /* La carte n'est plus un bouton : le micro redevient un simple trait. */
+  background: none; color: var(--dv-accent);
+}
+.dictee.relu:hover .dropzone__mic { transform: none; }
 
 .relu { margin-top: var(--dv-s-5); }
 .relu__actions { display: flex; gap: var(--dv-s-4); margin-top: var(--dv-s-5); }
