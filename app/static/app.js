@@ -1702,6 +1702,38 @@ function saitPartagerUnPdf() {
    l'appareil de l'artisan : l'ancre doit être dans le document — Safari ignore les
    ancres détachées — et l'URL du blob ne doit pas être révoquée dans la foulée du
    clic, sinon le téléchargement est annulé avant d'avoir commencé. */
+/* Le nom de l'entreprise ne vient que de l'identité saisie par l'artisan : celle de
+   la configuration est un spécimen, et signer un message de son nom serait mentir. */
+const nomEntreprise = () => (entrepriseCourante && entrepriseCourante.nom) || '';
+
+/* « Devis Bâti Rénov – Salle de bain Mme Durand.pdf » : le client qui le reçoit sait
+   ce que c'est sans l'ouvrir. Les morceaux absents sont omis ; sans aucun, le numéro. */
+function nomDuFichier(d) {
+  const sujet = [d.type_travaux, d.client && d.client.nom].filter(Boolean).join(' ');
+  const parties = [nomEntreprise(), sujet].filter(Boolean);
+  if (parties.length === 0) return `${d.numero}.pdf`;
+  const nom = ('Devis ' + parties.join(' – '))
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+    .trim();
+  return nom + '.pdf';
+}
+
+/* Le mot qui accompagne le fichier. Pas de civilité inventée : le nom tel qu'il a
+   été dicté, ou rien. */
+function messageAuClient(d) {
+  const client = d.client && d.client.nom;
+  const lignes = [
+    client ? `Bonjour ${client},` : 'Bonjour,',
+    `Voici le devis n° ${d.numero}` + (d.type_travaux ? ` : ${d.type_travaux}.` : '.'),
+    'Je reste à votre disposition pour toute question.',
+  ];
+  if (nomEntreprise()) lignes.push(nomEntreprise());
+  return lignes.join('\n');
+}
+
 function telecharger(blob, nom) {
   const url = URL.createObjectURL(blob);
   const lien = document.createElement('a');
@@ -1778,7 +1810,7 @@ async function envoyerPdf() {
     libelle.textContent = dit;
   }
 
-  const nom = `${devisCourant.numero}.pdf`;
+  const nom = nomDuFichier(devisCourant);
   let partage = false;
 
   if (saitPartagerUnPdf()) {
@@ -1787,6 +1819,9 @@ async function envoyerPdf() {
       await navigator.share({
         files: [new File([blob], nom, { type: 'application/pdf' })],
         title: `Devis ${devisCourant.numero}`,
+        // Certaines applications ignorent le texte quand il y a un fichier : le
+        // devis part quand même, seul.
+        text: messageAuClient(devisCourant),
       });
       partage = true;
       devisEnvoye = true;
