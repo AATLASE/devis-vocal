@@ -1862,6 +1862,12 @@ $('fichier').addEventListener('change', (e) => {
   if (e.target.files.length) lancer(e.target.files[0], null);
 });
 
+// Le même texte aux deux endroits, tiré d'un seul modèle.
+document.querySelectorAll('[data-que-dire]').forEach((el) =>
+  el.append($('modele-que-dire').content.cloneNode(true)));
+$('conseils-bascule').addEventListener('click', () =>
+  ouvrirRepli('conseils', 'conseils-bascule', !$('conseils').classList.contains('is-open')));
+
 $('depot-bascule').addEventListener('click', () =>
   ouvrirRepli('depot-repli', 'depot-bascule', !$('depot-repli').classList.contains('is-open')));
 $('repli-bascule').addEventListener('click', () =>

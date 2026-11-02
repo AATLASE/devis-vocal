@@ -407,9 +407,17 @@
       </div>
     </div>
 
-    <!-- Les deux chemins de repli. Chaque panneau suit son propre lien : ouverts
-         tous les deux, on doit voir lequel appartient à quoi. -->
+    <!-- Les replis. Le premier dit quoi dicter, avant le premier enregistrement ;
+         les deux suivants sont les chemins de repli. Chaque panneau suit son propre
+         lien : ouverts ensemble, on doit voir lequel appartient à quoi. -->
     <div class="replis">
+      <button class="paste-toggle" id="conseils-bascule" type="button"
+              aria-expanded="false" aria-controls="conseils">
+        <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
+        <span>Que dire ?</span>
+      </button>
+      <div class="paste" id="conseils" data-que-dire></div>
+
       <button class="paste-toggle" id="depot-bascule" type="button"
               aria-expanded="false" aria-controls="depot-repli">
         <svg class="paste-toggle__signe" aria-hidden="true"><use href="#i-plus"/></svg>
@@ -749,6 +757,10 @@
     </div>
     <div class="label" id="vide-titre-observations">Observations</div>
     <div class="observations" id="vide-observations"></div>
+    <div class="vide__conseils">
+      <div class="label label--accent">Pour la prochaine fois</div>
+      <div data-que-dire></div>
+    </div>
     <div class="vide__actions">
       <button class="btn btn--large" data-recommencer>
         <svg aria-hidden="true"><use href="#i-micro"/></svg>
@@ -758,6 +770,19 @@
     </div>
   </div>
 </section>
+
+<!-- Quoi dicter : écrit une fois, recopié par app.js sous le micro et sur l'écran
+     « pas assez d'éléments ». -->
+<template id="modele-que-dire">
+  <ul class="que-dire">
+    <li>Le client et l'adresse du chantier</li>
+    <li>Les travaux, pièce par pièce</li>
+    <li>Les quantités : m², mètres, nombre</li>
+    <li>Vos prix, si vous les avez</li>
+  </ul>
+  <p class="que-dire__exemple">« Salle de bain chez Mme Renard, 14 rue des Lilas à Lyon. Dépose
+    de la baignoire, pose d'un receveur 90 × 120, 8 m² de faïence à 45 € le m². »</p>
+</template>
 
 <!-- 5 .......................................................... erreur -->
 <!-- Absent du handoff : l'API peut échouer, et il faut bien le dire. Même

@@ -959,6 +959,21 @@ body.menu-anime.menu-ouvert .menu-voile {
 .paste { display: none; padding-bottom: var(--dv-s-6); }
 .paste.is-open { display: block; animation: entree-repli var(--dv-duree) var(--dv-sortie) both; }
 .paste .btn { margin-top: var(--dv-s-4); width: 100%; }
+.que-dire {
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-ink);
+}
+.que-dire__exemple {
+  margin: var(--dv-s-3) 0 0;
+  font-family: var(--dv-serif);
+  font-style: italic;
+  font-size: var(--dv-t-sm);
+  line-height: var(--dv-lh-body);
+  color: var(--dv-muted);
+}
 @keyframes entree-repli {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: none; }
@@ -1426,6 +1441,8 @@ body.menu-anime.menu-ouvert .menu-voile {
 }
 .vide .observations { margin-bottom: var(--dv-s-10); }
 .vide .observation { font-size: var(--dv-t-body); }
+.vide__conseils { margin-bottom: var(--dv-s-10); }
+.vide__conseils .label { margin-bottom: var(--dv-s-3); }
 .vide__actions { display: flex; gap: var(--dv-s-4); flex-wrap: wrap; }
 
 
