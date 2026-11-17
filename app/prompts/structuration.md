@@ -27,7 +27,8 @@ lignes distinctes de fourniture/pose et une ligne de main d'œuvre.
 
 Regroupe ce qui se facture ensemble, sépare ce qui se chiffre séparément. Une dépose, une
 évacuation de gravats, une reprise de finition sont des lignes à part entière : ce sont
-précisément celles que l'artisan oublie quand il devise le soir, fatigué.
+précisément celles que l'artisan oublie quand il devise le soir, fatigué. Sauf quand le
+prix de la prestation les comprend déjà — voir la grille des prix de référence.
 
 Nomme les prestations comme sur un vrai devis : « Dépose de l'ancien carrelage mural »,
 pas « enlever le carrelage ».
@@ -127,42 +128,60 @@ Ces fourchettes ne servent **qu'à estimer** :
 Pour une prestation absente de la grille, raisonne par analogie avec la plus proche, et
 reste dans le même ordre de grandeur.
 
+Un prix de la grille couvre tout ce que dit son libellé : n'ajoute pas de ligne pour une
+partie qu'il comprend déjà. Le chauffe-eau posé comprend son groupe de sécurité et sa mise
+en service ; la saignée comprend la gaine, le câble et le rebouchage. La dépose d'un
+appareil qu'on remplace et son évacuation tiennent en une seule ligne, au prix de la
+dépose : le forfait d'évacuation des gravats est fait pour les débris de démolition, pas
+pour un appareil.
+
 | Prestation | Unité | Fourchette HT |
 |---|---|---|
-| Protection du chantier et des accès | forfait | 80 – 200 € |
-| Dépose de carrelage, sol ou mur | m² | 18 – 35 € |
-| Dépose de cloison ou de doublage en plaques de plâtre | m² | 12 – 25 € |
-| Dépose d'un appareil sanitaire (WC, lavabo, baignoire) | u | 60 – 180 € |
-| Évacuation des gravats en déchetterie | forfait | 150 – 450 € |
-| Cloison en plaques de plâtre BA13 sur ossature | m² | 40 – 65 € |
-| Plaques de plâtre hydrofuges, pièce humide | m² | 45 – 70 € |
-| Doublage isolant, collé ou sur ossature | m² | 45 – 80 € |
-| Faux plafond en plaques de plâtre | m² | 45 – 75 € |
+| Protection du chantier et des accès | forfait | 150 – 350 € |
+| Dépose de carrelage, sol ou mur | m² | 15 – 28 € |
+| Dépose de cloison ou de doublage en plaques de plâtre | m² | 10 – 22 € |
+| Dépose d'un lavabo ou d'un WC | u | 50 – 110 € |
+| Dépose d'une baignoire | u | 90 – 180 € |
+| Évacuation des gravats en déchetterie | forfait | 150 – 300 € |
+| Cloison en plaques de plâtre BA13 sur ossature | m² | 40 – 70 € |
+| Plaques de plâtre hydrofuges, pièce humide | m² | 45 – 75 € |
+| Doublage isolant, collé ou sur ossature | m² | 35 – 65 € |
+| Faux plafond en plaques de plâtre | m² | 40 – 70 € |
 | Ragréage | m² | 15 – 30 € |
-| Chape | m² | 25 – 45 € |
-| Carrelage de sol, fourniture et pose | m² | 55 – 95 € |
-| Faïence murale, fourniture et pose | m² | 55 – 100 € |
-| Pose seule de carrelage (fourniture client) | m² | 35 – 60 € |
-| Plinthes carrelage | ml | 12 – 25 € |
-| Parquet flottant, fourniture et pose | m² | 35 – 70 € |
+| Chape, au-delà de 15 m² | m² | 25 – 45 € |
+| Chape, petite surface (salle de bain, WC) | m² | 50 – 90 € |
+| Carrelage de sol, fourniture et pose | m² | 65 – 115 € |
+| Faïence murale, fourniture et pose | m² | 60 – 110 € |
+| Pose seule de carrelage (fourniture client) | m² | 35 – 55 € |
+| Plinthes carrelage | ml | 15 – 25 € |
+| Parquet flottant, fourniture et pose | m² | 40 – 80 € |
 | Plinthes bois ou MDF | ml | 10 – 20 € |
 | Enduit de lissage | m² | 12 – 25 € |
-| Peinture des murs, impression et deux couches | m² | 22 – 38 € |
-| Peinture de plafond, impression et deux couches | m² | 25 – 42 € |
-| WC à poser | u | 350 – 750 € |
-| WC suspendu avec bâti | u | 900 – 1 700 € |
-| Lavabo ou vasque avec meuble | u | 450 – 1 100 € |
-| Mitigeur | u | 130 – 280 € |
-| Receveur de douche extra-plat | u | 450 – 950 € |
-| Paroi de douche | u | 350 – 900 € |
-| Création d'un point d'eau (alimentation et évacuation) | u | 250 – 550 € |
-| Chauffe-eau électrique 200 L | u | 1 000 – 1 700 € |
-| Point lumineux | u | 80 – 160 € |
-| Prise de courant | u | 60 – 130 € |
-| Remplacement du tableau électrique | u | 1 200 – 2 500 € |
-| VMC simple flux | u | 550 – 1 300 € |
-| Heure d'intervention, si l'artisan facture au temps | h | 45 – 65 € |
-| Journée d'intervention, si l'artisan facture au temps | j | 330 – 480 € |
+| Peinture des murs, impression et deux couches | m² | 15 – 26 € |
+| Peinture de plafond, impression et deux couches | m² | 17 – 28 € |
+| Laque d'une porte intérieure, deux faces | u | 80 – 150 € |
+| WC à poser | u | 300 – 550 € |
+| WC suspendu avec bâti, habillage compris | u | 850 – 1 500 € |
+| Lavabo ou vasque avec meuble | u | 400 – 1 000 € |
+| Mitigeur | u | 120 – 230 € |
+| Mitigeur thermostatique de douche | u | 200 – 380 € |
+| Receveur de douche extra-plat | u | 450 – 750 € |
+| Paroi de douche | u | 400 – 650 € |
+| Création d'un point d'eau (alimentation et évacuation) | u | 350 – 750 € |
+| Chauffe-eau électrique 200 L, groupe de sécurité et mise en service compris | u | 800 – 1 200 € |
+| Dépose et évacuation d'un ancien chauffe-eau | u | 80 – 180 € |
+| Remplacement seul d'un groupe de sécurité | u | 110 – 190 € |
+| Création d'un point lumineux, hors luminaire | u | 140 – 260 € |
+| Création d'une prise de courant | u | 100 – 180 € |
+| Saignée, avec gaine, câble et rebouchage | ml | 20 – 36 € |
+| Remplacement du tableau électrique d'un T3 | u | 900 – 1 500 € |
+| VMC simple flux | u | 500 – 1 100 € |
+| Heure d'intervention, plaquiste, carreleur ou peintre | h | 35 – 50 € |
+| Journée d'intervention, plaquiste, carreleur ou peintre | j | 260 – 380 € |
+| Heure d'intervention, plombier ou électricien | h | 45 – 70 € |
+| Journée d'intervention, plombier ou électricien | j | 350 – 500 € |
+
+Les heures et les journées ne servent que si l'artisan facture au temps passé.
 
 ## Fourniture client
 
