@@ -912,6 +912,42 @@
       <div class="template__meta" id="prix-meta"></div>
     </div>
 
+    <!-- Dicter ou importer : deux façons de remplir le tableau plus vite. Rien n'est
+         enregistré ici : les prix lus s'ajoutent au tableau, à relire. -->
+    <div class="section-head">
+      <div class="label">Ajouter des prix</div>
+      <div class="rule"></div>
+    </div>
+    <p class="prix__import-aide">
+      Dictez vos prix, ou importez votre liste (Excel ou CSV). Les prix lus s'ajoutent au
+      tableau ci-dessous : rien n'est enregistré avant que vous les ayez relus. La dictée
+      et le fichier sont lus par notre fournisseur d'intelligence artificielle, le temps
+      de la lecture.
+    </p>
+    <div class="prix__import">
+      <button type="button" class="btn btn--ghost" id="btn-prix-dicter">
+        <svg aria-hidden="true"><use href="#i-micro"/></svg>
+        <span id="prix-dicter-libelle">Dicter mes prix</span>
+      </button>
+      <button type="button" class="btn btn--ghost" id="btn-prix-fichier">
+        <svg aria-hidden="true"><use href="#i-document"/></svg>
+        <span>Importer un fichier</span>
+      </button>
+      <input type="file" id="prix-fichier" hidden multiple
+             accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+    </div>
+    <div class="prix__dictee" id="prix-dictee" hidden>
+      <div class="champ">
+        <label for="prix-dictee-texte">Ce que vous avez dicté — corrigez un prix mal compris</label>
+        <textarea id="prix-dictee-texte" rows="4"></textarea>
+      </div>
+      <div class="template__actions">
+        <button type="button" class="btn" id="btn-prix-lire">Lire mes prix</button>
+        <button type="button" class="btn btn--texte" id="btn-prix-dictee-annuler">Annuler</button>
+      </div>
+    </div>
+    <p class="template__message" id="prix-import-message" role="status" hidden></p>
+
     <div class="section-head">
       <div class="label">Vos prestations · prix unitaires HT</div>
       <div class="rule"></div>
