@@ -919,10 +919,12 @@
       <div class="rule"></div>
     </div>
     <p class="prix__import-aide">
-      Dictez vos prix, ou importez votre liste (Excel ou CSV). Les prix lus s'ajoutent au
-      tableau ci-dessous : rien n'est enregistré avant que vous les ayez relus. La dictée
-      et le fichier sont lus par notre fournisseur d'intelligence artificielle, le temps
-      de la lecture.
+      Dictez vos prix, importez votre liste (Excel ou CSV) <span id="prix-aide-documents">ou
+      le PDF d'un ancien devis, ou photographiez un devis papier</span>. Les prix lus
+      s'ajoutent au tableau ci-dessous : rien n'est enregistré avant que vous les ayez
+      relus. Ce que vous envoyez est lu par notre fournisseur d'intelligence
+      artificielle, le temps de la lecture — y compris le nom du client d'un ancien
+      devis, qui n'est ni relevé ni gardé.
     </p>
     <div class="prix__import">
       <button type="button" class="btn btn--ghost" id="btn-prix-dicter">
@@ -933,8 +935,14 @@
         <svg aria-hidden="true"><use href="#i-document"/></svg>
         <span>Importer un fichier</span>
       </button>
+      <button type="button" class="btn btn--ghost" id="btn-prix-photo" hidden>
+        <svg aria-hidden="true"><use href="#i-document"/></svg>
+        <span>Photographier un devis</span>
+      </button>
+      <!-- `accept` est complété par prix.js quand le moteur lit les PDF et les photos. -->
       <input type="file" id="prix-fichier" hidden multiple
              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <input type="file" id="prix-photo" hidden accept="image/*" capture="environment">
     </div>
     <div class="prix__dictee" id="prix-dictee" hidden>
       <div class="champ">

@@ -25,6 +25,10 @@
   let viderArme = null;
   let enLecture = false; // une dictée ou un fichier est en cours de lecture
 
+  const ACCEPT_TABLEAUX = '.csv,.xlsx,text/csv,'
+    + 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const ACCEPT_DOCUMENTS = ',.pdf,application/pdf,image/jpeg,image/png';
+
   const dire = (texte, ton, zone = 'prix-message') => {
     const el = $(zone);
     el.textContent = texte || '';
@@ -199,6 +203,11 @@
         { day: 'numeric', month: 'long', year: 'numeric' })
       : 'Vos devis sont chiffrés sur des prix de marché, tous à vérifier.';
     $('btn-prix-vider').hidden = !lignes.length;
+    // PDF et photos : seulement si le moteur de lecture sait les lire.
+    const documents = !!etat.documents_acceptes;
+    $('btn-prix-photo').hidden = !documents;
+    $('prix-aide-documents').hidden = !documents;
+    $('prix-fichier').accept = ACCEPT_TABLEAUX + (documents ? ACCEPT_DOCUMENTS : '');
     desarmerVider();
     modifie = false;
     retourArme = false;
@@ -207,7 +216,7 @@
 
   /* ---- ajouter des prix lus ------------------------------------------------ */
 
-  const normaliser = (t) => String(t || '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+  const normaliser = (t) => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ').trim().toLowerCase();
 
   /* Les lignes lues rejoignent le tableau, sans rien enregistrer. Celles qui y sont
@@ -241,7 +250,7 @@
     morceaux.push(ajoutees
       ? `${ajoutees} prix lu${ajoutees > 1 ? 's' : ''} dans ${origine}, ajouté${ajoutees > 1 ? 's' : ''} en bas du tableau.`
       : `Aucun nouveau prix lu dans ${origine}.`);
-    if (ignorees) morceaux.push(`${ignorees} déjà dans votre tarif.`);
+    if (ignorees) morceaux.push(`${ignorees} déjà dans votre tarif ou dans le tableau.`);
     if (lecture.remarque) morceaux.push(lecture.remarque);
     if (ajoutees) {
       morceaux.push(signalees
@@ -253,7 +262,8 @@
 
   function occupe(actif) {
     enLecture = actif;
-    ['btn-prix-dicter', 'btn-prix-fichier', 'btn-prix-lire'].forEach((id) => { $(id).disabled = actif; });
+    ['btn-prix-dicter', 'btn-prix-fichier', 'btn-prix-photo', 'btn-prix-lire']
+      .forEach((id) => { $(id).disabled = actif; });
   }
 
   async function lire(donnees, origine) {
@@ -261,13 +271,37 @@
     return ajouterPropositions(await reponse.json(), origine);
   }
 
+  /* Une photo part réduite : 2 000 px de côté au plus, en JPEG. Un téléphone en produit
+     de 4 000 px et plusieurs mégaoctets, que le modèle ne lirait pas mieux. Pas d'aperçu
+     en `blob:` (la politique de sécurité de la page l'interdit) : `createImageBitmap`
+     décode sans image intermédiaire. Si le navigateur ne sait pas décoder le format,
+     le fichier part tel quel, et le serveur dit ce qu'il en pense. */
+  async function reduireImage(fichier) {
+    if (!fichier.type.startsWith('image/') || typeof createImageBitmap !== 'function') return fichier;
+    try {
+      const image = await createImageBitmap(fichier);
+      const echelle = Math.min(1, 2000 / Math.max(image.width, image.height));
+      const toile = document.createElement('canvas');
+      toile.width = Math.round(image.width * echelle);
+      toile.height = Math.round(image.height * echelle);
+      toile.getContext('2d').drawImage(image, 0, 0, toile.width, toile.height);
+      image.close();
+      const blob = await new Promise((r) => toile.toBlob(r, 'image/jpeg', 0.85));
+      if (!blob) return fichier;
+      return new File([blob], fichier.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (_) {
+      return fichier;
+    }
+  }
+
   async function importer(fichiers) {
     if (!fichiers.length || enLecture) return;
     occupe(true);
     const comptes = [];
     try {
-      for (const fichier of fichiers) {
-        direImport(`Lecture de « ${fichier.name} »… cela peut prendre une minute.`);
+      for (const original of fichiers) {
+        direImport(`Lecture de « ${original.name} »… cela peut prendre une minute.`);
+        const fichier = await reduireImage(original);
         const donnees = new FormData();
         donnees.append('fichier', fichier);
         try {
@@ -281,6 +315,7 @@
     } finally {
       occupe(false);
       $('prix-fichier').value = '';
+      $('prix-photo').value = '';
     }
   }
 
@@ -480,6 +515,8 @@
     });
     $('btn-prix-fichier').addEventListener('click', () => $('prix-fichier').click());
     $('prix-fichier').addEventListener('change', (e) => importer([...e.target.files]));
+    $('btn-prix-photo').addEventListener('click', () => $('prix-photo').click());
+    $('prix-photo').addEventListener('change', (e) => importer([...e.target.files]));
   });
 
   window.Prix = {
