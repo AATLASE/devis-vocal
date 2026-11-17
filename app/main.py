@@ -35,6 +35,8 @@ Puis celles du tarif de l'artisan — hors périmètre d'origine aussi, voir CLA
     GET    /api/grille           -> le tarif de l'artisan connecté
     PUT    /api/grille           -> l'enregistrer, une fois relu à l'écran
     DELETE /api/grille           -> le retirer
+    POST   /api/grille/lire      -> des prix lus dans une dictée ou un fichier, proposés
+                                    à l'artisan et jamais enregistrés par cette route
 
 Quand l'artisan connecté a un tarif, `POST /api/devis` le passe au chiffrage : ses prix
 passent avant les fourchettes de référence, et chaque ligne qui s'en réclame est
@@ -54,7 +56,7 @@ from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -62,6 +64,7 @@ from pydantic import BaseModel
 
 from app import adresse as adresse_module
 from app import grilles as grilles_module
+from app import lecture_grille
 from app import journal
 from app import pdf as pdf_module
 from app import profils as profils_module
@@ -526,6 +529,59 @@ async def api_grille_retirer(utilisateur: Utilisateur = Depends(utilisateur_requ
         raise HTTPException(status_code=502, detail=str(err)) from err
     logger.info("  tarif retiré par %s", utilisateur.uid)
     return _grille_json(None)
+
+
+@app.post("/api/grille/lire")
+async def api_grille_lire(
+    fichier: UploadFile | None = File(None),
+    texte: str | None = Form(None),
+    utilisateur: Utilisateur = Depends(utilisateur_requis),
+) -> dict:
+    """Lit des prix dans une dictée transcrite ou un fichier, et les **propose**.
+
+    Rien n'est enregistré ici : les lignes partent au tableau de l'artisan, qui les relit
+    et les valide par `PUT /api/grille`. Ni journal ni log du contenu — un ancien devis
+    porte le nom et l'adresse d'un client.
+    """
+    config = get_config()
+    if config.use_fixtures:
+        raise HTTPException(
+            status_code=400,
+            detail="La lecture des prix demande le mode réel (USE_FIXTURES=false).",
+        )
+    if fichier is None and not (texte or "").strip():
+        raise HTTPException(status_code=400, detail="Dictez vos prix ou choisissez un fichier.")
+
+    try:
+        if fichier is not None:
+            # Relu ici et pas seulement au middleware : un envoi sans Content-Length
+            # passerait sinon au travers. Un octet de plus suffit à savoir si c'est trop.
+            contenu = await fichier.read(config.max_import_octets + 1)
+            if len(contenu) > config.max_import_octets:
+                raise lecture_grille.LectureRefusee(
+                    f"Fichier trop lourd : {config.max_import_mo} Mo au plus."
+                )
+            source = await run_in_threadpool(
+                lecture_grille.texte_du_fichier, fichier.filename or "", contenu
+            )
+        else:
+            source = lecture_grille.texte_dicte(texte)
+    except lecture_grille.LectureRefusee as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+    # Compté avant l'appel, comme un devis : la dépense est engagée dès que la requête
+    # part chez le fournisseur. Et après les refus ci-dessus, qui ne coûtent rien.
+    securite.consommer_devis()
+    tarif = await run_in_threadpool(grilles_module.lire, utilisateur.uid)
+    try:
+        with suivi.etape("lecture-tarif", attendu=lecture_grille.LectureRefusee,
+                         caracteres=len(source),
+                         origine="fichier" if fichier is not None else "dictee") as detail:
+            lecture = await run_in_threadpool(lecture_grille.lire_texte, source, tarif)
+            detail["lignes"] = len(lecture.lignes)
+    except lecture_grille.LectureRefusee as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    return lecture.model_dump(mode="json")
 
 
 # ---------------------------------------------------------------------------

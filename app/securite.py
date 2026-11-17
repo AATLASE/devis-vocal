@@ -372,13 +372,14 @@ async def limiter_la_taille(request: Request, call_next):
     chemin = request.url.path
 
     if chemin.startswith(PREFIXE_PROTEGE):
-        # La transcription reçoit de l'audio, le reste ne reçoit que du JSON. Un devis
-        # de plus d'un demi-mégaoctet n'est pas un devis, c'est une charge.
-        plafond = (
-            config.max_upload_octets
-            if chemin == "/api/transcribe"
-            else config.max_json_ko * 1024
-        )
+        # La transcription reçoit de l'audio et l'import du tarif un fichier ; le reste
+        # ne reçoit que du JSON. Un devis de plus d'un demi-mégaoctet n'est pas un
+        # devis, c'est une charge.
+        plafond = {
+            "/api/transcribe": config.max_upload_octets,
+            # Le fichier de prix importé dans le tarif : Excel, CSV, PDF ou photo.
+            "/api/grille/lire": config.max_import_octets,
+        }.get(chemin, config.max_json_ko * 1024)
         declaree = request.headers.get("content-length")
         if declaree and declaree.isdigit() and int(declaree) > plafond:
             logger.warning("Corps refusé sur %s : %s octets", chemin, declaree)

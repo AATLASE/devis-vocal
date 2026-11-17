@@ -50,7 +50,7 @@ _AUTRES = ("USE_FIXTURES", "STRUCTURATION_PROVIDER", "JOURNAL", "JOURNAL_DIR",
            # développeur ferait échouer la suite d'un autre.
            "ACCES_CODE", "LIMITE_PAR_MINUTE", "DEVIS_PAR_JOUR", "DEVIS_PAR_MOIS",
            "MAX_JSON_KO", "MAX_LIGNES_DEVIS", "RENDUS_SIMULTANES",
-           "COMPTEURS_FICHIER")
+           "COMPTEURS_FICHIER", "MAX_IMPORT_MO", "DELAI_LECTURE_S")
 
 
 @pytest.fixture(autouse=True)

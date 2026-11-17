@@ -160,6 +160,14 @@ class Config(BaseSettings):
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
 
+    # Un fichier de prix importé dans le tarif de l'artisan (Excel, CSV, puis PDF et
+    # photo). Plus petit que l'audio : une liste de prix tient en quelques centaines de Ko.
+    max_import_mo: int = 10
+
+    @property
+    def max_import_octets(self) -> int:
+        return self.max_import_mo * 1024 * 1024
+
     # Le code d'accès. Vide, tout est ouvert — c'est ce qu'on veut en développement et
     # pendant les tests. Le renseigner arme la porte, et c'est le geste de la mise en
     # ligne. Ce n'est pas une authentification : c'est un mot de passe unique qu'on
@@ -208,6 +216,9 @@ class Config(BaseSettings):
     # (Ollama, Whisper sur processeur).
     delai_chiffrage_s: float = 90
     delai_transcription_s: float = 60
+    # La lecture d'un tarif importé : un tableau de deux cents lignes ou un PDF de
+    # plusieurs pages produit une longue réponse, plus lente qu'un devis.
+    delai_lecture_s: float = 180
 
     # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
     # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en
