@@ -26,7 +26,7 @@ cp .env.example .env                     # laisser USE_FIXTURES=true pour commen
 uv run python -m uvicorn app.main:app --port 8000
 ```
 
-Puis <http://localhost:8000>.
+Puis <http://localhost:8000/app> pour l'application ; <http://localhost:8000> sert la vitrine.
 
 Avec `USE_FIXTURES=true` (la valeur par défaut du `.env.example`), l'application rejoue
 des extractions enregistrées : **aucun appel API, aucune clé, aucun euro**. Déplie

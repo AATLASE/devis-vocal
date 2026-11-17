@@ -214,4 +214,32 @@
   /* grand : la cible, ici, c'est un pouce ganté sur un chantier.            */
 
   --dv-cible: 48px;
+
+  /* ---- Site vitrine --------------------------------------------------- */
+  /* La vitrine (`static/site/`) parle plus fort que l'application : un titre  */
+  /* qui porte la page, des sections qui respirent, des aplats d'encre. Elle   */
+  /* reprend tout le reste de ce fichier ; seules ces valeurs lui sont propres. */
+
+  --dv-t-vitrine:    clamp(60px, 8.4vw, 124px);  /* le titre de la une */
+  --dv-t-annonce:    clamp(30px, 4.4vw, 56px);   /* les titres de section */
+  --dv-section:      clamp(72px, 10vw, 152px);   /* l'écart entre deux sections */
+  --dv-largeur-site: 1280px;
+
+  /* Texte sur aplat d'encre ou de brique. Sur --dv-ink : `sur-encre` 15,3:1,
+     `sur-encre-doux` 8,7:1. Sur --dv-accent, `sur-encre` tient 5,9:1. La
+     discrétion se fait par la valeur, jamais sous AA. */
+  --dv-sur-encre:      #f4f0e8;
+  --dv-sur-encre-doux: #bdb6aa;
+  --dv-filet-encre:    #3a3832;
+
+  /* Le mouvement de la vitrine : des sorties franches pour ce qui arrive
+     (expo), un fondu lent pour ce qui dérive (photos), un aller-retour pour
+     ce qui se déplace sous les yeux (volets). Jamais de rebond. */
+  --dv-expo:     cubic-bezier(.16, 1, .3, 1);
+  --dv-doux:     cubic-bezier(.33, 1, .68, 1);
+  --dv-volet:    cubic-bezier(.76, 0, .24, 1);
+  --dv-appui:    140ms;
+  --dv-survol:   180ms;
+  --dv-revele:   800ms;
+  --dv-ouverture: 1200ms;
 }

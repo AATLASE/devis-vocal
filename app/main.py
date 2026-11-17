@@ -617,9 +617,32 @@ async def api_adresse(q: str = "") -> list[AdresseTrouvee]:
     return await adresse_module.rechercher(q)
 
 
-@app.get("/")
-async def index() -> FileResponse:
+@app.get("/app")
+async def application() -> FileResponse:
+    """L'application de dictée. Elle vivait sur `/` avant l'arrivée de la vitrine."""
     return FileResponse(STATIQUE / "index.html", headers={"Cache-Control": REVALIDER})
+
+
+# La vitrine : des pages statiques, sans donnée ni état (CLAUDE.md § Exception
+# assumée : site vitrine). Une adresse lisible par page plutôt que `/static/site/…`,
+# parce que ce sont celles qu'on donne à un artisan.
+SITE = STATIQUE / "site"
+PAGES_SITE = {
+    "/": "index.html",
+    "/qui-sommes-nous": "qui-sommes-nous.html",
+    "/questions": "questions.html",
+    "/contact": "contact.html",
+}
+
+
+def _page_site(fichier: str):
+    async def page() -> FileResponse:
+        return FileResponse(SITE / fichier, headers={"Cache-Control": REVALIDER})
+    return page
+
+
+for _chemin, _fichier in PAGES_SITE.items():
+    app.add_api_route(_chemin, _page_site(_fichier), methods=["GET"], include_in_schema=False)
 
 
 app.mount("/static", StatiquesRevalidees(directory=STATIQUE), name="static")

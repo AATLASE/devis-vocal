@@ -75,6 +75,30 @@ Cette exception ne couvre pas la **bibliothèque de prix par artisan**, toujours
 scope : à la place, `app/prompts/structuration.md` porte une grille de fourchettes de
 référence pour les prix estimés, commune à tous. C'est du prompt, donc dans le périmètre.
 
+### Exception assumée : site vitrine
+
+Un site de présentation sert désormais `/` : accueil (fonctionnement, devis, garanties),
+`/qui-sommes-nous`, `/questions`, `/contact`. L'application de dictée a déménagé sur
+`/app`. Ajouté sur décision explicite, après que le conflit avec « design poussé du
+front » a été signalé.
+
+Elle est bornée ainsi :
+
+- **Des pages statiques, rien d'autre.** HTML et CSS dans `app/static/site/`, un script
+  de quelques lignes. Aucune route qui lit ou écrit une donnée, aucun envoi d'e-mail :
+  le formulaire de contact compose un `mailto:` dans le navigateur.
+- **Même charte, mêmes tokens.** Tout vient de `tokens.css` ; les rares valeurs propres
+  à la vitrine y ont leur bloc.
+- **Rien d'inventé.** Pas de témoignage, de client ni de chiffre qu'on n'a pas.
+- **Sans Firebase, pas de « Se connecter ».** La vitrine lit `/api/firebase` et ne
+  propose alors qu'« Ouvrir l'application ».
+
+Les photos viennent d'Unsplash (licence libre) et la vidéo de Wikimedia Commons
+(CC BY-SA, créditée en pied de page), servies en local : la CSP n'autorise aucun média
+d'une autre origine. Les devis et les écrans montrés sont de vraies sorties du produit,
+produites depuis les fixtures (`tests/fixtures/elec|plomberie|peinture`) par `to_devis()`
+et le template PDF : si le calcul ou le gabarit change, il faut les régénérer.
+
 Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être impeccable.
 
 ## Stack
@@ -83,7 +107,8 @@ Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être
 - **Transcription** : API OpenAI (gpt-4o-transcribe), derrière `transcribe(audio, filename) -> str`
 - **Structuration** : API OpenAI, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
 - **PDF** : Playwright (Chromium headless) rendant `templates/devis.html`
-- **Front** : une page HTML servie par FastAPI, JS vanilla, pas de framework
+- **Front** : une page HTML servie par FastAPI sur `/app`, JS vanilla, pas de framework ;
+  le site vitrine, statique, sur `/` (voir l'exception assumée)
 - **Comptes** : Firebase Auth, jetons vérifiés par `firebase-admin`, derrière les deux
   dépendances de `app/authentification.py`. Templates dans Firestore. Tout facultatif —
   voir l'exception assumée plus bas.

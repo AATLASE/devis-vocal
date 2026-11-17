@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#efece5">
+<title>Devis Vocal · Le devis dicté en sortant du chantier</title>
+<meta name="description" content="Dictez le chantier en une ou deux minutes, repartez avec un devis chiffré et conforme, prêt à envoyer. Pour les artisans du bâtiment.">
+<link rel="preload" href="/static/site/img/chef-chantier-casque-rouge.jpg" as="image" fetchpriority="high">
+<link rel="preload" href="/static/fonts/source-serif-4-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/site/site.css">
+<script src="/static/site/site.js" defer></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+    <path d="M5 10.5a7 7 0 0 0 14 0M12 17.5V21M9 21h6"></path>
+  </symbol>
+  <symbol id="i-coche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m4.5 12.5 5 5 10-11"></path>
+  </symbol>
+  <symbol id="i-fleche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 5.5 20.5 12 14 18.5M20.5 12H4"></path>
+  </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+    <path d="M4 7h16M4 12h16M4 17h16"></path>
+  </symbol>
+  <symbol id="i-croix" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+    <path d="m6.5 6.5 11 11M17.5 6.5l-11 11"></path>
+  </symbol>
+  <symbol id="i-telecharger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.5V15M8 11l4 4 4-4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+  <symbol id="i-partage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15.5V3M8 6.5 12 2.5l4 4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+</svg>
+
+<a class="evitement" href="#contenu">Aller au contenu</a>
+
+<header class="entete">
+  <div class="enveloppe entete__ligne">
+    <a class="marque" href="/" aria-label="Devis Vocal, accueil">
+      <span class="marque__disque"><svg class="icone"><use href="#i-micro"/></svg></span>
+      Devis Vocal
+    </a>
+    <button class="menu-bouton" type="button" aria-expanded="false" aria-controls="nav-principale" aria-label="Ouvrir le menu">
+      <svg class="icone icone--ouvrir"><use href="#i-menu"/></svg>
+      <svg class="icone icone--fermer"><use href="#i-croix"/></svg>
+    </button>
+    <nav class="nav" id="nav-principale" aria-label="Navigation principale">
+      <a href="/#fonctionnement">Fonctionnement</a>
+      <a href="/#devis">Le devis</a>
+      <a href="/qui-sommes-nous">Qui sommes-nous</a>
+      <a href="/questions">Questions</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="compte-liens">
+      <a class="lien-connexion" href="/app?connexion" data-compte>Se connecter</a>
+      <a class="bouton bouton--brique" href="/app?connexion" data-compte>S'inscrire</a>
+      <a class="bouton bouton--brique" href="/app" data-sans-compte>Ouvrir l'application</a>
+    </div>
+  </div>
+</header>
+
+<main id="contenu">
+
+<!-- La une ............................................................. -->
+<section class="une">
+  <div class="enveloppe une__grille">
+    <div>
+      <h1 class="une__titre">
+        <span class="ligne"><span style="--i:0">Un vocal,</span></span>
+        <span class="ligne"><span style="--i:1">un devis.</span></span>
+      </h1>
+      <p class="une__chapeau" data-charge style="--d:420ms">
+        Pour les artisans du bâtiment : décrivez le chantier en sortant de la visite,
+        une ou deux minutes, et repartez avec un devis chiffré, conforme, prêt à envoyer.
+      </p>
+      <div class="une__actions" data-charge style="--d:500ms">
+        <a class="bouton bouton--brique" href="/app">
+          Dicter un premier devis
+          <svg class="icone"><use href="#i-fleche"/></svg>
+        </a>
+        <a class="lien-fleche" href="#fonctionnement">Voir comment ça marche</a>
+      </div>
+      <p class="une__note" data-charge style="--d:580ms">
+        <svg class="icone"><use href="#i-coche"/></svg>
+        Sans compte, sans installation : ça marche dans le navigateur du téléphone.
+      </p>
+    </div>
+
+    <figure class="une__visuel">
+      <div class="cadre une__photo">
+        <img src="/static/site/img/chef-chantier-casque-rouge.jpg"
+             width="1100" height="1650" fetchpriority="high"
+             alt="Un chef de chantier en casque rouge sourit, sous la charpente métallique d'un bâtiment en travaux.">
+      </div>
+
+      <!-- Trois vocaux réels (tests/fixtures) et les devis que l'application en a
+           tirés. Montants calculés par to_devis(), recopiés tels quels. -->
+      <figcaption class="ticket" data-charge style="--d:650ms">
+        <div class="ticket__choix" role="group" aria-label="Choisir un exemple">
+          <button type="button" data-exemple-choix="elec" aria-pressed="true">Électricité</button>
+          <button type="button" data-exemple-choix="plomberie" aria-pressed="false">Plomberie</button>
+          <button type="button" data-exemple-choix="peinture" aria-pressed="false">Peinture</button>
+        </div>
+        <div class="ticket__corps" aria-live="polite">
+
+          <div class="ticket__exemple" data-exemple="elec">
+            <div class="ticket__tete">
+              <span class="ticket__micro"><svg class="icone"><use href="#i-micro"/></svg></span>
+              Vocal d'un électricien
+            </div>
+            <p class="ticket__dit">« Bon, mise aux normes chez monsieur Bertrand, c'est un F3 dans le 92. Alors le tableau est à refaire complètement… »</p>
+            <p class="ticket__client">Client : <strong>M. Bertrand</strong></p>
+            <ul class="ticket__lignes">
+              <li><span class="des">Tableau électrique neuf avec différentiels</span><span class="montant">890,00</span></li>
+              <li><span class="des">Création de points lumineux, 4 u</span><span class="montant">480,00</span></li>
+              <li><span class="des">Création de prises de courant, 6 u</span><span class="montant">510,00</span></li>
+              <li><span class="des">Saignées et passage des gaines, 25 ml</span><span class="montant estime">estimé 800,00</span></li>
+            </ul>
+            <div class="ticket__total">
+              <span>Total TTC <small>TVA 10 %</small></span>
+              <span class="montant" data-roule>2&#8239;948,00 €</span>
+            </div>
+          </div>
+
+          <div class="ticket__exemple" data-exemple="plomberie" hidden>
+            <div class="ticket__tete">
+              <span class="ticket__micro"><svg class="icone"><use href="#i-micro"/></svg></span>
+              Vocal d'un plombier
+            </div>
+            <p class="ticket__dit">« Remplacement du ballon d'eau chaude, 200 litres, chez… j'ai pas le nom là, c'est la dame du deuxième au 8 avenue Gambetta. »</p>
+            <p class="ticket__client">Client : <strong>non dicté, laissé à compléter</strong></p>
+            <ul class="ticket__lignes">
+              <li><span class="des">Dépose de l'ancien ballon et évacuation</span><span class="montant estime">estimé 180,00</span></li>
+              <li><span class="des">Ballon 200 litres fourni posé, mise en service</span><span class="montant estime">estimé 1&#8239;150,00</span></li>
+              <li><span class="des">Remplacement du groupe de sécurité</span><span class="montant estime">estimé 95,00</span></li>
+              <li><span class="des">Mitigeur thermostatique fourni posé</span><span class="montant estime">estimé 260,00</span></li>
+            </ul>
+            <div class="ticket__total">
+              <span>Total TTC <small>TVA 10 %</small></span>
+              <span class="montant" data-roule>1&#8239;853,50 €</span>
+            </div>
+          </div>
+
+          <div class="ticket__exemple" data-exemple="peinture" hidden>
+            <div class="ticket__tete">
+              <span class="ticket__micro"><svg class="icone"><use href="#i-micro"/></svg></span>
+              Vocal d'un peintre
+            </div>
+            <p class="ticket__dit">« Appartement rue de Charonne, deux pièces plus le couloir. Les murs et plafonds, ça fait environ 85 mètres carrés… »</p>
+            <p class="ticket__client">Client : <strong>non dicté, laissé à compléter</strong></p>
+            <ul class="ticket__lignes">
+              <li><span class="des">Préparation, sous-couche et finition, 85 m²</span><span class="montant">2&#8239;380,00</span></li>
+              <li><span class="des">Portes en laque satinée, 6 u</span><span class="montant">570,00</span></li>
+              <li><span class="des">Mise en peinture des plinthes, 40 ml</span><span class="montant">480,00</span></li>
+              <li><span class="des">Protection et nettoyage du chantier</span><span class="montant">150,00</span></li>
+            </ul>
+            <div class="ticket__total">
+              <span>Total TTC <small>TVA 10 %</small></span>
+              <span class="montant" data-roule>3&#8239;938,00 €</span>
+            </div>
+          </div>
+
+        </div>
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- Le soir ............................................................ -->
+<section class="soir section" aria-labelledby="titre-soir">
+  <div class="enveloppe soir__grille">
+    <div data-suite>
+      <p class="soir__heure" aria-hidden="true">22 h 40</p>
+      <h2 class="annonce" id="titre-soir">Le camion est rangé. Il reste trois devis à taper.</h2>
+      <div class="soir__texte">
+        <p>Un devis, c'est vingt à quarante-cinq minutes derrière un écran, souvent le soir. On le repousse, on l'envoie avec deux jours de retard, et pendant ce temps le client a signé ailleurs.</p>
+        <p><strong>Devis Vocal déplace ce travail au seul moment où tout est encore en tête :</strong> en sortant de chez le client, les métrés dans la poche.</p>
+      </div>
+    </div>
+    <figure class="soir__film">
+      <div class="cadre" data-volet>
+        <video autoplay muted loop playsinline preload="metadata" width="854" height="480"
+               poster="/static/site/media/atelier-menuiserie-poster.jpg" aria-hidden="true" data-film>
+          <source src="/static/site/media/atelier-menuiserie.webm" type="video/webm">
+        </video>
+      </div>
+      <figcaption>Dans la journée, les mains sont prises.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- Fonctionnement ...................................................... -->
+<section class="section" id="fonctionnement" aria-labelledby="titre-fonctionnement">
+  <div class="enveloppe">
+    <div class="fonctionnement__tete" data-suite>
+      <h2 class="annonce" id="titre-fonctionnement">Deux minutes de vocal, un devis à envoyer.</h2>
+      <p class="chapeau">Pas de catalogue à remplir avant de commencer, pas de logiciel à apprendre. Vous parlez comme vous parleriez à un collègue.</p>
+    </div>
+
+    <ol class="etapes">
+      <li class="etape" data-suite>
+        <div class="etape__texte">
+          <h3>Dictez le chantier</h3>
+          <p>Appuyez sur le micro et décrivez ce que vous avez vu : le client, l'adresse, les travaux, les quantités, vos prix si vous les avez en tête. Dans le désordre, avec vos mots. Un vocal déjà enregistré marche aussi.</p>
+          <span class="etape__duree">Une à deux minutes</span>
+        </div>
+        <div class="artefact art-vocal" aria-hidden="true" data-ecoute>
+          <div class="art-vocal__ligne">
+            <span class="art-vocal__micro"><svg class="icone"><use href="#i-micro"/></svg></span>
+            <span class="onde">
+              <span style="--h:30%"></span><span style="--h:55%"></span><span style="--h:80%"></span><span style="--h:45%"></span><span style="--h:95%"></span><span style="--h:60%"></span><span style="--h:35%"></span><span style="--h:70%"></span>
+              <span style="--h:100%"></span><span style="--h:50%"></span><span style="--h:25%"></span><span style="--h:65%"></span><span style="--h:85%"></span><span style="--h:40%"></span><span style="--h:75%"></span><span style="--h:55%"></span>
+              <span style="--h:30%"></span><span style="--h:45%"></span><span style="--h:20%"></span><span style="--h:35%"></span><span style="--h:25%"></span><span style="--h:40%"></span><span style="--h:20%"></span><span style="--h:30%"></span>
+            </span>
+          </div>
+          <p class="art-vocal__dit">« Les prises, il en veut six de plus, quatre dans le séjour, deux dans la chambre, 85 la prise. Y'a des saignées à faire pour tout ça… »</p>
+        </div>
+      </li>
+
+      <li class="etape" data-suite>
+        <div class="etape__texte">
+          <h3>Relisez, corrigez d'un doigt</h3>
+          <p>Chaque prestation arrive en ligne, chiffrée. Un prix que vous n'avez pas donné est estimé et marqué <em>à valider</em> : rien ne part sans que vous l'ayez vu. Une quantité fausse, une désignation à reprendre, une ligne en trop : ça se corrige à l'écran, les totaux suivent.</p>
+          <span class="etape__duree">Le temps d'un café</span>
+        </div>
+        <div class="artefact art-lignes" aria-hidden="true" data-rangs>
+          <div class="art-ligne">
+            <span class="art-ligne__des">Tableau électrique neuf équipé de dispositifs différentiels</span>
+            <span class="art-ligne__qte">1 u</span>
+            <span class="art-ligne__prix">890,00 €</span>
+          </div>
+          <div class="art-ligne">
+            <span class="art-ligne__des">Création de points lumineux</span>
+            <span class="art-ligne__qte">4 u</span>
+            <span class="art-ligne__prix">480,00 €</span>
+          </div>
+          <div class="art-ligne">
+            <span class="art-ligne__des">Création de prises de courant</span>
+            <span class="art-ligne__qte">6 u</span>
+            <span class="art-ligne__prix">510,00 €</span>
+          </div>
+          <div class="art-ligne art-ligne--estime">
+            <span class="art-ligne__des">Réalisation des saignées et passage des gaines</span>
+            <span class="art-ligne__qte">25 ml</span>
+            <span class="art-ligne__prix">800,00 €</span>
+            <span class="estime-note">Prix estimé, à valider</span>
+          </div>
+        </div>
+      </li>
+
+      <li class="etape" data-suite>
+        <div class="etape__texte">
+          <h3>Envoyez le PDF</h3>
+          <p>Le devis sort en PDF, avec vos coordonnées et toutes les mentions obligatoires. Téléchargez-le ou partagez-le depuis le téléphone, par mail ou par message, pendant que le client se souvient encore de vous.</p>
+          <span class="etape__duree">Avant de quitter le trottoir</span>
+        </div>
+        <div class="artefact art-pdf" aria-hidden="true">
+          <div class="cadre art-pdf__vignette">
+            <img src="/static/site/img/devis-elec-haut.jpg" width="900" height="763" loading="lazy" alt="">
+          </div>
+          <div class="art-pdf__actions">
+            <span class="art-pdf__nom">Devis Atelier Exemple – Mise aux normes électriques d'un appartement M. Bertrand.pdf</span>
+            <span class="puce-action puce-action--pleine"><svg class="icone"><use href="#i-partage"/></svg>Partager</span>
+            <span class="puce-action"><svg class="icone"><use href="#i-telecharger"/></svg>Télécharger</span>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- Métiers ............................................................ -->
+<section class="section metiers" aria-labelledby="titre-metiers">
+  <div class="enveloppe">
+    <div class="metiers__tete" data-suite>
+      <h2 class="annonce" id="titre-metiers">Pour ceux qui devisent entre deux chantiers.</h2>
+      <p class="metiers__liste">Plomberie, électricité, menuiserie, peinture, carrelage, rénovation : le vocabulaire du métier est compris tel que vous le dites, unités comprises.</p>
+    </div>
+    <div class="mosaique">
+      <figure class="cadre m1" data-volet style="--i:0">
+        <img src="/static/site/img/menuisier-atelier.jpg" width="1400" height="934" loading="lazy"
+             alt="Un menuisier sourit en rabotant une planche dans son atelier encombré de bois.">
+        <figcaption>
+          <span class="metier">Menuiserie</span>
+          <span class="dit">« Douze mètres de plinthes en chêne, fourni posé. »<small>Plinthes chêne, fourni posé · 12 ml</small></span>
+        </figcaption>
+      </figure>
+      <figure class="cadre m2" data-volet style="--i:1">
+        <img src="/static/site/img/electricien-tableau.jpg" width="1200" height="801" loading="lazy"
+             alt="Un électricien en casque jaune, lunettes et gants, intervient sur un boîtier électrique.">
+        <figcaption>
+          <span class="metier">Électricité</span>
+          <span class="dit">« Les prises, il en veut six de plus, 85 la prise. »<small>Création de prises de courant · 6 u · 510,00 €</small></span>
+        </figcaption>
+      </figure>
+      <figure class="cadre m3" data-volet style="--i:2">
+        <img src="/static/site/img/plombier-salle-de-bain.jpg" width="1000" height="667" loading="lazy"
+             alt="Un plombier en salopette travaille dans une salle de bain en rénovation, sa caisse à outils posée à côté.">
+        <figcaption>
+          <span class="metier">Plomberie</span>
+          <span class="dit">« Faut aussi que je change le groupe de sécurité. »<small>Remplacement du groupe de sécurité · 1 u</small></span>
+        </figcaption>
+      </figure>
+      <figure class="cadre m4" data-volet style="--i:3">
+        <img src="/static/site/img/deux-ouvrieres-casques.jpg" width="1200" height="800" loading="lazy"
+             alt="Deux ouvrières en casque jaune et tenue de travail, souriantes, dans un bâtiment en chantier.">
+        <figcaption>
+          <span class="metier">Second œuvre</span>
+          <span class="dit">« Le placo du couloir, à peu près quatorze mètres carrés. »<small>Cloison en plaque de plâtre · 14 m²</small></span>
+        </figcaption>
+      </figure>
+      <figure class="cadre m5" data-volet style="--i:4">
+        <img src="/static/site/img/plans-chantier.jpg" width="1000" height="1333" loading="lazy"
+             alt="Dans une pièce en rénovation, un homme déplie un plan devant la fenêtre pour le relire.">
+        <figcaption>
+          <span class="metier">Rénovation</span>
+          <span class="dit">« Reprise des enduits dans le séjour, trente-deux mètres carrés. »<small>Reprise d'enduit · 32 m²</small></span>
+        </figcaption>
+      </figure>
+    </div>
+    <ul class="metiers__dits" data-rangs>
+      <li><strong>Menuiserie</strong>« Douze mètres de plinthes en chêne, fourni posé. »</li>
+      <li><strong>Électricité</strong>« Les prises, il en veut six de plus, 85 la prise. »</li>
+      <li><strong>Plomberie</strong>« Faut aussi que je change le groupe de sécurité. »</li>
+    </ul>
+  </div>
+</section>
+
+<!-- Le devis ............................................................ -->
+<section class="section devis" id="devis" aria-labelledby="titre-devis">
+  <div class="enveloppe devis__grille">
+    <div class="devis__texte" data-suite>
+      <h2 class="annonce" id="titre-devis">Un devis qu'on envoie sans y retoucher.</h2>
+      <p class="chapeau">Ce qui fait un devis sérieux tient en quelques mentions qu'on oublie toujours à 22 heures. Elles sont toutes là, au bon endroit.</p>
+      <ul class="mentions" data-rangs>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Numéro, date d'émission et durée de validité</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Raison sociale, forme juridique, SIRET et immatriculation</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Numéro de TVA intracommunautaire, ou mention de franchise</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Assurance décennale, assureur et zone couverte</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Détail des prestations : quantité, unité, prix unitaire</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>TVA à 5,5 %, 10 % ou 20 %, avec l'attestation du taux réduit</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Acompte, conditions de règlement et pénalités de retard</li>
+        <li><svg class="icone"><use href="#i-coche"/></svg>Médiateur de la consommation, adresse du chantier, « bon pour accord »</li>
+      </ul>
+      <p class="devis__note">Le nom du client n'est pas dans le vocal ? La case reste vide, à compléter. Un prix manque ? Il est estimé et signalé. Rien n'est inventé en silence.</p>
+    </div>
+
+    <figure class="feuille">
+      <a class="loupe" href="/static/site/img/devis-elec.jpg" data-loupe target="_blank" rel="noopener"
+         aria-label="Ouvrir le devis d'exemple en grand">
+        <img src="/static/site/img/devis-elec.jpg" width="1588" height="2246" loading="lazy" data-feuille
+             alt="Première page du devis généré pour la mise aux normes électriques chez M. Bertrand : quatre lignes, dont les saignées marquées estimées, total TTC 2 948,00 €.">
+      </a>
+      <figcaption data-feuille-legende>Le devis réellement produit par Devis Vocal depuis le vocal de l'électricien, ci-dessus. Entreprise fictive.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- Garanties ............................................................ -->
+<section class="section" aria-labelledby="titre-garanties">
+  <div class="enveloppe garanties__grille">
+    <div class="garanties__tete" data-suite>
+      <h2 class="annonce" id="titre-garanties">Ce qui ne bouge pas.</h2>
+      <p>Quatre règles tenues par le logiciel lui-même, pas par une promesse.</p>
+      <figure class="garanties__ecran">
+        <div class="cadre cadre--net"><img src="/static/site/img/app-relecture.jpg" width="780" height="1430" loading="lazy"
+             alt="L'écran de relecture sur téléphone : 2 948,00 € TTC, et l'encadré « À vérifier avant l'envoi » qui signale la ligne estimée."></div>
+        <figcaption>L'écran de relecture, avant l'envoi : la ligne estimée est signalée.</figcaption>
+      </figure>
+    </div>
+    <ul class="garanties__liste" data-rangs>
+      <li>
+        <h3>Les totaux sont calculés, jamais devinés.</h3>
+        <p>L'intelligence artificielle comprend votre vocal et propose les lignes. Les montants, la TVA, l'acompte et les arrondis sont ensuite calculés par un programme classique, au centime près, à chaque correction.</p>
+      </li>
+      <li>
+        <h3>Un prix que vous n'avez pas dit est signalé.</h3>
+        <p>Quand un prix manque dans le vocal, il est estimé d'après des fourchettes de référence du métier et marqué « à valider » jusqu'à ce que vous le confirmiez.</p>
+      </li>
+      <li>
+        <h3>Le compte est facultatif.</h3>
+        <p>Vous pouvez dicter et télécharger un devis sans vous inscrire. Le compte sert à retrouver vos informations d'entreprise et votre propre mise en page.</p>
+      </li>
+      <li>
+        <h3>Vos devis ne restent pas chez nous.</h3>
+        <p>Ni le vocal, ni la transcription, ni le devis ne sont conservés sur nos serveurs. Vous repartez avec votre PDF, c'est tout.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- Appel ............................................................... -->
+<section class="appel" aria-labelledby="titre-appel">
+  <div class="appel__grille">
+    <div class="appel__texte" data-suite>
+      <h2 id="titre-appel">Dictez votre prochain devis.</h2>
+      <p>En sortant du chantier, sur votre téléphone : appuyez sur le micro, parlez. Rien à installer.</p>
+      <div class="appel__actions">
+        <a class="bouton bouton--papier" href="/app?connexion" data-compte>Créer mon compte</a>
+        <a class="bouton bouton--trait-clair" href="/app">Essayer sans compte</a>
+      </div>
+    </div>
+    <div class="cadre appel__photo">
+      <img src="/static/site/img/ouvrier-gilet-souriant.jpg" width="1200" height="900" loading="lazy"
+           alt="Un ouvrier en casque blanc, lunettes de soleil et gilet haute visibilité sourit devant un camion de chantier.">
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="pied">
+  <div class="enveloppe">
+    <div class="pied__grille">
+      <p class="pied__phrase">Le devis dicté en sortant du chantier, pour les artisans du bâtiment.</p>
+      <nav aria-label="Le site">
+        <h2>Le site</h2>
+        <ul>
+          <li><a href="/#fonctionnement">Fonctionnement</a></li>
+          <li><a href="/qui-sommes-nous">Qui sommes-nous</a></li>
+          <li><a href="/questions">Questions fréquentes</a></li>
+          <li><a href="/contact">Contact</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="L'application">
+        <h2>L'application</h2>
+        <ul>
+          <li><a href="/app">Dicter un devis</a></li>
+          <li data-compte><a href="/app?connexion">Se connecter</a></li>
+          <li data-compte><a href="/app?connexion">Créer un compte</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="pied__nom" aria-hidden="true">Devis Vocal</p>
+    <div class="pied__bas">
+      <span>© 2026 Devis Vocal · Démonstrateur</span>
+      <span class="pied__credits">Photos Unsplash : Mina Rad, Ali Mkumbwa, Emmanuel Ikwuegbu, bhagya laxmi, Sikwe Scarter, GN Group, Troy Bridges. Vidéo : « <a href="https://commons.wikimedia.org/wiki/File:Carpentry_04.ogv">Carpentry 04</a> », Mostafameraji, CC BY-SA 4.0, via Wikimedia Commons.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

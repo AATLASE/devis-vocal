@@ -1,0 +1,28 @@
+[
+ {
+  "file": "app/static/site/media/atelier-menuiserie.webm",
+  "media": "video",
+  "poster": "app/static/site/media/atelier-menuiserie-poster.jpg",
+  "ref": "commons:83498412",
+  "title": "Carpentry 04",
+  "creator": "Mostafameraji",
+  "creatorUrl": null,
+  "date": "2018-10-09",
+  "license": "CC BY-SA 4.0",
+  "licenseCode": "by-sa",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "creditRequired": true,
+  "page": "https://commons.wikimedia.org/wiki/File:Carpentry_04.ogv",
+  "via": "Wikimedia Commons",
+  "video": "https://upload.wikimedia.org/wikipedia/commons/transcoded/5/55/Carpentry_04.ogv/Carpentry_04.ogv.480p.vp9.webm",
+  "width": 854,
+  "height": 480,
+  "duration": 29.1,
+  "bytes": 3523398,
+  "credit": "\"Carpentry 04\" by Mostafameraji, CC BY-SA 4.0, via Wikimedia Commons",
+  "notes": [
+   "Share-alike: an altered version (recoloured, combined with other pictures) must be shared under the same licence."
+  ],
+  "saved": "2026-11-17T12:44:30.225Z"
+ }
+]

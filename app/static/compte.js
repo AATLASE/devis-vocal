@@ -50,8 +50,15 @@ let utilisateur = null;
    l'app s'ouvre sur le micro. La connexion ne s'affiche que demandée — par
    « Se connecter », dans le menu — et « Continuer sans compte » la referme. La
    demande ne vaut que pour la page en cours : au prochain chargement, l'artisan
-   retrouve le micro. */
-let connexionDemandee = false;
+   retrouve le micro.
+
+   La vitrine en fait la demande par l'adresse : « Se connecter » et « S'inscrire »
+   mènent à `/app?connexion`. Le paramètre est retiré aussitôt lu, pour qu'un
+   rechargement rende le micro comme n'importe quel autre chargement. */
+let connexionDemandee = new URLSearchParams(window.location.search).has('connexion');
+if (connexionDemandee) {
+  window.history.replaceState(null, '', window.location.pathname + window.location.hash);
+}
 
 function demanderConnexion(valeur) {
   connexionDemandee = valeur;
@@ -576,7 +583,7 @@ async function envoyerLeLien(email) {
   try {
     // L'adresse de retour ajoute, sur la page de Firebase, un bouton qui ramène ici
     // une fois le mot de passe changé.
-    await sendPasswordResetEmail(auth, email, { url: window.location.origin + '/' });
+    await sendPasswordResetEmail(auth, email, { url: window.location.origin + '/app' });
   } catch (err) {
     // Firebase n'accepte une adresse de retour que sur un domaine autorisé du projet,
     // et `127.0.0.1` n'en fait pas partie d'origine. On envoie alors le lien sans

@@ -17,7 +17,7 @@ cp .env.example .env                     # ne rien modifier pour l'instant
 uv run python -m uvicorn app.main:app
 ```
 
-<http://localhost:8000> — déplie « Coller une transcription », colle le contenu de
+<http://localhost:8000/app> — déplie « Coller une transcription », colle le contenu de
 n'importe quel `tests/fixtures/*.txt`, et tu as le parcours complet jusqu'au PDF.
 
 Aucune dépendance système à installer, pas de Docker, pas de WSL, pas de droits admin.

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#efece5">
+<title>Contact · Devis Vocal</title>
+<meta name="description" content="Une question, un métier, l'envie de tester Devis Vocal sur vos chantiers : écrivez-nous.">
+<link rel="stylesheet" href="/static/fonts.css">
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/site/site.css">
+<script src="/static/site/site.js" defer></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="9" y="2" width="6" height="11" rx="3"></rect>
+    <path d="M5 10.5a7 7 0 0 0 14 0M12 17.5V21M9 21h6"></path>
+  </symbol>
+  <symbol id="i-coche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m4.5 12.5 5 5 10-11"></path>
+  </symbol>
+  <symbol id="i-fleche" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 5.5 20.5 12 14 18.5M20.5 12H4"></path>
+  </symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+    <path d="M4 7h16M4 12h16M4 17h16"></path>
+  </symbol>
+  <symbol id="i-croix" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round">
+    <path d="m6.5 6.5 11 11M17.5 6.5l-11 11"></path>
+  </symbol>
+  <symbol id="i-telecharger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 2.5V15M8 11l4 4 4-4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+  <symbol id="i-partage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15.5V3M8 6.5 12 2.5l4 4"></path>
+    <path d="M4.5 13.5v6a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6"></path>
+  </symbol>
+</svg>
+
+<a class="evitement" href="#contenu">Aller au contenu</a>
+
+<header class="entete">
+  <div class="enveloppe entete__ligne">
+    <a class="marque" href="/" aria-label="Devis Vocal, accueil">
+      <span class="marque__disque"><svg class="icone"><use href="#i-micro"/></svg></span>
+      Devis Vocal
+    </a>
+    <button class="menu-bouton" type="button" aria-expanded="false" aria-controls="nav-principale" aria-label="Ouvrir le menu">
+      <svg class="icone icone--ouvrir"><use href="#i-menu"/></svg>
+      <svg class="icone icone--fermer"><use href="#i-croix"/></svg>
+    </button>
+    <nav class="nav" id="nav-principale" aria-label="Navigation principale">
+      <a href="/#fonctionnement">Fonctionnement</a>
+      <a href="/#devis">Le devis</a>
+      <a href="/qui-sommes-nous">Qui sommes-nous</a>
+      <a href="/questions">Questions</a>
+      <a href="/contact" aria-current="page">Contact</a>
+    </nav>
+    <div class="compte-liens">
+      <a class="lien-connexion" href="/app?connexion" data-compte>Se connecter</a>
+      <a class="bouton bouton--brique" href="/app?connexion" data-compte>S'inscrire</a>
+      <a class="bouton bouton--brique" href="/app" data-sans-compte>Ouvrir l'application</a>
+    </div>
+  </div>
+</header>
+
+<main id="contenu">
+
+<section class="page-une page-une--courte">
+  <div class="enveloppe page-une__grille page-une__grille--contact">
+    <div data-suite>
+      <h1>Parlons de vos devis.</h1>
+      <p class="chapeau">Une question, un métier qu'on n'a pas prévu, l'envie de tester sur vos chantiers : dites-nous, on vous répond nous-mêmes.</p>
+    </div>
+    <div class="duo">
+      <div class="cadre" data-volet style="--i:0"><img src="/static/site/img/deux-ouvrieres-casques.jpg" width="1200" height="800"
+           alt="Deux ouvrières en casque jaune, souriantes, sur un chantier."></div>
+      <div class="cadre" data-volet style="--i:1"><img src="/static/site/img/ouvrier-gilet-souriant.jpg" width="1200" height="900"
+           alt="Un ouvrier en casque et gilet haute visibilité sourit devant un camion de chantier."></div>
+    </div>
+  </div>
+</section>
+
+<section class="section section--suite">
+  <div class="enveloppe contact__grille">
+
+    <form class="formulaire" id="formulaire-contact" data-destinataire="contact@devis-vocal.fr" novalidate>
+      <div class="champ">
+        <label for="c-nom">Nom et prénom</label>
+        <input id="c-nom" name="nom" type="text" autocomplete="name" required>
+      </div>
+      <div class="champ">
+        <label for="c-entreprise">Entreprise <small>(facultatif)</small></label>
+        <input id="c-entreprise" name="entreprise" type="text" autocomplete="organization">
+      </div>
+      <div class="champ">
+        <label for="c-metier">Votre métier</label>
+        <select id="c-metier" name="metier">
+          <option value="">Choisir…</option>
+          <option>Plomberie, chauffage</option>
+          <option>Électricité</option>
+          <option>Menuiserie</option>
+          <option>Peinture, décoration</option>
+          <option>Carrelage, revêtements</option>
+          <option>Maçonnerie</option>
+          <option>Rénovation générale</option>
+          <option>Autre métier</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label for="c-joindre">E-mail ou téléphone</label>
+        <input id="c-joindre" name="joindre" type="text" autocomplete="email" required>
+      </div>
+      <div class="champ champ--large">
+        <label for="c-message">Votre message</label>
+        <textarea id="c-message" name="message" required></textarea>
+        <span class="champ__aide">Combien de devis faites-vous par mois, avec quoi aujourd'hui : tout nous aide.</span>
+      </div>
+      <p class="formulaire__erreur" id="formulaire-erreur" role="alert" hidden></p>
+      <div class="formulaire__pied">
+        <button class="bouton bouton--brique" type="submit">Préparer le message</button>
+        <span class="champ__aide">Votre messagerie s'ouvre avec le message prêt à partir.</span>
+      </div>
+    </form>
+
+    <aside class="contact__cote">
+      <div class="cadre" data-volet><img src="/static/site/img/electricien-tableau.jpg" width="1200" height="801" loading="lazy"
+           alt="Un électricien en casque jaune et gants de protection intervient sur un boîtier électrique."></div>
+      <div>
+        <div class="coordonnee">
+          <h2>Par e-mail</h2>
+          <a href="mailto:contact@devis-vocal.fr">contact@devis-vocal.fr</a>
+        </div>
+        <div class="coordonnee coordonnee--essai">
+          <div>
+            <h2>Pour tester sur vos chantiers</h2>
+            <p class="fort">Dites-nous votre métier.</p>
+            <p>On vous montre l'outil en vrai, sur un de vos devis récents.</p>
+          </div>
+          <div class="cadre cadre--net"><img src="/static/site/img/app-micro.jpg" width="780" height="1430" loading="lazy"
+               alt="L'écran d'accueil de Devis Vocal sur téléphone, avec son bouton micro."></div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</section>
+
+</main>
+
+<footer class="pied">
+  <div class="enveloppe">
+    <div class="pied__grille">
+      <p class="pied__phrase">Le devis dicté en sortant du chantier, pour les artisans du bâtiment.</p>
+      <nav aria-label="Le site">
+        <h2>Le site</h2>
+        <ul>
+          <li><a href="/#fonctionnement">Fonctionnement</a></li>
+          <li><a href="/qui-sommes-nous">Qui sommes-nous</a></li>
+          <li><a href="/questions">Questions fréquentes</a></li>
+          <li><a href="/contact">Contact</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="L'application">
+        <h2>L'application</h2>
+        <ul>
+          <li><a href="/app">Dicter un devis</a></li>
+          <li data-compte><a href="/app?connexion">Se connecter</a></li>
+          <li data-compte><a href="/app?connexion">Créer un compte</a></li>
+        </ul>
+      </nav>
+    </div>
+    <p class="pied__nom" aria-hidden="true">Devis Vocal</p>
+    <div class="pied__bas">
+      <span>© 2026 Devis Vocal · Démonstrateur</span>
+      <span class="pied__credits">Photos Unsplash : Mina Rad, Ali Mkumbwa, Emmanuel Ikwuegbu, bhagya laxmi, Sikwe Scarter, GN Group, Troy Bridges. Vidéo : « <a href="https://commons.wikimedia.org/wiki/File:Carpentry_04.ogv">Carpentry 04</a> », Mostafameraji, CC BY-SA 4.0, via Wikimedia Commons.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

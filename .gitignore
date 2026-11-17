@@ -39,3 +39,4 @@ var/
 # complète du projet — comptes et base — à qui lit le dépôt.
 firebase-service-account.json
 *-firebase-adminsdk-*.json
+.taste-skill/
