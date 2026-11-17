@@ -157,7 +157,7 @@ Le découpage du code suit ce pipeline :
 |---|---|
 | `app/models.py` | **Le contrat.** `DevisExtraction`, `Devis`, et `to_devis()` entre les deux |
 | `app/transcription.py` | `transcribe(audio, filename) -> str` — OpenAI derrière l'interface |
-| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — OpenAI en sortie JSON contrainte |
+| `app/structuration.py` | `structure(transcript, grille=None) -> DevisExtraction` — sortie JSON contrainte, tarif de l'artisan vérifié |
 | `app/prompts/structuration.md` | Le prompt de chiffrage, hors du code. C'est le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` — Chromium headless via Playwright, et la pagination du document |
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |
@@ -375,7 +375,7 @@ navigateur. Le détail des écrans de la console Firebase y est.
 Deux règles tiennent la fonctionnalité, et elles sont plus importantes qu'elle :
 
 - **Le compte ne conditionne jamais la dictée.** Un artisan non connecté dicte et sort
-  son devis comme avant. Le compte ne sert qu'à retrouver son template — un jeton qui
+  son devis comme avant. Le compte ne sert qu'à retrouver son template et son tarif — un jeton qui
   expire pendant les quarante secondes de structuration ne fait donc rien perdre.
 - **Un template téléversé ne garantit plus les mentions obligatoires.** C'est le coût
   réel de la fonctionnalité. Il n'est pas tu : à l'enregistrement, le template est rendu
