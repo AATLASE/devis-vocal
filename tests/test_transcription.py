@@ -81,15 +81,38 @@ def test_sans_fournisseur_nomme_une_cle_groq_seule_transcrit_chez_groq(monkeypat
     assert config.transcription_url == config.groq_base_url
 
 
-def test_sans_fournisseur_nomme_la_cle_openai_l_emporte_partout(monkeypatch):
-    """OpenAI est le défaut : quand plusieurs clés cohabitent, c'est lui qui sert."""
+def test_sans_fournisseur_nomme_une_cle_anthropic_choisit_claude_pour_chiffrer(monkeypatch):
+    """La clé Anthropic ne sert qu'au chiffrage : la poser, c'est choisir Claude.
+
+    OpenAI garde la transcription, qu'Anthropic ne fait pas.
+    """
     monkeypatch.delenv("TRANSCRIPTION_PROVIDER")
     for variable in ("OPENAI_API_KEY", "GROQ_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.setenv(variable, "cle")
     get_config.cache_clear()
     config = get_config()
     assert config.transcription_provider == "openai"
+    assert config.structuration_provider == "anthropic"
+
+
+def test_sans_cle_anthropic_la_cle_openai_l_emporte_partout(monkeypatch):
+    """OpenAI reste le défaut quand Claude n'est pas choisi, même avec Groq présent."""
+    monkeypatch.delenv("TRANSCRIPTION_PROVIDER")
+    for variable in ("OPENAI_API_KEY", "GROQ_API_KEY"):
+        monkeypatch.setenv(variable, "cle")
+    get_config.cache_clear()
+    config = get_config()
+    assert config.transcription_provider == "openai"
     assert config.structuration_provider == "openai"
+
+
+def test_un_fournisseur_nomme_l_emporte_sur_la_cle_anthropic(monkeypatch):
+    """STRUCTURATION_PROVIDER écrit gagne toujours : c'est le moyen de revenir à OpenAI."""
+    for variable in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+        monkeypatch.setenv(variable, "cle")
+    monkeypatch.setenv("STRUCTURATION_PROVIDER", "openai")
+    get_config.cache_clear()
+    assert get_config().structuration_provider == "openai"
 
 
 @pytest.mark.skipif(not (SAMPLES / "vocal_synthese.wav").exists(), reason="échantillon absent")

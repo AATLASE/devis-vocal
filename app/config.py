@@ -301,19 +301,21 @@ class Config(BaseSettings):
         pour forcer un fournisseur dont la clé est absente et obtenir le message
         d'erreur qui va avec.
 
-        OpenAI passe en premier : c'est le fournisseur par défaut, et sa seule clé fait
-        tourner tout le pipeline. Groq passe en dernier pour le chiffrage bien qu'il
-        soit souvent présent, parce qu'une GROQ_API_KEY est d'abord là pour la
-        transcription — la trouver ne veut pas dire qu'on a choisi Groq pour chiffrer.
+        Pour le chiffrage, Anthropic passe en premier. Sa clé ne sert qu'à ça —
+        Anthropic ne transcrit pas —, donc la trouver veut dire qu'on a choisi Claude
+        pour chiffrer. Une clé OpenAI, elle, est presque toujours là pour la
+        transcription : sa présence ne dit rien du chiffrage. Groq passe en dernier
+        pour la même raison. Sans clé Anthropic, OpenAI reste le défaut, et sa seule
+        clé fait tourner tout le pipeline.
 
         Le moteur retenu reste annoncé par `/health` et affiché à l'écran : déduit ne
         veut pas dire invisible.
         """
         if self.structuration_provider is None:
-            if self.openai_api_key:
-                deduit = "openai"
-            elif self.anthropic_api_key:
+            if self.anthropic_api_key:
                 deduit = "anthropic"
+            elif self.openai_api_key:
+                deduit = "openai"
             elif self.structuration_base_url:
                 deduit = "autre"
             elif self.groq_api_key:

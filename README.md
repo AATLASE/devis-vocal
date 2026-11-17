@@ -71,10 +71,12 @@ MODEL_STRUCTURATION_AUTRE=mistral-large-latest
 ```
 
 Pour les fournisseurs que le projet connaît déjà, **la clé suffit** : `STRUCTURATION_PROVIDER`
-se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` et rien d'autre chiffre chez
-Anthropic. On ne le précise que pour trancher quand plusieurs clés cohabitent — une clé
-OpenAI présente gagne toujours, puisque c'est le défaut. Le moteur retenu est annoncé sur
-`/health` et affiché dans le bandeau : déduit ne veut pas dire invisible.
+se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` chiffre chez Anthropic, même
+à côté d'une clé OpenAI : celle-ci garde la transcription, qu'Anthropic ne fait pas. Sans
+clé Anthropic, OpenAI chiffre, puisque c'est le défaut. On ne précise
+`STRUCTURATION_PROVIDER` que pour forcer un autre choix, par exemple `openai` alors
+qu'une clé Anthropic est posée. Le moteur retenu est annoncé sur `/health` et affiché
+dans le bandeau : déduit ne veut pas dire invisible.
 
 Même chose pour l'audio avec `TRANSCRIPTION_PROVIDER` : OpenAI si sa clé est là, sinon
 Groq, dont le Whisper est gratuit. `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY`
