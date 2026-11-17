@@ -496,6 +496,9 @@ def _grille_json(grille) -> dict:
         "modifie_le": grille.modifie_le.isoformat() if grille else None,
         "max_lignes": grilles_module.MAX_LIGNES,
         "unites": [u.value for u in Unite],
+        # PDF et photos : seulement si le moteur de lecture sait les lire. L'écran
+        # masque sinon « Photographier un devis » et n'accepte que l'Excel et le CSV.
+        "documents_acceptes": lecture_grille.documents_acceptes(),
     }
 
 
@@ -552,6 +555,10 @@ async def api_grille_lire(
     if fichier is None and not (texte or "").strip():
         raise HTTPException(status_code=400, detail="Dictez vos prix ou choisissez un fichier.")
 
+    # Tout ce qui peut être refusé l'est ici, avant l'appel au modèle : un fichier
+    # illisible, un PDF de cinquante pages ou un moteur qui ne lit pas les images ne
+    # coûtent rien et ne consomment pas le plafond du jour.
+    piece = None
     try:
         if fichier is not None:
             # Relu ici et pas seulement au middleware : un envoi sans Content-Length
@@ -561,9 +568,17 @@ async def api_grille_lire(
                 raise lecture_grille.LectureRefusee(
                     f"Fichier trop lourd : {config.max_import_mo} Mo au plus."
                 )
-            source = await run_in_threadpool(
-                lecture_grille.texte_du_fichier, fichier.filename or "", contenu
-            )
+            media_type = lecture_grille.type_document(contenu)
+            if media_type:
+                # Un PDF ou une photo : lu par le modèle lui-même. `source` est le texte
+                # du PDF, contre lequel chaque prix lu sera vérifié — None pour une image.
+                piece, source = await run_in_threadpool(
+                    lecture_grille.preparer_document, contenu, media_type
+                )
+            else:
+                source = await run_in_threadpool(
+                    lecture_grille.texte_du_fichier, fichier.filename or "", contenu
+                )
         else:
             source = lecture_grille.texte_dicte(texte)
     except lecture_grille.LectureRefusee as err:
@@ -574,10 +589,13 @@ async def api_grille_lire(
     securite.consommer_devis()
     tarif = await run_in_threadpool(grilles_module.lire, utilisateur.uid)
     try:
+        origine = ("document" if piece else "fichier") if fichier is not None else "dictee"
         with suivi.etape("lecture-tarif", attendu=lecture_grille.LectureRefusee,
-                         caracteres=len(source),
-                         origine="fichier" if fichier is not None else "dictee") as detail:
-            lecture = await run_in_threadpool(lecture_grille.lire_texte, source, tarif)
+                         caracteres=len(source or ""), origine=origine) as detail:
+            if piece:
+                lecture = await run_in_threadpool(lecture_grille.lire_document, piece, source, tarif)
+            else:
+                lecture = await run_in_threadpool(lecture_grille.lire_texte, source, tarif)
             detail["lignes"] = len(lecture.lignes)
     except lecture_grille.LectureRefusee as err:
         raise HTTPException(status_code=502, detail=str(err)) from err

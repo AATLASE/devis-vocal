@@ -12,9 +12,12 @@ pas de « et si le modèle rajoutait du texte autour ».
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -33,6 +36,44 @@ FIXTURES = RACINE / "tests" / "fixtures"
 
 class StructurationError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class Piece:
+    """Un document joint à la demande : le PDF d'un ancien devis, la photo d'un devis.
+
+    Seuls Claude et OpenAI lisent un document ; l'appelant le vérifie avant d'envoyer
+    (`lecture_grille.documents_acceptes`), et `generer` le refuse aux autres.
+    """
+
+    media_type: str  # application/pdf, image/jpeg, image/png
+    donnees: bytes
+    nom: str = "document"
+
+
+def _base64(piece: Piece) -> str:
+    return base64.b64encode(piece.donnees).decode("ascii")
+
+
+def _blocs_anthropic(pieces: Sequence[Piece]) -> list[dict]:
+    """Les documents au format de l'API Claude : un bloc `document` ou `image` chacun."""
+    return [
+        {"type": "document" if piece.media_type == "application/pdf" else "image",
+         "source": {"type": "base64", "media_type": piece.media_type, "data": _base64(piece)}}
+        for piece in pieces
+    ]
+
+
+def _blocs_openai(pieces: Sequence[Piece]) -> list[dict]:
+    """Les mêmes au format OpenAI : une partie `file` pour un PDF, `image_url` sinon."""
+    blocs = []
+    for piece in pieces:
+        url = f"data:{piece.media_type};base64,{_base64(piece)}"
+        if piece.media_type == "application/pdf":
+            blocs.append({"type": "file", "file": {"filename": piece.nom, "file_data": url}})
+        else:
+            blocs.append({"type": "image_url", "image_url": {"url": url}})
+    return blocs
 
 
 @lru_cache
@@ -111,6 +152,7 @@ def _bloc_grille(grille: GrillePrix) -> str:
 def _generer_compatible_openai(
     modele: type[BaseModel], systeme: list[str], contenu: str, *, api_key: str,
     base_url: str | None, model: str, fournisseur: str, delai: float, nom_schema: str,
+    pieces: Sequence[Piece] = (),
 ):
     """Appel via une API au format OpenAI — sert à la fois pour Groq et pour OpenAI.
 
@@ -160,7 +202,9 @@ def _generer_compatible_openai(
         # Ce qui accompagne le prompt (le tarif de l'artisan), même principe : un
         # message à lui, après le prompt.
         messages.extend({"role": "system", "content": texte} for texte in systeme[1:])
-        messages.append({"role": "user", "content": contenu})
+        messages.append({"role": "user", "content": contenu if not pieces else [
+            *_blocs_openai(pieces), {"type": "text", "text": contenu},
+        ]})
 
         try:
             reponse = client.chat.completions.create(
@@ -299,15 +343,21 @@ def _extraire(transcript: str, bloc: str | None = None) -> DevisExtraction:
 
 
 def generer(modele: type[BaseModel], *, systeme: list[str], contenu: str, delai: float,
-            max_tokens: int = 16000, nom_schema: str = "reponse"):
+            max_tokens: int = 16000, nom_schema: str = "reponse",
+            pieces: Sequence[Piece] = ()):
     """Le seul point d'appel au modèle de langage, quel que soit le fournisseur.
 
     `systeme` : le prompt d'abord, puis ce qui l'accompagne (le tarif de l'artisan).
     `modele` : la sortie attendue, imposée par l'API — le devis pour le chiffrage, les
     prix lus pour l'import d'un tarif. Avec un seul texte système, l'appel est
     exactement celui d'avant : une chaîne chez Anthropic, un message chez OpenAI.
+    `pieces` : des documents à lire avec le texte — Claude et OpenAI seulement.
     """
     config = get_config()
+    if pieces and config.structuration_provider not in ("anthropic", "openai"):
+        raise StructurationError(
+            "La lecture d'un PDF ou d'une photo demande le moteur Claude ou OpenAI."
+        )
 
     if config.structuration_provider == "groq":
         return _generer_compatible_openai(
@@ -326,7 +376,7 @@ def generer(modele: type[BaseModel], *, systeme: list[str], contenu: str, delai:
             base_url=None,  # api.openai.com
             model=config.model_structuration_openai,
             fournisseur="OpenAI",
-            delai=delai, nom_schema=nom_schema,
+            delai=delai, nom_schema=nom_schema, pieces=pieces,
         )
 
     if config.structuration_provider == "autre":
@@ -362,7 +412,9 @@ def generer(modele: type[BaseModel], *, systeme: list[str], contenu: str, delai:
             system=(systeme[0] if len(systeme) == 1 else [
                 {"type": "text", "text": texte} for texte in systeme
             ]),
-            messages=[{"role": "user", "content": contenu}],
+            messages=[{"role": "user", "content": contenu if not pieces else [
+                *_blocs_anthropic(pieces), {"type": "text", "text": contenu},
+            ]}],
             output_format=modele,
         )
     except anthropic.APIError as err:  # clé invalide, crédit épuisé, surcharge...

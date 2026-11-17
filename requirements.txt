@@ -24,7 +24,9 @@ jinja2>=3.1
 # démonstrateur, ajouté sur décision explicite. Voir CLAUDE.md § Périmètre.
 firebase-admin>=6.5
 
-# Lecture d'un tarif importé depuis Excel (.xlsx). Voir app/lecture_grille.py.
+# Lecture d'un tarif importé : Excel (.xlsx), et le texte des PDF pour vérifier les
+# prix lus. Voir app/lecture_grille.py.
+pypdf>=5
 openpyxl>=3.1
 
 # Tests

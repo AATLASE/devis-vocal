@@ -91,8 +91,9 @@ def test_un_xlsx_est_converti_en_tableau_texte_sans_45_point_0():
     (b"", "vide"),
     (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 100, ".xls"),
     (b"PK\x03\x04" + b"\x00" * 100 + b"mimetypeapplication/epub", "pas un tableau Excel"),
-    (b"%PDF-1.7\n", "PDF"),
-    (b"\x89PNG\r\n\x1a\n", "photos"),
+    # Un document n'a pas de texte à lui : la route le fait lire autrement.
+    (b"%PDF-1.7\n", "document"),
+    (b"\x89PNG\r\n\x1a\n", "document"),
     (b"abc\x00def", "pas un tableau lisible"),
     (b"a" * 100_001, "trop long"),
 ], ids=["vide", "xls", "zip", "pdf", "png", "binaire", "trop-long"])

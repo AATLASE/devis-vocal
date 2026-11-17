@@ -1,4 +1,5 @@
-"""Lire les prix de l'artisan dans une matière brute : une dictée, un tableau Excel ou CSV.
+"""Lire les prix de l'artisan dans une matière brute : une dictée, un tableau Excel ou CSV,
+le PDF d'un ancien devis, la photo d'un devis papier.
 
 Hors du périmètre d'origine, comme le tarif lui-même (CLAUDE.md, « Exception assumée :
 tarif de l'artisan »). Ce module **propose** des lignes ; il n'enregistre rien. L'artisan
@@ -12,7 +13,9 @@ Ce que la lecture garantit, en plus de ce que le modèle promet :
 - **Chaque prix lu est confronté à la source.** S'il n'apparaît pas parmi les nombres du
   texte d'origine, la ligne porte « prix non retrouvé » : le modèle a pu mal lire, ou
   calculer malgré la consigne. On lit large (`structuration.nombres_dits`) : un nombre
-  en trop fait rater un signalement, jamais n'en invente un.
+  en trop fait rater un signalement, jamais n'en invente un. Un PDF numérique a un
+  texte, extrait par pypdf ; une photo ou un scan n'en a pas, et chaque ligne le dit :
+  « lu sur une image, relisez ce prix sur le document ».
 - **Rien du client ne sort d'ici** : ni journal, ni log du contenu. Un ancien devis porte
   un nom et une adresse ; ils partent chez le fournisseur du modèle, le temps de la
   lecture, et nulle part ailleurs.
@@ -32,7 +35,7 @@ from pydantic import BaseModel
 from app.config import get_config
 from app.grilles import cle
 from app.models import GrillePrix, Unite, arrondi
-from app.structuration import StructurationError, generer, nombres_dits
+from app.structuration import Piece, StructurationError, generer, nombres_dits
 
 logger = logging.getLogger("devis-vocal")
 
@@ -43,6 +46,18 @@ MAX_LIGNES_TABLEAU = 2000
 # Ce qu'on envoie au modèle, au plus : environ 25 000 tokens. Au-delà, ce n'est plus un
 # tarif, c'est un export complet de logiciel — il vaut mieux le dire que le payer.
 MAX_CARACTERES = 100_000
+# Un ancien devis fait deux ou trois pages ; vingt suffisent à un catalogue de prix. Le
+# fournisseur facture à la page, et chaque page allonge la lecture.
+MAX_PAGES = 20
+# Les photos sont réduites par le navigateur (2 000 px, JPEG) avant l'envoi ; celles
+# qui arrivent plus lourdes viennent d'ailleurs. Claude refuse une image de plus de
+# 5 Mo une fois encodée en base64 : 3,5 Mo bruts laissent la marge.
+MAX_IMAGE_OCTETS = 3_500_000
+
+CONSIGNE_DOCUMENT = (
+    "Voici un document de l'artisan — un ancien devis, une liste de prix ou une photo. "
+    "Relève ses prix unitaires, en suivant tes consignes."
+)
 
 
 class LectureRefusee(Exception):
@@ -180,12 +195,9 @@ def texte_du_fichier(nom: str, contenu: bytes) -> str:
         if b"xl/" not in contenu[:4096] and b"[Content_Types].xml" not in contenu[:4096]:
             raise LectureRefusee("Ce fichier n'est pas un tableau Excel (.xlsx).")
         texte = _texte_xlsx(contenu)
-    elif contenu.startswith(b"%PDF") or contenu[:3] == b"\xff\xd8\xff" \
-            or contenu.startswith(b"\x89PNG"):
-        raise LectureRefusee(
-            "Les PDF et les photos ne sont pas encore lus. Utilisez un fichier Excel "
-            "(.xlsx) ou CSV, ou dictez vos prix."
-        )
+    elif type_document(contenu):
+        # Un document n'a pas de texte à lui : il passe par `preparer_document`.
+        raise LectureRefusee("Ce fichier est un document : il se lit autrement.")
     else:
         texte = _texte_csv(contenu)
 
@@ -198,6 +210,70 @@ def texte_du_fichier(nom: str, contenu: bytes) -> str:
             "leurs prix, puis réessayez."
         )
     return texte
+
+
+def type_document(contenu: bytes) -> str | None:
+    """« application/pdf », « image/jpeg », « image/png », ou None pour un tableau."""
+    if contenu.startswith(b"%PDF"):
+        return "application/pdf"
+    if contenu[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if contenu.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if contenu[4:12] in (b"ftypheic", b"ftypheix", b"ftyphevc", b"ftypmif1", b"ftypheim"):
+        raise LectureRefusee(
+            "Les photos HEIC de l'iPhone ne sont pas lues telles quelles. Prenez la photo "
+            "depuis cet écran (« Photographier un devis »), ou enregistrez-la en JPEG."
+        )
+    return None
+
+
+def documents_acceptes() -> bool:
+    """Seuls Claude et OpenAI lisent un PDF ou une image ; Groq et les autres, non."""
+    config = get_config()
+    return not config.use_fixtures and config.structuration_provider in ("anthropic", "openai")
+
+
+def preparer_document(contenu: bytes, media_type: str) -> tuple[Piece, str | None]:
+    """Contrôle un document avant de payer sa lecture, et en tire le texte de contrôle.
+
+    Rend la pièce à envoyer au modèle, et le texte du PDF quand il en a un — c'est contre
+    lui que chaque prix lu sera vérifié. Une photo, ou un PDF scanné, n'en a pas : None.
+    """
+    if not documents_acceptes():
+        raise LectureRefusee(
+            "La lecture des PDF et des photos demande le moteur Claude ou OpenAI. "
+            "Importez plutôt un fichier Excel ou CSV, ou dictez vos prix."
+        )
+
+    if media_type != "application/pdf":
+        if len(contenu) > MAX_IMAGE_OCTETS:
+            raise LectureRefusee(
+                "Cette photo est trop lourde. Prenez-la depuis cet écran, ou réduisez-la "
+                "sous 3,5 Mo."
+            )
+        return Piece(media_type, contenu, "photo"), None
+
+    from pypdf import PdfReader
+    from pypdf.errors import PdfReadError
+
+    try:
+        lecteur = PdfReader(io.BytesIO(contenu))
+        if lecteur.is_encrypted:
+            raise LectureRefusee("Ce PDF est protégé par un mot de passe : il ne peut pas être lu.")
+        pages = len(lecteur.pages)
+        if pages > MAX_PAGES:
+            raise LectureRefusee(
+                f"Ce PDF compte {pages} pages : {MAX_PAGES} au plus. Gardez les pages "
+                "où figurent vos prix."
+            )
+        texte = "\n".join((page.extract_text() or "") for page in lecteur.pages)
+    except LectureRefusee:
+        raise
+    except (PdfReadError, ValueError, KeyError, TypeError) as err:
+        raise LectureRefusee("Ce PDF n'a pas pu être ouvert. Enregistrez-le à nouveau.") from err
+
+    return Piece(media_type, contenu, "document.pdf"), (texte if texte.strip() else None)
 
 
 def texte_dicte(texte: str) -> str:
@@ -279,12 +355,12 @@ def _drapeaux(lus: list[PrixLu], source: str | None,
     return proposes
 
 
-def lire_texte(texte: str, tarif: GrillePrix | None = None) -> Lecture:
-    """Lit les prix d'un texte (dictée transcrite, tableau converti) et les propose."""
+def _lire(contenu: str, source: str | None, tarif: GrillePrix | None,
+          pieces: tuple[Piece, ...] = ()) -> Lecture:
     try:
         lue: GrilleLue = generer(
-            GrilleLue, systeme=[_prompt()], contenu=texte,
-            delai=get_config().delai_lecture_s, nom_schema="tarif",
+            GrilleLue, systeme=[_prompt()], contenu=contenu,
+            delai=get_config().delai_lecture_s, nom_schema="tarif", pieces=pieces,
         )
     except StructurationError as err:
         raise LectureRefusee(
@@ -295,4 +371,14 @@ def lire_texte(texte: str, tarif: GrillePrix | None = None) -> Lecture:
     # quantité. On l'écarte plutôt que de le proposer.
     lus = [l for l in lue.lignes if l.prix > 0 and l.prestation.strip()][:MAX_LIGNES_LUES]
     logger.info("  tarif lu : %d lignes proposées", len(lus))
-    return Lecture(lignes=_drapeaux(lus, texte, tarif), remarque=lue.remarque)
+    return Lecture(lignes=_drapeaux(lus, source, tarif), remarque=lue.remarque)
+
+
+def lire_texte(texte: str, tarif: GrillePrix | None = None) -> Lecture:
+    """Lit les prix d'un texte (dictée transcrite, tableau converti) et les propose."""
+    return _lire(texte, texte, tarif)
+
+
+def lire_document(piece: Piece, source: str | None, tarif: GrillePrix | None = None) -> Lecture:
+    """Lit les prix d'un PDF ou d'une photo, préparés par `preparer_document`."""
+    return _lire(CONSIGNE_DOCUMENT, source, tarif, (piece,))
