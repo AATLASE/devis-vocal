@@ -1,6 +1,9 @@
 """Transcription -> devis structuré, via un LLM en sortie JSON contrainte.
 
-Interface unique : `structure(transcript) -> DevisExtraction`.
+Interface unique : `structure(transcript, grille=None) -> DevisExtraction`.
+
+`grille` est le tarif de l'artisan connecté, quand il en a un. Sans tarif, l'appel au
+modèle est exactement celui d'avant : même prompt, même message.
 
 Le schéma est imposé par le SDK à partir du modèle Pydantic (`output_format`), donc la
 réponse est validée avant de nous parvenir : pas de parsing JSON à la main, pas de regex,
@@ -19,7 +22,7 @@ import anthropic
 
 from app import suivi
 from app.config import RACINE, get_config
-from app.models import DevisExtraction
+from app.models import DevisExtraction, GrillePrix, arrondi
 
 logger = logging.getLogger("devis-vocal")
 
@@ -82,8 +85,30 @@ def _schema_strict() -> dict:
     return durcir(DevisExtraction.model_json_schema())
 
 
+def _bloc_grille(grille: GrillePrix) -> str:
+    """Le tarif de l'artisan, tel qu'il part au modèle à côté du prompt.
+
+    Une ligne par prix, colonnes séparées par une barre verticale — `grilles.valider` la
+    retire des textes, donc les colonnes ne se décalent jamais. Le prix s'écrit avec un
+    point et deux décimales, comme le modèle doit le recopier dans `prix_unitaire_ht`.
+    Les règles d'usage, elles, vivent dans le prompt (« Le tarif de l'artisan »).
+    """
+    lignes = []
+    for p in grille.lignes:
+        colonnes = [p.id, p.prestation, p.unite.value, f"{p.prix_unitaire_ht:.2f}"]
+        if p.precision:
+            colonnes.append(p.precision)
+        lignes.append(" | ".join(colonnes))
+    return (
+        "Le tarif de l'artisan qui dicte ce vocal. Colonnes : identifiant | prestation | "
+        "unité | prix unitaire HT | précision éventuelle.\n"
+        "<tarif_artisan>\n" + "\n".join(lignes) + "\n</tarif_artisan>"
+    )
+
+
 def _structure_compatible_openai(
-    transcript: str, *, api_key: str, base_url: str | None, model: str, fournisseur: str
+    transcript: str, *, api_key: str, base_url: str | None, model: str, fournisseur: str,
+    bloc: str | None = None,
 ) -> DevisExtraction:
     """Chiffrage via une API au format OpenAI — sert à la fois pour Groq et pour OpenAI.
 
@@ -126,14 +151,15 @@ def _structure_compatible_openai(
 
     derniere: Exception | None = None
     for mode, format_sortie, consigne in tentatives:
-        messages = [
-            {"role": "system", "content": _prompt_systeme()},
-            {"role": "user", "content": transcript},
-        ]
+        messages = [{"role": "system", "content": _prompt_systeme()}]
         if consigne:
             # Le schéma part dans un message à lui : le prompt de référence ne bouge
             # pas, et la comparaison entre fournisseurs reste honnête.
-            messages.insert(1, {"role": "system", "content": consigne})
+            messages.append({"role": "system", "content": consigne})
+        if bloc:
+            # Le tarif de l'artisan, même principe : un message à lui, après le prompt.
+            messages.append({"role": "system", "content": bloc})
+        messages.append({"role": "user", "content": transcript})
 
         try:
             reponse = client.chat.completions.create(
@@ -195,15 +221,49 @@ def _nombres_dits(transcript: str) -> set[float]:
     return dits
 
 
+def _verifier_les_refs(extraction: DevisExtraction, grille: GrillePrix | None) -> DevisExtraction:
+    """Ne garde une référence au tarif que si elle est vérifiable de bout en bout.
+
+    Le modèle dit d'où vient un prix (`ref_grille`) ; on ne le croit pas sur parole. La
+    référence tient si l'identifiant existe, si l'unité est la même et si le prix recopié
+    est **exactement** celui du tarif. Sinon on la retire, et la ligne redevient ordinaire :
+    le garde-fou suivant tranche entre prix dicté et prix à valider.
+
+    On vérifie, on n'impose jamais. Imposer le prix du tarif sur une référence mal
+    recopiée — l'identifiant du parquet sur une ligne de faïence — afficherait un prix
+    faux comme confirmé, sans que rien ne le signale.
+    """
+    index = {p.id: p for p in grille.lignes} if grille else {}
+    for ligne in extraction.lignes:
+        if ligne.ref_grille is None:
+            continue
+        ref = index.get(ligne.ref_grille.strip())
+        if (ref is None or ref.unite != ligne.unite
+                or arrondi(ligne.prix_unitaire_ht) != ref.prix_unitaire_ht):
+            logger.warning(
+                "Référence au tarif %r non vérifiée pour « %s » (%s %s) : retirée.",
+                ligne.ref_grille, ligne.designation, ligne.prix_unitaire_ht, ligne.unite.value,
+            )
+            ligne.ref_grille = None
+        else:
+            ligne.ref_grille = ref.id
+    return extraction
+
+
 def _signaler_les_prix_non_dictes(extraction: DevisExtraction, transcript: str) -> DevisExtraction:
     """Marque `a_valider` toute ligne « dictée » dont le prix n'apparaît pas dans le vocal.
 
     Le prompt l'exige déjà ; ceci le garantit. Le garde-fou ajoute des signalements, il
     n'en retire jamais : au pire il fait relire un prix dicté en toutes lettres, jamais il
     ne fait passer une estimation pour un prix confirmé.
+
+    Les lignes au prix du tarif de l'artisan sont épargnées : leur prix n'a pas été
+    dicté, il a été vérifié contre le tarif par `_verifier_les_refs`, juste avant.
     """
     dits = _nombres_dits(transcript)
     for ligne in extraction.lignes:
+        if ligne.ref_grille is not None:
+            continue
         if not ligne.a_valider and round(ligne.prix_unitaire_ht, 2) not in dits:
             logger.warning(
                 "Prix %s absent de la transcription : « %s » passe à valider.",
@@ -213,15 +273,21 @@ def _signaler_les_prix_non_dictes(extraction: DevisExtraction, transcript: str) 
     return extraction
 
 
-def structure(transcript: str) -> DevisExtraction:
-    """Transforme une transcription en devis structuré, non chiffré."""
+def structure(transcript: str, grille: GrillePrix | None = None) -> DevisExtraction:
+    """Transforme une transcription en devis structuré, non chiffré.
+
+    `grille` : le tarif de l'artisan connecté. Ses prix passent avant les fourchettes de
+    référence, et chaque ligne qui s'en réclame est vérifiée ici avant de sortir.
+    """
     transcript = transcript.strip()
     if not transcript:
         raise StructurationError("Transcription vide.")
-    return _signaler_les_prix_non_dictes(_extraire(transcript), transcript)
+    bloc = _bloc_grille(grille) if grille and grille.lignes else None
+    extraction = _verifier_les_refs(_extraire(transcript, bloc), grille)
+    return _signaler_les_prix_non_dictes(extraction, transcript)
 
 
-def _extraire(transcript: str) -> DevisExtraction:
+def _extraire(transcript: str, bloc: str | None = None) -> DevisExtraction:
     """Confie la transcription au fournisseur configuré, ou la rejoue depuis les fixtures."""
     config = get_config()
     if config.use_fixtures:
@@ -234,6 +300,7 @@ def _extraire(transcript: str) -> DevisExtraction:
             base_url=config.groq_base_url,
             model=config.model_structuration_groq,
             fournisseur="Groq",
+            bloc=bloc,
         )
 
     if config.structuration_provider == "openai":
@@ -243,6 +310,7 @@ def _extraire(transcript: str) -> DevisExtraction:
             base_url=None,  # api.openai.com
             model=config.model_structuration_openai,
             fournisseur="OpenAI",
+            bloc=bloc,
         )
 
     if config.structuration_provider == "autre":
@@ -259,6 +327,7 @@ def _extraire(transcript: str) -> DevisExtraction:
             # Le nom du fournisseur est son URL : c'est ce qui identifie vraiment
             # qui a chiffré, et ça se retrouve tel quel dans les logs.
             fournisseur=config.structuration_base_url,
+            bloc=bloc,
         )
 
     if not config.anthropic_api_key:
@@ -273,7 +342,11 @@ def _extraire(transcript: str) -> DevisExtraction:
         reponse = client.messages.parse(
             model=config.model_structuration,
             max_tokens=16000,
-            system=_prompt_systeme(),
+            # Sans tarif, le système reste une simple chaîne : l'appel est celui d'avant.
+            system=(_prompt_systeme() if not bloc else [
+                {"type": "text", "text": _prompt_systeme()},
+                {"type": "text", "text": bloc},
+            ]),
             messages=[{"role": "user", "content": transcript}],
             output_format=DevisExtraction,
         )

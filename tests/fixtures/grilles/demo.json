@@ -1,0 +1,16 @@
+{
+  "proprietaire": "demo",
+  "modifie_le": "2026-11-17T00:00:00",
+  "lignes": [
+    {"id": "P1", "prestation": "Dépose de carrelage, sol ou mur", "unite": "m²", "prix_unitaire_ht": "22.00", "precision": null},
+    {"id": "P2", "prestation": "Dépose de doublage en plaques de plâtre", "unite": "m²", "prix_unitaire_ht": "16.00", "precision": null},
+    {"id": "P3", "prestation": "Fourniture et pose de plaques de plâtre hydrofuges BA13", "unite": "m²", "prix_unitaire_ht": "58.00", "precision": "sur ossature"},
+    {"id": "P4", "prestation": "Pose de carrelage de sol", "unite": "m²", "prix_unitaire_ht": "45.00", "precision": "pose seule, fourniture client"},
+    {"id": "P5", "prestation": "Fourniture et pose d'un receveur de douche extra-plat", "unite": "u", "prix_unitaire_ht": "640.00", "precision": null},
+    {"id": "P6", "prestation": "Fourniture et pose d'un mitigeur de douche", "unite": "u", "prix_unitaire_ht": "185.00", "precision": "mitigeur standard"},
+    {"id": "P7", "prestation": "Évacuation des gravats en déchetterie", "unite": "forfait", "prix_unitaire_ht": "240.00", "precision": null},
+    {"id": "P8", "prestation": "Fourniture et pose d'un chauffe-eau électrique 200 L", "unite": "u", "prix_unitaire_ht": "1050.00", "precision": "groupe de sécurité et mise en service compris"},
+    {"id": "P9", "prestation": "Dépose et évacuation d'un ancien chauffe-eau", "unite": "u", "prix_unitaire_ht": "110.00", "precision": null},
+    {"id": "P10", "prestation": "Fourniture et pose d'un mitigeur thermostatique de douche", "unite": "u", "prix_unitaire_ht": "280.00", "precision": null}
+  ]
+}

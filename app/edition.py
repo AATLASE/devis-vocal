@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models import (
     Client,
@@ -69,6 +69,10 @@ class LigneCorrigee(BaseModel):
     unite: Unite
     prix_unitaire_ht: Decimal
     a_valider: bool = False
+    # La ligne du tarif dont vient le prix, pour garder « votre prix » après correction.
+    # Le navigateur la retire dès que l'artisan retouche le prix ou l'unité ; elle ne sert
+    # qu'à l'écran et n'entre dans aucun calcul.
+    ref_grille: str | None = Field(default=None, max_length=16)
 
 
 class Corrections(BaseModel):
@@ -138,6 +142,7 @@ def recalculer(devis: Devis, corrections: Corrections, *, max_lignes: int) -> De
                 unite=ligne.unite,
                 prix_unitaire_ht=float(ligne.prix_unitaire_ht),
                 a_valider=ligne.a_valider,
+                ref_grille=ligne.ref_grille,
             )
             for ligne in corrections.lignes
         ],

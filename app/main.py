@@ -30,6 +30,16 @@ s'y ajoutent les routes de la fiche et du template personnels de l'artisan :
     POST   /api/template/apercu  -> le PDF d'un template, avant de l'enregistrer
     GET    /api/template/modele  -> le template livré, comme point de départ
 
+Puis celles du tarif de l'artisan — hors périmètre d'origine aussi, voir CLAUDE.md :
+
+    GET    /api/grille           -> le tarif de l'artisan connecté
+    PUT    /api/grille           -> l'enregistrer, une fois relu à l'écran
+    DELETE /api/grille           -> le retirer
+
+Quand l'artisan connecté a un tarif, `POST /api/devis` le passe au chiffrage : ses prix
+passent avant les fourchettes de référence, et chaque ligne qui s'en réclame est
+vérifiée (voir `structuration._verifier_les_refs`).
+
 La fiche ne descend jamais dans le devis : voir `Profil` dans `app/models.py`.
 
 Le pipeline du devis, lui, reste sans état : l'authentification n'y est qu'un en-tête
@@ -51,6 +61,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import adresse as adresse_module
+from app import grilles as grilles_module
 from app import journal
 from app import pdf as pdf_module
 from app import profils as profils_module
@@ -61,6 +72,7 @@ from app.adresse import AdresseTrouvee
 from app.config import annoncer, get_config
 from app.edition import Corrections, EditionRefusee, recalculer
 from app.entreprise import EntrepriseSaisie, EntrepriseTrouvee, rechercher
+from app.grilles import GrilleRefusee
 from app import securite
 from app.models import Devis, to_devis
 from app.profils import ProfilRefuse
@@ -188,8 +200,15 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
 
 
 @app.post("/api/devis")
-async def api_devis(demande: DemandeDevis) -> Devis:
+async def api_devis(
+    demande: DemandeDevis,
+    utilisateur: Utilisateur = Depends(utilisateur_optionnel),
+) -> Devis:
     config = get_config()
+    # Le tarif de l'artisan connecté, s'il en a un. Facultatif comme le template : un
+    # visiteur, ou un poste sans Firebase, chiffre exactement comme avant. Lu hors de la
+    # boucle : c'est un aller-retour réseau vers Firestore.
+    grille = await run_in_threadpool(grilles_module.pour, utilisateur.uid)
     # Compté avant l'appel, pas après : ce qu'on protège, c'est la dépense, et elle
     # est engagée dès que la requête part chez le fournisseur. Compté ici, dans la
     # boucle, et pas dans le fil d'exécution : deux devis simultanés ne doivent pas
@@ -197,12 +216,14 @@ async def api_devis(demande: DemandeDevis) -> Devis:
     securite.consommer_devis()
     try:
         with suivi.etape("structuration", attendu=StructurationError,
-                         caracteres=len(demande.transcription)) as detail:
+                         caracteres=len(demande.transcription),
+                         tarif=len(grille.lignes) if grille else 0) as detail:
             # Vingt à quarante secondes d'appel synchrone : hors de la boucle, sinon
             # plus personne n'est servi pendant ce temps. Voir api_transcribe.
-            extraction = await run_in_threadpool(structure, demande.transcription)
+            extraction = await run_in_threadpool(structure, demande.transcription, grille)
             detail["lignes"] = len(extraction.lignes)
             detail["estimees"] = sum(1 for ligne in extraction.lignes if ligne.a_valider)
+            detail["votre_prix"] = sum(1 for ligne in extraction.lignes if ligne.ref_grille)
     except StructurationError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
     except Exception:
@@ -450,6 +471,61 @@ async def api_profil_poser(
     logger.info("  profil enregistré par %s : %s · %s", utilisateur.uid,
                 profil.identite, profil.entreprise)
     return _profil_json(profil)
+
+
+# ---------------------------------------------------------------------------
+# Le tarif de l'artisan
+# ---------------------------------------------------------------------------
+
+
+class DemandeGrille(BaseModel):
+    """Le tableau tel que l'artisan l'a validé. Chaque ligne est un dict libre, validé
+    par `grilles.valider` : on veut « Ligne 12 : choisissez une unité », pas un 422."""
+
+    lignes: list[dict] = []
+
+
+def _grille_json(grille) -> dict:
+    from app.models import Unite
+
+    return {
+        "lignes": [p.model_dump(mode="json") for p in grille.lignes] if grille else [],
+        "modifie_le": grille.modifie_le.isoformat() if grille else None,
+        "max_lignes": grilles_module.MAX_LIGNES,
+        "unites": [u.value for u in Unite],
+    }
+
+
+@app.get("/api/grille")
+async def api_grille_lire(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
+    grille = await run_in_threadpool(grilles_module.lire, utilisateur.uid)
+    return _grille_json(grille)
+
+
+@app.put("/api/grille")
+async def api_grille_poser(
+    demande: DemandeGrille,
+    utilisateur: Utilisateur = Depends(utilisateur_requis),
+) -> dict:
+    try:
+        grille = await run_in_threadpool(
+            grilles_module.enregistrer, utilisateur.uid, demande.lignes
+        )
+    except GrilleRefusee as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+    logger.info("  tarif enregistré par %s : %d lignes", utilisateur.uid,
+                len(grille.lignes) if grille else 0)
+    return _grille_json(grille)
+
+
+@app.delete("/api/grille")
+async def api_grille_retirer(utilisateur: Utilisateur = Depends(utilisateur_requis)) -> dict:
+    try:
+        await run_in_threadpool(grilles_module.supprimer, utilisateur.uid)
+    except GrilleRefusee as err:
+        raise HTTPException(status_code=502, detail=str(err)) from err
+    logger.info("  tarif retiré par %s", utilisateur.uid)
+    return _grille_json(None)
 
 
 # ---------------------------------------------------------------------------
