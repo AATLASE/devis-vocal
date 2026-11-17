@@ -70,6 +70,7 @@ const FIL = {
   vide:       'Devis non établi',
   erreur:     'Interruption',
   template:    'Mon template',
+  prix:        'Mes prix',
 };
 
 function montrer(nom) {
@@ -1036,6 +1037,15 @@ function rangDeLigne(l) {
     marque.title = 'Quantité ou prix estimé : à vérifier';
     gauche.append(marque);
   }
+  // Le prix vient du tarif de l'artisan, vérifié par le serveur. La mention dit d'où
+  // il vient, pour qu'il voie d'un coup d'œil quelle ligne de son tarif a été prise.
+  // Elle peut côtoyer « estimé » : le prix est le sien, la quantité a été devinée.
+  if (l.ref_grille) {
+    const marque = noeud('div', 'tag-tarif', 'votre prix');
+    const prestation = window.Prix ? window.Prix.libelle(l.ref_grille) : '';
+    marque.title = prestation ? 'Prix de votre tarif : ' + prestation : 'Prix de votre tarif';
+    gauche.append(marque);
+  }
 
   // Les libellés voyagent avec les cellules plutôt que dans l'en-tête du tableau :
   // sous 640px celui-ci disparaît, les lignes s'empilent, et un chiffre nu ne dit
@@ -1182,6 +1192,15 @@ function editeurDeLigne(l) {
       document.createTextNode('Quantité ou prix estimé · cocher une fois les deux vérifiés'));
     rang.append(etiquette);
   }
+
+  // « Votre prix » ne survit qu'à une ligne dont l'artisan n'a touché ni le prix ni
+  // l'unité : retouché, le prix est le sien autrement — dicté à l'écran, pas tiré du tarif.
+  if (l.ref_grille) {
+    rang.dataset.refGrille = l.ref_grille;
+    const oublier = () => { delete rang.dataset.refGrille; };
+    prix.addEventListener('input', oublier, { once: true });
+    unite.addEventListener('change', oublier, { once: true });
+  }
   return rang;
 }
 
@@ -1216,6 +1235,7 @@ function lireLignes() {
       unite: champ('unite').value,
       prix_unitaire_ht: prix,
       a_valider: verifie ? !verifie.checked : false,
+      ref_grille: rang.dataset.refGrille || null,
     };
   });
   return { lignes, erreurs };

@@ -1552,6 +1552,26 @@ body.menu-anime.menu-ouvert .menu-voile {
 .template__alerte li { margin-bottom: var(--dv-s-1); }
 
 .template .dropzone { margin-top: var(--dv-s-5); }
+
+/* « votre prix » : le prix vient du tarif de l'artisan. Même forme que la marque
+   « estimé », à l'encre plutôt qu'à la brique — ce n'est pas un signal à vérifier. */
+.tag-tarif {
+  display: inline-flex; align-items: center;
+  margin-top: var(--dv-s-2); margin-right: var(--dv-s-2);
+  padding: 2px var(--dv-s-3);
+  border-radius: var(--dv-radius);
+  background: var(--dv-bg-alt);
+  border: 1px solid var(--dv-rule);
+  font-family: var(--dv-mono);
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: var(--dv-muted);
+}
+
+/* Mes prix : la ligne du tarif reprend la ligne d'édition du devis, sans quantité. */
+.ligne-ed.ligne-prix { grid-template-columns: minmax(0, 1fr) 104px 112px 40px; }
+.ligne-ed.ligne-prix .champ--detail { grid-column: 1 / 4; }
+.prix__aide { color: var(--dv-muted); max-width: 46ch; }
 .template__actions { display: flex; gap: var(--dv-s-4); margin-top: var(--dv-s-6); }
 
 .template__message {
@@ -1943,6 +1963,10 @@ body.menu-anime.menu-ouvert .menu-voile {
   .ligne-ed .champ--prix { grid-column: 3 / -1; }
   .ligne-ed .champ--detail { grid-column: 1 / -1; }
   .ligne-ed__retirer { grid-column: 4; grid-row: 1; justify-self: end; }
+  .ligne-ed.ligne-prix { grid-template-columns: 1fr 1fr 40px; }
+  .ligne-ed.ligne-prix .champ--designation { grid-column: 1 / 3; }
+  .ligne-ed.ligne-prix .champ--prix { grid-column: 2 / -1; }
+  .ligne-ed.ligne-prix .ligne-ed__retirer { grid-column: 3; }
 }
 
 
