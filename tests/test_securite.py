@@ -21,6 +21,9 @@ from tests.aide import requete
 
 CODE = "chantier-2026"
 
+# La personne à qui sont comptés les devis des tests qui ne parlent que du plafond global.
+MOI = securite.personne(requete(ip="203.0.113.7"))
+
 
 @pytest.fixture(autouse=True)
 def etat_neuf():
@@ -210,19 +213,20 @@ def test_le_plafond_quotidien_arrete_les_appels_payants(monkeypatch):
     monkeypatch.setenv("DEVIS_PAR_JOUR", "3")
 
     for _ in range(3):
-        securite.consommer_devis()
+        securite.consommer_devis(MOI)
 
     with pytest.raises(HTTPException) as echec:
-        securite.consommer_devis()
+        securite.consommer_devis(MOI)
     assert echec.value.status_code == 429
     assert securite.compteurs()["devis_du_jour"] == 3
 
 
 def test_le_plafond_se_desactive_a_zero(monkeypatch):
-    monkeypatch.setenv("DEVIS_PAR_JOUR", "0")
-    monkeypatch.setenv("DEVIS_PAR_MOIS", "0")
+    for nom in ("DEVIS_PAR_JOUR", "DEVIS_PAR_MOIS",
+                "DEVIS_PAR_PERSONNE_JOUR", "DEVIS_PAR_PERSONNE_MOIS"):
+        monkeypatch.setenv(nom, "0")
     for _ in range(50):
-        securite.consommer_devis()  # ne lève jamais
+        securite.consommer_devis(MOI)  # ne lève jamais
 
 
 def test_le_plafond_mensuel_attrape_ce_que_le_journalier_laisse_passer(monkeypatch):
@@ -232,10 +236,10 @@ def test_le_plafond_mensuel_attrape_ce_que_le_journalier_laisse_passer(monkeypat
     monkeypatch.setenv("DEVIS_PAR_MOIS", "4")
 
     for _ in range(4):
-        securite.consommer_devis()
+        securite.consommer_devis(MOI)
 
     with pytest.raises(HTTPException) as echec:
-        securite.consommer_devis()
+        securite.consommer_devis(MOI)
     assert "mois" in echec.value.detail
     assert securite.compteurs()["devis_du_jour"] == 4  # le journalier n'a pas bronché
 
@@ -249,16 +253,16 @@ def test_le_compteur_survit_a_un_redemarrage(monkeypatch):
     """
     monkeypatch.setenv("DEVIS_PAR_JOUR", "3")
 
-    securite.consommer_devis()
-    securite.consommer_devis()
+    securite.consommer_devis(MOI)
+    securite.consommer_devis(MOI)
     assert securite.compteurs()["devis_du_jour"] == 2
 
     securite.reinitialiser()  # le processus redémarre
 
     assert securite.compteurs()["devis_du_jour"] == 2, "le compteur est reparti de zéro"
-    securite.consommer_devis()
+    securite.consommer_devis(MOI)
     with pytest.raises(HTTPException):
-        securite.consommer_devis()
+        securite.consommer_devis(MOI)
 
 
 def test_un_fichier_abime_ne_fait_pas_tomber_le_service(monkeypatch):
@@ -270,7 +274,7 @@ def test_un_fichier_abime_ne_fait_pas_tomber_le_service(monkeypatch):
     chemin.write_text("{ceci n'est pas du JSON", encoding="utf-8")
     securite.reinitialiser()
 
-    securite.consommer_devis()  # ne lève pas
+    securite.consommer_devis(MOI)  # ne lève pas
     assert securite.compteurs()["devis_du_jour"] == 1
 
 
@@ -288,10 +292,149 @@ def test_le_changement_de_jour_ne_remet_pas_le_mois_a_zero(monkeypatch):
     }), encoding="utf-8")
     securite.reinitialiser()
 
-    securite.consommer_devis()
+    securite.consommer_devis(MOI)
     etat = securite.compteurs()
     assert etat["devis_du_jour"] == 1     # le jour a tourné
     assert etat["devis_du_mois"] == 201   # le mois a continué
+
+
+# ---------------------------------------------------------------------------
+# Le portefeuille, par personne
+# ---------------------------------------------------------------------------
+
+LUI = securite.personne(requete(ip="198.51.100.20"))
+
+
+def test_une_personne_qui_a_tout_consomme_ne_bloque_pas_les_autres(monkeypatch):
+    """La raison d'être du plafond par personne : un artisan qui dicte en boucle ne
+    doit pas épuiser la journée de tous les autres."""
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_JOUR", "3")
+    for _ in range(3):
+        securite.consommer_devis(MOI)
+
+    with pytest.raises(HTTPException) as echec:
+        securite.consommer_devis(MOI)
+    assert echec.value.status_code == 429
+    assert "par jour et par personne" in echec.value.detail
+    assert "demain" in echec.value.detail
+
+    securite.consommer_devis(LUI)  # l'autre passe
+    assert securite.compteurs()["devis_du_jour"] == 4
+    assert securite.compteurs()["personnes_du_jour"] == 2
+
+
+def test_le_plafond_mensuel_par_personne(monkeypatch):
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_MOIS", "2")
+    securite.consommer_devis(MOI)
+    securite.consommer_devis(MOI)
+    with pytest.raises(HTTPException) as echec:
+        securite.consommer_devis(MOI)
+    assert "par mois et par personne" in echec.value.detail
+    securite.consommer_devis(LUI)
+
+
+def test_le_plafond_global_reste_au_dessus_des_personnes(monkeypatch):
+    """Des comptes créés en série, des adresses qui changent : chacun reste sous sa
+    part, et c'est le global qui borne la facture."""
+    monkeypatch.setenv("DEVIS_PAR_JOUR", "3")
+    for n in range(3):
+        securite.consommer_devis(securite.personne(requete(ip=f"198.51.100.{n}")))
+    with pytest.raises(HTTPException) as echec:
+        securite.consommer_devis(securite.personne(requete(ip="198.51.100.99")))
+    assert "Le nombre de devis autorisés aujourd'hui est atteint" in echec.value.detail
+
+
+def test_un_refus_ne_compte_pas(monkeypatch):
+    """Refusé, rien n'est parti chez le fournisseur : rien à compter, et la personne
+    refusée n'entre pas dans le fichier."""
+    monkeypatch.setenv("DEVIS_PAR_JOUR", "1")
+    securite.consommer_devis(MOI)
+    with pytest.raises(HTTPException):
+        securite.consommer_devis(LUI)
+    assert securite.compteurs()["devis_du_jour"] == 1
+    assert securite.compteurs()["personnes_du_jour"] == 1
+
+
+def test_devis_et_dictees_ont_chacun_leur_part(monkeypatch):
+    """Comme pour le global : une dictée ne doit pas coûter un devis."""
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_JOUR", "1")
+    securite.consommer_devis(MOI)
+    securite.consommer_transcription(MOI)  # ne lève pas
+    with pytest.raises(HTTPException) as echec:
+        securite.consommer_transcription(MOI)
+    assert "1 dictées par jour" in echec.value.detail
+
+
+def test_la_part_de_chacun_survit_a_un_redemarrage(monkeypatch):
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_JOUR", "2")
+    securite.consommer_devis(MOI)
+    securite.consommer_devis(MOI)
+    securite.reinitialiser()  # le processus redémarre
+    with pytest.raises(HTTPException):
+        securite.consommer_devis(MOI)
+
+
+def test_la_part_de_chacun_repart_chaque_jour(monkeypatch):
+    import json
+    from datetime import date, timedelta
+
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_JOUR", "2")
+    hier = date.today() - timedelta(days=1)
+    chemin = get_config().compteurs_fichier
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    chemin.write_text(json.dumps({
+        "jour": hier.isoformat(), "devis_jour": 2,
+        "mois": date.today().strftime("%Y-%m"), "devis_mois": 2,
+        "personnes_jour": {MOI: {"devis": 2}}, "personnes_mois": {MOI: {"devis": 2}},
+    }), encoding="utf-8")
+    securite.reinitialiser()
+
+    securite.consommer_devis(MOI)  # ne lève pas : c'était hier
+    assert securite.compteurs()["personnes_du_mois"] == 1
+
+
+def test_une_part_abimee_repart_de_zero(monkeypatch):
+    import json
+    from datetime import date
+
+    chemin = get_config().compteurs_fichier
+    chemin.parent.mkdir(parents=True, exist_ok=True)
+    chemin.write_text(json.dumps({
+        "jour": date.today().isoformat(), "mois": date.today().strftime("%Y-%m"),
+        "personnes_jour": {MOI: "abîmé"}, "personnes_mois": [],
+    }), encoding="utf-8")
+    securite.reinitialiser()
+
+    securite.consommer_devis(MOI)  # ne lève pas
+    assert securite.compteurs()["personnes_du_jour"] == 1
+
+
+def test_le_compte_suit_l_artisan_d_un_reseau_a_l_autre():
+    """Connecté, c'est le compte qui compte : la 4G du chantier et le Wi-Fi du bureau
+    sont la même personne. Sans compte, deux adresses sont deux personnes."""
+    chantier, bureau = requete(ip="198.51.100.1"), requete(ip="203.0.113.50")
+    assert securite.personne(chantier, "uid-artisan") == securite.personne(bureau, "uid-artisan")
+    assert securite.personne(chantier) != securite.personne(bureau)
+    assert securite.personne(chantier, "uid-artisan") != securite.personne(chantier)
+
+
+def test_le_fichier_ne_garde_ni_adresse_ni_compte_en_clair(monkeypatch):
+    securite.consommer_devis(securite.personne(requete(ip="198.51.100.77")))
+    securite.consommer_devis(securite.personne(requete(), "uid-tres-reconnaissable"))
+    contenu = get_config().compteurs_fichier.read_text(encoding="utf-8")
+    assert "198.51.100.77" not in contenu
+    assert "uid-tres-reconnaissable" not in contenu
+
+
+def test_health_dit_si_le_proxy_est_cru():
+    """Le plafond d'un visiteur sans compte tient à son adresse : derrière un proxy
+    ignoré, tous les visiteurs en partagent une. Il faut pouvoir le voir sans accès au
+    serveur."""
+    assert securite.etat_du_proxy() == "inconnu"
+    securite.verifier_debit(requete({"X-Forwarded-For": "198.51.100.4"}, ip="198.51.100.4"))
+    assert securite.etat_du_proxy() == "ok"
+    securite.verifier_debit(requete({"X-Forwarded-For": "198.51.100.4"}, ip="10.0.1.7"))
+    assert securite.etat_du_proxy() == "à déclarer"
 
 
 # ---------------------------------------------------------------------------

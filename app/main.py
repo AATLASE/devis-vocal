@@ -173,16 +173,28 @@ async def health(request: Request) -> dict[str, str]:
         "mode": "fixtures" if config.use_fixtures else "reel",
         "provider": config.structuration_provider,
         **{cle: str(valeur) for cle, valeur in securite.compteurs().items()},
+        # « à déclarer » : uvicorn ne croit pas le proxy, tous les visiteurs sans compte
+        # partagent une adresse — donc un débit et un plafond par personne.
+        "proxy": securite.etat_du_proxy(),
     }
 
 
+def _qui(request: Request, utilisateur: Utilisateur) -> str:
+    """La personne à qui compter une opération payante : son compte, ou son adresse."""
+    return securite.personne(request, None if utilisateur.local else utilisateur.uid)
+
+
 @app.post("/api/transcribe")
-async def api_transcribe(audio: UploadFile) -> dict[str, str]:
+async def api_transcribe(
+    audio: UploadFile,
+    request: Request,
+    utilisateur: Utilisateur = Depends(utilisateur_optionnel),
+) -> dict[str, str]:
     contenu = await audio.read()
     nom = audio.filename or "audio.m4a"
     # Compté avant l'appel, comme le chiffrage : la transcription est facturée à la
     # minute d'audio dès que la requête part chez le fournisseur.
-    securite.consommer_transcription()
+    securite.consommer_transcription(_qui(request, utilisateur))
     try:
         with suivi.etape("transcription", attendu=TranscriptionError,
                          fichier=nom, ko=len(contenu) / 1024) as detail:
@@ -205,6 +217,7 @@ async def api_transcribe(audio: UploadFile) -> dict[str, str]:
 @app.post("/api/devis")
 async def api_devis(
     demande: DemandeDevis,
+    request: Request,
     utilisateur: Utilisateur = Depends(utilisateur_optionnel),
 ) -> Devis:
     config = get_config()
@@ -216,7 +229,7 @@ async def api_devis(
     # est engagée dès que la requête part chez le fournisseur. Compté ici, dans la
     # boucle, et pas dans le fil d'exécution : deux devis simultanés ne doivent pas
     # lire le même compteur avant que l'un l'ait incrémenté.
-    securite.consommer_devis()
+    securite.consommer_devis(_qui(request, utilisateur))
     try:
         with suivi.etape("structuration", attendu=StructurationError,
                          caracteres=len(demande.transcription),
@@ -536,6 +549,7 @@ async def api_grille_retirer(utilisateur: Utilisateur = Depends(utilisateur_requ
 
 @app.post("/api/grille/lire")
 async def api_grille_lire(
+    request: Request,
     fichier: UploadFile | None = File(None),
     texte: str | None = Form(None),
     utilisateur: Utilisateur = Depends(utilisateur_requis),
@@ -586,7 +600,7 @@ async def api_grille_lire(
 
     # Compté avant l'appel, comme un devis : la dépense est engagée dès que la requête
     # part chez le fournisseur. Et après les refus ci-dessus, qui ne coûtent rien.
-    securite.consommer_devis()
+    securite.consommer_devis(_qui(request, utilisateur))
     tarif = await run_in_threadpool(grilles_module.lire, utilisateur.uid)
     try:
         origine = ("document" if piece else "fichier") if fichier is not None else "dictee"

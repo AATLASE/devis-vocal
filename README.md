@@ -427,6 +427,12 @@ garde-fou du portefeuille : il couvre ce que le code d'accès ne couvre pas — 
 a circulé, un script laissé en boucle, une fausse manœuvre. Deux échelles parce qu'une
 seule ne suffit pas : 80 par jour laisse passer 2 400 devis dans le mois.
 
+En dessous, chaque personne a sa part : `DEVIS_PAR_PERSONNE_JOUR` (10) et
+`DEVIS_PAR_PERSONNE_MOIS` (60), comptés sur le compte de l'artisan s'il est connecté,
+sur son adresse sinon. Sans eux, un seul artisan épuise la journée de tous les autres.
+Pour un visiteur sans compte, ça suppose que l'adresse soit la vraie : `/health` dit
+`"proxy": "à déclarer"` tant que `FORWARDED_ALLOW_IPS` manque (voir « Sur Coolify »).
+
 Les compteurs sont écrits dans `var/compteurs.json` et survivent à un redémarrage — un
 plafond qu'on annule en relançant l'application ne protège de rien. **En conteneur, ce
 dossier doit être un volume**, sans quoi chaque déploiement les remet à zéro. Leur état
@@ -574,7 +580,9 @@ sur l'hôte** (« Ports Exposes » à 8000, « Ports Mappings » vide), et jamai
 
 Pour vérifier : tant que la valeur est fausse, le journal de l'application affiche une
 fois « Requête relayée par …, qui n'est pas dans FORWARDED_ALLOW_IPS », avec l'adresse
-du proxy. Plus de message après redéploiement : c'est réglé.
+du proxy. Plus de message après redéploiement : c'est réglé. Sans accès au journal,
+`/health` le dit aussi, après un premier appel à `/api/` : `"proxy": "à déclarer"`
+tant que c'est faux, `"ok"` une fois réglé.
 
 Deux autres variables à ne pas recopier telles quelles d'un `.env` de développement :
 `LOG_CONTENU` reste à `false` — sinon les noms, adresses et téléphones des clients

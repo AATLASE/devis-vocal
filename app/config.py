@@ -210,6 +210,14 @@ class Config(BaseSettings):
     devis_par_jour: int = 80
     devis_par_mois: int = 400
 
+    # Les mêmes, par personne — le compte s'il est connecté, l'adresse sinon. Sous les
+    # plafonds globaux, pas à leur place : sans eux, un seul artisan qui dicte en boucle
+    # épuise la journée de tous les autres ; sans les globaux, des comptes créés en série
+    # n'auraient plus de limite. Dix par jour laissent un rendez-vous chargé et quelques
+    # imports de tarif. Valent aussi pour les transcriptions. Zéro les désactive.
+    devis_par_personne_jour: int = 10
+    devis_par_personne_mois: int = 60
+
     # Délai maximal d'un appel au fournisseur, en secondes, avec une seule nouvelle
     # tentative. Sans eux, le SDK attend jusqu'à 600 s et réessaie deux fois : une
     # demi-heure devant une barre de progression. À relever pour un modèle local lent
