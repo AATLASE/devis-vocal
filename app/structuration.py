@@ -1,6 +1,9 @@
 """Transcription -> devis structuré, via un LLM en sortie JSON contrainte.
 
-Interface unique : `structure(transcript) -> DevisExtraction`.
+Interface unique : `structure(transcript, grille=None) -> DevisExtraction`.
+
+`grille` est le tarif de l'artisan connecté, quand il en a un. Sans tarif, l'appel au
+modèle est exactement celui d'avant : même prompt, même message.
 
 Le schéma est imposé par le SDK à partir du modèle Pydantic (`output_format`), donc la
 réponse est validée avant de nous parvenir : pas de parsing JSON à la main, pas de regex,
@@ -9,17 +12,21 @@ pas de « et si le modèle rajoutait du texte autour ».
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 import anthropic
+from pydantic import BaseModel
 
 from app import suivi
 from app.config import RACINE, get_config
-from app.models import DevisExtraction
+from app.models import DevisExtraction, GrillePrix, arrondi
 
 logger = logging.getLogger("devis-vocal")
 
@@ -29,6 +36,44 @@ FIXTURES = RACINE / "tests" / "fixtures"
 
 class StructurationError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class Piece:
+    """Un document joint à la demande : le PDF d'un ancien devis, la photo d'un devis.
+
+    Seuls Claude et OpenAI lisent un document ; l'appelant le vérifie avant d'envoyer
+    (`lecture_grille.documents_acceptes`), et `generer` le refuse aux autres.
+    """
+
+    media_type: str  # application/pdf, image/jpeg, image/png
+    donnees: bytes
+    nom: str = "document"
+
+
+def _base64(piece: Piece) -> str:
+    return base64.b64encode(piece.donnees).decode("ascii")
+
+
+def _blocs_anthropic(pieces: Sequence[Piece]) -> list[dict]:
+    """Les documents au format de l'API Claude : un bloc `document` ou `image` chacun."""
+    return [
+        {"type": "document" if piece.media_type == "application/pdf" else "image",
+         "source": {"type": "base64", "media_type": piece.media_type, "data": _base64(piece)}}
+        for piece in pieces
+    ]
+
+
+def _blocs_openai(pieces: Sequence[Piece]) -> list[dict]:
+    """Les mêmes au format OpenAI : une partie `file` pour un PDF, `image_url` sinon."""
+    blocs = []
+    for piece in pieces:
+        url = f"data:{piece.media_type};base64,{_base64(piece)}"
+        if piece.media_type == "application/pdf":
+            blocs.append({"type": "file", "file": {"filename": piece.nom, "file_data": url}})
+        else:
+            blocs.append({"type": "image_url", "image_url": {"url": url}})
+    return blocs
 
 
 @lru_cache
@@ -59,8 +104,9 @@ def _depuis_fixture(transcript: str) -> DevisExtraction:
     )
 
 
-def _schema_strict() -> dict:
-    """Le schéma JSON du devis, durci pour les sorties contraintes façon OpenAI.
+def _schema_strict(modele: type[BaseModel] = DevisExtraction) -> dict:
+    """Le schéma JSON d'une sortie (le devis par défaut), durci pour les sorties
+    contraintes façon OpenAI.
 
     Ces API exigent `additionalProperties: false` et un `required` exhaustif sur *chaque*
     objet, y compris les définitions imbriquées — ce que Pydantic ne génère pas seul.
@@ -79,13 +125,36 @@ def _schema_strict() -> dict:
                 durcir(valeur)
         return noeud
 
-    return durcir(DevisExtraction.model_json_schema())
+    return durcir(modele.model_json_schema())
 
 
-def _structure_compatible_openai(
-    transcript: str, *, api_key: str, base_url: str | None, model: str, fournisseur: str
-) -> DevisExtraction:
-    """Chiffrage via une API au format OpenAI — sert à la fois pour Groq et pour OpenAI.
+def _bloc_grille(grille: GrillePrix) -> str:
+    """Le tarif de l'artisan, tel qu'il part au modèle à côté du prompt.
+
+    Une ligne par prix, colonnes séparées par une barre verticale — `grilles.valider` la
+    retire des textes, donc les colonnes ne se décalent jamais. Le prix s'écrit avec un
+    point et deux décimales, comme le modèle doit le recopier dans `prix_unitaire_ht`.
+    Les règles d'usage, elles, vivent dans le prompt (« Le tarif de l'artisan »).
+    """
+    lignes = []
+    for p in grille.lignes:
+        colonnes = [p.id, p.prestation, p.unite.value, f"{p.prix_unitaire_ht:.2f}"]
+        if p.precision:
+            colonnes.append(p.precision)
+        lignes.append(" | ".join(colonnes))
+    return (
+        "Le tarif de l'artisan qui dicte ce vocal. Colonnes : identifiant | prestation | "
+        "unité | prix unitaire HT | précision éventuelle.\n"
+        "<tarif_artisan>\n" + "\n".join(lignes) + "\n</tarif_artisan>"
+    )
+
+
+def _generer_compatible_openai(
+    modele: type[BaseModel], systeme: list[str], contenu: str, *, api_key: str,
+    base_url: str | None, model: str, fournisseur: str, delai: float, nom_schema: str,
+    pieces: Sequence[Piece] = (),
+):
+    """Appel via une API au format OpenAI — sert à la fois pour Groq et pour OpenAI.
 
     Ces deux-là partagent le même SDK et la même forme de sortie contrainte ; seuls
     l'URL, la clé et le modèle changent. Un seul chemin de code, donc une comparaison
@@ -104,19 +173,18 @@ def _structure_compatible_openai(
 
     # Un délai et une seule nouvelle tentative : par défaut le SDK attend 600 s et
     # réessaie deux fois, soit une demi-heure pour un fournisseur qui traîne.
-    client = OpenAI(api_key=api_key, base_url=base_url,
-                    timeout=get_config().delai_chiffrage_s, max_retries=1)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=delai, max_retries=1)
 
     # Parler le format OpenAI ne veut pas dire accepter les mêmes sorties contraintes.
     # OpenAI et Groq gèrent `json_schema` strict ; DeepSeek ou un Ollama local n'ont
     # que `json_object`. On demande le plus contraint et on redescend d'un cran s'il
     # est refusé. Pydantic reste le filet : un modèle qui divague échoue franchement
     # au lieu de produire un devis à moitié faux.
-    schema = _schema_strict()
+    schema = _schema_strict(modele)
     tentatives = (
         ("json_schema",
          {"type": "json_schema",
-          "json_schema": {"name": "devis", "schema": schema, "strict": True}},
+          "json_schema": {"name": nom_schema, "schema": schema, "strict": True}},
          None),
         ("json_object",
          {"type": "json_object"},
@@ -126,14 +194,17 @@ def _structure_compatible_openai(
 
     derniere: Exception | None = None
     for mode, format_sortie, consigne in tentatives:
-        messages = [
-            {"role": "system", "content": _prompt_systeme()},
-            {"role": "user", "content": transcript},
-        ]
+        messages = [{"role": "system", "content": systeme[0]}]
         if consigne:
             # Le schéma part dans un message à lui : le prompt de référence ne bouge
             # pas, et la comparaison entre fournisseurs reste honnête.
-            messages.insert(1, {"role": "system", "content": consigne})
+            messages.append({"role": "system", "content": consigne})
+        # Ce qui accompagne le prompt (le tarif de l'artisan), même principe : un
+        # message à lui, après le prompt.
+        messages.extend({"role": "system", "content": texte} for texte in systeme[1:])
+        messages.append({"role": "user", "content": contenu if not pieces else [
+            *_blocs_openai(pieces), {"type": "text", "text": contenu},
+        ]})
 
         try:
             reponse = client.chat.completions.create(
@@ -157,8 +228,8 @@ def _structure_compatible_openai(
                     getattr(usage, "prompt_tokens", None),
                     getattr(usage, "completion_tokens", None))
 
-        contenu = reponse.choices[0].message.content
-        if not contenu:
+        sortie = reponse.choices[0].message.content
+        if not sortie:
             raise StructurationError(f"{fournisseur} n'a rien renvoyé.")
         if mode != "json_schema":
             # Ça doit se voir : le schéma n'est plus imposé par l'API, seulement
@@ -166,7 +237,7 @@ def _structure_compatible_openai(
             logger.warning(
                 "%s a chiffré en mode %s : schéma non imposé par l'API.", fournisseur, mode,
             )
-        return DevisExtraction.model_validate_json(contenu)
+        return modele.model_validate_json(sortie)
 
     # Le message du fournisseur porte son URL, ses noms de modèles et parfois des
     # détails de compte. Il a sa place dans le journal du serveur, pas dans une
@@ -183,7 +254,7 @@ _NOMBRE = re.compile(r"\d+(?:[.,]\d+)?")
 _MILLIERS = re.compile(r"\d{1,3}(?:[   .]\d{3})+(?:,\d+)?")
 
 
-def _nombres_dits(transcript: str) -> set[float]:
+def nombres_dits(transcript: str) -> set[float]:
     """Tous les nombres de la transcription, lus de toutes les façons plausibles.
 
     On lit large exprès : un nombre en trop ne fait que rater un signalement, alors qu'un
@@ -195,15 +266,49 @@ def _nombres_dits(transcript: str) -> set[float]:
     return dits
 
 
+def _verifier_les_refs(extraction: DevisExtraction, grille: GrillePrix | None) -> DevisExtraction:
+    """Ne garde une référence au tarif que si elle est vérifiable de bout en bout.
+
+    Le modèle dit d'où vient un prix (`ref_grille`) ; on ne le croit pas sur parole. La
+    référence tient si l'identifiant existe, si l'unité est la même et si le prix recopié
+    est **exactement** celui du tarif. Sinon on la retire, et la ligne redevient ordinaire :
+    le garde-fou suivant tranche entre prix dicté et prix à valider.
+
+    On vérifie, on n'impose jamais. Imposer le prix du tarif sur une référence mal
+    recopiée — l'identifiant du parquet sur une ligne de faïence — afficherait un prix
+    faux comme confirmé, sans que rien ne le signale.
+    """
+    index = {p.id: p for p in grille.lignes} if grille else {}
+    for ligne in extraction.lignes:
+        if ligne.ref_grille is None:
+            continue
+        ref = index.get(ligne.ref_grille.strip())
+        if (ref is None or ref.unite != ligne.unite
+                or arrondi(ligne.prix_unitaire_ht) != ref.prix_unitaire_ht):
+            logger.warning(
+                "Référence au tarif %r non vérifiée pour « %s » (%s %s) : retirée.",
+                ligne.ref_grille, ligne.designation, ligne.prix_unitaire_ht, ligne.unite.value,
+            )
+            ligne.ref_grille = None
+        else:
+            ligne.ref_grille = ref.id
+    return extraction
+
+
 def _signaler_les_prix_non_dictes(extraction: DevisExtraction, transcript: str) -> DevisExtraction:
     """Marque `a_valider` toute ligne « dictée » dont le prix n'apparaît pas dans le vocal.
 
     Le prompt l'exige déjà ; ceci le garantit. Le garde-fou ajoute des signalements, il
     n'en retire jamais : au pire il fait relire un prix dicté en toutes lettres, jamais il
     ne fait passer une estimation pour un prix confirmé.
+
+    Les lignes au prix du tarif de l'artisan sont épargnées : leur prix n'a pas été
+    dicté, il a été vérifié contre le tarif par `_verifier_les_refs`, juste avant.
     """
-    dits = _nombres_dits(transcript)
+    dits = nombres_dits(transcript)
     for ligne in extraction.lignes:
+        if ligne.ref_grille is not None:
+            continue
         if not ligne.a_valider and round(ligne.prix_unitaire_ht, 2) not in dits:
             logger.warning(
                 "Prix %s absent de la transcription : « %s » passe à valider.",
@@ -213,36 +318,65 @@ def _signaler_les_prix_non_dictes(extraction: DevisExtraction, transcript: str) 
     return extraction
 
 
-def structure(transcript: str) -> DevisExtraction:
-    """Transforme une transcription en devis structuré, non chiffré."""
+def structure(transcript: str, grille: GrillePrix | None = None) -> DevisExtraction:
+    """Transforme une transcription en devis structuré, non chiffré.
+
+    `grille` : le tarif de l'artisan connecté. Ses prix passent avant les fourchettes de
+    référence, et chaque ligne qui s'en réclame est vérifiée ici avant de sortir.
+    """
     transcript = transcript.strip()
     if not transcript:
         raise StructurationError("Transcription vide.")
-    return _signaler_les_prix_non_dictes(_extraire(transcript), transcript)
+    bloc = _bloc_grille(grille) if grille and grille.lignes else None
+    extraction = _verifier_les_refs(_extraire(transcript, bloc), grille)
+    return _signaler_les_prix_non_dictes(extraction, transcript)
 
 
-def _extraire(transcript: str) -> DevisExtraction:
+def _extraire(transcript: str, bloc: str | None = None) -> DevisExtraction:
     """Confie la transcription au fournisseur configuré, ou la rejoue depuis les fixtures."""
     config = get_config()
     if config.use_fixtures:
         return _depuis_fixture(transcript)
+    systeme = [_prompt_systeme()] + ([bloc] if bloc else [])
+    return generer(DevisExtraction, systeme=systeme, contenu=transcript,
+                   delai=config.delai_chiffrage_s, nom_schema="devis")
+
+
+def generer(modele: type[BaseModel], *, systeme: list[str], contenu: str, delai: float,
+            max_tokens: int = 16000, nom_schema: str = "reponse",
+            pieces: Sequence[Piece] = ()):
+    """Le seul point d'appel au modèle de langage, quel que soit le fournisseur.
+
+    `systeme` : le prompt d'abord, puis ce qui l'accompagne (le tarif de l'artisan).
+    `modele` : la sortie attendue, imposée par l'API — le devis pour le chiffrage, les
+    prix lus pour l'import d'un tarif. Avec un seul texte système, l'appel est
+    exactement celui d'avant : une chaîne chez Anthropic, un message chez OpenAI.
+    `pieces` : des documents à lire avec le texte — Claude et OpenAI seulement.
+    """
+    config = get_config()
+    if pieces and config.structuration_provider not in ("anthropic", "openai"):
+        raise StructurationError(
+            "La lecture d'un PDF ou d'une photo demande le moteur Claude ou OpenAI."
+        )
 
     if config.structuration_provider == "groq":
-        return _structure_compatible_openai(
-            transcript,
+        return _generer_compatible_openai(
+            modele, systeme, contenu,
             api_key=config.groq_api_key,
             base_url=config.groq_base_url,
             model=config.model_structuration_groq,
             fournisseur="Groq",
+            delai=delai, nom_schema=nom_schema,
         )
 
     if config.structuration_provider == "openai":
-        return _structure_compatible_openai(
-            transcript,
+        return _generer_compatible_openai(
+            modele, systeme, contenu,
             api_key=config.openai_api_key,
             base_url=None,  # api.openai.com
             model=config.model_structuration_openai,
             fournisseur="OpenAI",
+            delai=delai, nom_schema=nom_schema, pieces=pieces,
         )
 
     if config.structuration_provider == "autre":
@@ -251,14 +385,15 @@ def _extraire(transcript: str) -> DevisExtraction:
                 "STRUCTURATION_PROVIDER=autre exige STRUCTURATION_BASE_URL et "
                 "MODEL_STRUCTURATION_AUTRE dans le .env."
             )
-        return _structure_compatible_openai(
-            transcript,
+        return _generer_compatible_openai(
+            modele, systeme, contenu,
             api_key=config.structuration_api_key,
             base_url=config.structuration_base_url,
             model=config.model_structuration_autre,
             # Le nom du fournisseur est son URL : c'est ce qui identifie vraiment
             # qui a chiffré, et ça se retrouve tel quel dans les logs.
             fournisseur=config.structuration_base_url,
+            delai=delai, nom_schema=nom_schema,
         )
 
     if not config.anthropic_api_key:
@@ -268,14 +403,19 @@ def _extraire(transcript: str) -> DevisExtraction:
         )
 
     client = anthropic.Anthropic(api_key=config.anthropic_api_key,
-                                 timeout=config.delai_chiffrage_s, max_retries=1)
+                                 timeout=delai, max_retries=1)
     try:
         reponse = client.messages.parse(
             model=config.model_structuration,
-            max_tokens=16000,
-            system=_prompt_systeme(),
-            messages=[{"role": "user", "content": transcript}],
-            output_format=DevisExtraction,
+            max_tokens=max_tokens,
+            # Un seul texte : une simple chaîne, comme avant le tarif de l'artisan.
+            system=(systeme[0] if len(systeme) == 1 else [
+                {"type": "text", "text": texte} for texte in systeme
+            ]),
+            messages=[{"role": "user", "content": contenu if not pieces else [
+                *_blocs_anthropic(pieces), {"type": "text", "text": contenu},
+            ]}],
+            output_format=modele,
         )
     except anthropic.APIError as err:  # clé invalide, crédit épuisé, surcharge...
         logger.error("Appel Anthropic en échec : %s", err)
@@ -286,10 +426,10 @@ def _extraire(transcript: str) -> DevisExtraction:
     suivi.appel("anthropic", config.model_structuration,
                 reponse.usage.input_tokens, reponse.usage.output_tokens)
 
-    extraction = reponse.parsed_output
-    if extraction is None:
-        raise StructurationError("Le modèle n'a pas renvoyé de devis exploitable.")
-    return extraction
+    sortie = reponse.parsed_output
+    if sortie is None:
+        raise StructurationError("Le modèle n'a pas renvoyé de réponse exploitable.")
+    return sortie
 
 
 def enregistrer_fixture(nom: str, transcript: str, extraction: DevisExtraction) -> None:

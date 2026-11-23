@@ -20,6 +20,7 @@ de rien, et c'est précisément au redéploiement qu'on aurait envie de tricher.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import logging
@@ -146,6 +147,13 @@ _etat: dict | None = None
 
 _proxy_signale = False
 
+# Ce que `/health` dit du proxy : « ok » s'il est cru, « à déclarer » s'il ne l'est pas,
+# « inconnu » tant qu'aucune requête relayée n'est passée. Le journal le dit aussi, mais
+# il faut un accès au serveur pour le lire ; or le plafond par personne d'un visiteur
+# sans compte repose sur son adresse, et derrière un proxy ignoré tous les visiteurs en
+# partagent une seule.
+_proxy_etat = "inconnu"
+
 
 def _client(request: Request) -> str:
     """L'adresse de l'appelant.
@@ -170,11 +178,16 @@ def _signaler_un_proxy_ignore(request: Request, adresse: str) -> None:
     est invisible à l'usage — jusqu'au 429 — et l'adresse à déclarer est justement
     celle-ci : on la donne.
     """
-    global _proxy_signale
+    global _proxy_signale, _proxy_etat
     relais = request.headers.get("x-forwarded-for")
-    if _proxy_signale or not relais:
+    if not relais:
         return
-    if adresse not in {morceau.strip() for morceau in relais.split(",")}:
+    if adresse in {morceau.strip() for morceau in relais.split(",")}:
+        if _proxy_etat == "inconnu":
+            _proxy_etat = "ok"
+        return
+    _proxy_etat = "à déclarer"
+    if not _proxy_signale:
         _proxy_signale = True
         logger.warning(
             "Requête relayée par %s, qui n'est pas dans FORWARDED_ALLOW_IPS : le débit et "
@@ -213,9 +226,34 @@ def verifier_debit(request: Request) -> None:
     fenetre.append(maintenant)
 
 
+# ---------------------------------------------------------------------------
+# Le portefeuille
+# ---------------------------------------------------------------------------
+
+
+def personne(request: Request, uid: str | None = None) -> str:
+    """Qui consomme, pour le plafond par personne : le compte s'il y en a un, sinon l'adresse.
+
+    Le compte d'abord, parce qu'il suit l'artisan d'un réseau à l'autre — la 4G du
+    chantier, le Wi-Fi du bureau. Un visiteur sans compte n'a que son adresse : changer
+    de réseau lui en donne une neuve, mais le plafond global reste au-dessus.
+
+    Haché avant d'être rangé : le fichier des compteurs n'a pas à garder d'adresses ni
+    d'identifiants en clair. Ce n'est pas de l'anonymat — une adresse IPv4 se retrouve
+    en les essayant toutes — mais rien de lisible ne traîne sur le disque.
+    """
+    brut = f"compte:{uid}" if uid else f"adresse:{_client(request)}"
+    return hashlib.sha256(brut.encode("utf-8")).hexdigest()[:16]
+
+
 def _neuf() -> dict:
+    # `personnes_jour` et `personnes_mois` : par personne, ce qu'elle a consommé, sous la
+    # forme {personne: {"devis": n, "transcriptions": n}}. Ils tournent avec le jour et
+    # le mois communs, et ne grossissent pas sans fin : une personne n'y entre qu'en
+    # consommant, donc jamais plus que le plafond global du mois.
     return {"jour": "", "devis_jour": 0, "transcriptions_jour": 0,
-            "mois": "", "devis_mois": 0, "transcriptions_mois": 0}
+            "mois": "", "devis_mois": 0, "transcriptions_mois": 0,
+            "personnes_jour": {}, "personnes_mois": {}}
 
 
 def _charger() -> dict:
@@ -233,6 +271,9 @@ def _charger() -> dict:
     try:
         charge = json.loads(chemin.read_text(encoding="utf-8"))
         _etat = {**_neuf(), **{c: charge[c] for c in _neuf() if c in charge}}
+        for cle in ("personnes_jour", "personnes_mois"):
+            if not isinstance(_etat[cle], dict):
+                _etat[cle] = {}
     except FileNotFoundError:
         _etat = _neuf()
     except Exception as err:
@@ -260,33 +301,39 @@ def _sauver() -> None:
         logger.warning("Compteurs non enregistrés (%s)", err)
 
 
-def consommer_devis() -> None:
+def consommer_devis(qui: str) -> None:
     """Plafonds de dépense. C'est le garde-fou du portefeuille.
 
     Le code d'accès protège du passant ; celui-ci protège du code qui a circulé, du
     script laissé en boucle et de l'erreur de manipulation. Il compte les opérations
-    qui coûtent de l'argent : le chiffrage ici, la transcription juste en dessous.
+    qui coûtent de l'argent : le chiffrage ici — la lecture d'un tarif importé compte
+    comme un devis —, la transcription juste en dessous.
 
     Deux échelles : le jour attrape l'emballement, le mois attrape la fuite lente
     qu'un plafond journalier laisse passer sans jamais broncher.
+
+    Et deux niveaux : `qui` (voir `personne()`) a son propre plafond, sous le plafond
+    global. Sans lui, un seul artisan qui dicte en boucle épuise la journée de tous les
+    autres. Le global reste : c'est lui qui borne la facture quand les personnes se
+    multiplient — des comptes créés en série, des adresses qui changent.
     """
-    _consommer("devis", "de devis autorisés")
+    _consommer("devis", "de devis autorisés", "devis", qui)
 
 
-def consommer_transcription() -> None:
+def consommer_transcription(qui: str) -> None:
     """Même garde-fou pour la transcription, sur son propre compteur.
 
     Elle a longtemps échappé aux plafonds, sur l'idée qu'une transcription chez Groq
     est gratuite. Elle passe maintenant par OpenAI, facturée à la minute d'audio, et un
     script pouvait l'appeler en boucle pendant que /health annonçait zéro devis. Un
     compteur à elle plutôt que celui des devis : une dictée en coûterait sinon deux, et
-    le plafond annoncé ne voudrait plus rien dire.
+    le plafond annoncé ne voudrait plus rien dire. Même chose par personne.
     """
-    _consommer("transcriptions", "de transcriptions autorisées")
+    _consommer("transcriptions", "de transcriptions autorisées", "dictées", qui)
 
 
-def _consommer(quoi: str, libelle: str) -> None:
-    """Compte une opération payante, ou la refuse si le plafond est atteint.
+def _consommer(quoi: str, libelle: str, nom: str, qui: str) -> None:
+    """Compte une opération payante, ou la refuse si un plafond est atteint.
 
     Appelée avant l'appel au fournisseur, jamais après : la dépense est engagée dès
     que la requête part, qu'elle aboutisse ou non.
@@ -298,11 +345,30 @@ def _consommer(quoi: str, libelle: str) -> None:
     jour = aujourd_hui.isoformat()
     mois = aujourd_hui.strftime("%Y-%m")
 
-    # Le jour et le mois sont communs aux deux compteurs : quand ils tournent, tout repart.
+    # Le jour et le mois sont communs à tous les compteurs : quand ils tournent, tout repart.
     if etat["jour"] != jour:
         etat["jour"], etat["devis_jour"], etat["transcriptions_jour"] = jour, 0, 0
+        etat["personnes_jour"] = {}
     if etat["mois"] != mois:
         etat["mois"], etat["devis_mois"], etat["transcriptions_mois"] = mois, 0, 0
+        etat["personnes_mois"] = {}
+
+    # La personne d'abord : quand elle a épuisé sa part, c'est ce qu'elle doit lire, pas
+    # un plafond global qui laisserait croire que le service est fermé pour tous.
+    # `.get` et non `setdefault` : une personne refusée n'entre pas dans le fichier.
+    sienne_jour = _part(etat["personnes_jour"], qui)
+    sienne_mois = _part(etat["personnes_mois"], qui)
+    for plafond, consomme, unite, reprise in (
+        (config.devis_par_personne_jour, sienne_jour.get(quoi, 0), "jour", "demain"),
+        (config.devis_par_personne_mois, sienne_mois.get(quoi, 0), "mois", "le mois prochain"),
+    ):
+        if plafond > 0 and consomme >= plafond:
+            logger.warning("Plafond par personne atteint (%d %s par %s).", plafond, quoi, unite)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Vous avez atteint la limite de {plafond} {nom} par {unite} "
+                       f"et par personne. Réessayez {reprise}.",
+            )
 
     for plafond, consomme, echelle, reprise in (
         (config.devis_par_jour, etat[f"{quoi}_jour"], "aujourd'hui", "demain"),
@@ -320,7 +386,20 @@ def _consommer(quoi: str, libelle: str) -> None:
 
     etat[f"{quoi}_jour"] += 1
     etat[f"{quoi}_mois"] += 1
+    sienne_jour[quoi] = sienne_jour.get(quoi, 0) + 1
+    sienne_mois[quoi] = sienne_mois.get(quoi, 0) + 1
+    etat["personnes_jour"][qui] = sienne_jour
+    etat["personnes_mois"][qui] = sienne_mois
     _sauver()
+
+
+def _part(personnes: dict, qui: str) -> dict:
+    """Ce qu'une personne a consommé. Une entrée abîmée dans le fichier repart de zéro,
+    comme le fichier entier : un compteur illisible ne doit pas devenir une panne."""
+    part = personnes.get(qui)
+    if not isinstance(part, dict) or not all(isinstance(n, int) for n in part.values()):
+        return {}
+    return part
 
 
 def compteurs() -> dict[str, int]:
@@ -337,17 +416,27 @@ def compteurs() -> dict[str, int]:
         "plafond_mois": config.devis_par_mois,
         "transcriptions_du_jour": etat["transcriptions_jour"] if du_jour else 0,
         "transcriptions_du_mois": etat["transcriptions_mois"] if du_mois else 0,
+        "plafond_jour_par_personne": config.devis_par_personne_jour,
+        "plafond_mois_par_personne": config.devis_par_personne_mois,
+        "personnes_du_jour": len(etat["personnes_jour"]) if du_jour else 0,
+        "personnes_du_mois": len(etat["personnes_mois"]) if du_mois else 0,
         "adresses_suivies": len(_fenetres),
     }
 
 
+def etat_du_proxy() -> str:
+    """Pour /health : l'adresse des visiteurs est-elle la vraie ? Voir `_proxy_etat`."""
+    return _proxy_etat
+
+
 def reinitialiser() -> None:
     """Remet les compteurs à zéro. Utilisé par les tests, jamais par l'application."""
-    global _etat, _proxy_signale
+    global _etat, _proxy_signale, _proxy_etat
     _fenetres.clear()
     _echecs.clear()
     _etat = None
     _proxy_signale = False
+    _proxy_etat = "inconnu"
 
 
 # ---------------------------------------------------------------------------
@@ -372,13 +461,14 @@ async def limiter_la_taille(request: Request, call_next):
     chemin = request.url.path
 
     if chemin.startswith(PREFIXE_PROTEGE):
-        # La transcription reçoit de l'audio, le reste ne reçoit que du JSON. Un devis
-        # de plus d'un demi-mégaoctet n'est pas un devis, c'est une charge.
-        plafond = (
-            config.max_upload_octets
-            if chemin == "/api/transcribe"
-            else config.max_json_ko * 1024
-        )
+        # La transcription reçoit de l'audio et l'import du tarif un fichier ; le reste
+        # ne reçoit que du JSON. Un devis de plus d'un demi-mégaoctet n'est pas un
+        # devis, c'est une charge.
+        plafond = {
+            "/api/transcribe": config.max_upload_octets,
+            # Le fichier de prix importé dans le tarif : Excel, CSV, PDF ou photo.
+            "/api/grille/lire": config.max_import_octets,
+        }.get(chemin, config.max_json_ko * 1024)
         declaree = request.headers.get("content-length")
         if declaree and declaree.isdigit() and int(declaree) > plafond:
             logger.warning("Corps refusé sur %s : %s octets", chemin, declaree)

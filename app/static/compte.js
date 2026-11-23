@@ -166,6 +166,9 @@ async function demarrer() {
 
   onAuthStateChanged(auth, async (compte) => {
     utilisateur = compte;
+    // Le tarif lu appartient au compte d'avant : on l'oublie, un autre artisan peut
+    // se connecter sur le même téléphone.
+    if (window.Prix) window.Prix.oublier();
     try {
       // La porte d'abord : `app.js` doit savoir si le serveur réclame un code avant
       // qu'on choisisse l'écran. Voir `porteFermee`.
@@ -301,6 +304,7 @@ function peindreMenu() {
   // déconnexion reste — c'est la sortie de secours de cet écran.
   $('btn-parametres').hidden = !fiche;
   $('btn-template').hidden = !connecte || enInscription;
+  $('btn-prix').hidden = !connecte || enInscription;
   $('btn-deconnexion').hidden = !connecte;
   $('btn-connexion').hidden = connecte;
 
@@ -321,7 +325,8 @@ async function peindreCompte() {
       return;
     }
     // Pas de retour forcé à l'accueil : l'artisan est peut-être en pleine relecture.
-    if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active')) {
+    if (document.querySelector('#ecran-connexion.is-active, #ecran-profil.is-active, '
+        + '#ecran-template.is-active, #ecran-prix.is-active')) {
       montrer('accueil');
     }
     return;
@@ -675,6 +680,10 @@ function brancher() {
     ouvrirTemplate();
   });
   $('btn-template-retour').addEventListener('click', () => montrer('accueil'));
+  $('btn-prix').addEventListener('click', () => {
+    refermerSiPardessus();
+    window.Prix.ouvrir();
+  });
 
   $('btn-menu').addEventListener('click', () => basculerMenu(true));
   $('btn-menu-fermer').addEventListener('click', () => basculerMenu(false));

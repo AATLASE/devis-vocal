@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 CENT = Decimal("0.01")
 
@@ -64,6 +64,19 @@ class LigneExtraction(BaseModel):
     unite: Unite
     prix_unitaire_ht: float
     a_valider: bool  # True dès que la quantité ou le prix est une estimation, non une valeur dictée
+    # L'identifiant de la ligne du tarif de l'artisan dont vient le prix (« P12 »), ou
+    # null. Sans valeur par défaut, exprès : un champ facultatif sort du `required` du
+    # schéma, et le modèle peut alors l'omettre — le tarif ne servirait jamais, sans
+    # que rien ne le signale. Le validateur ci-dessous comble seulement les données
+    # écrites avant son ajout : fixtures, journal, tests.
+    ref_grille: str | None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ref_grille_absente(cls, donnees):
+        if isinstance(donnees, dict) and "ref_grille" not in donnees:
+            return {**donnees, "ref_grille": None}
+        return donnees
 
 
 class DevisExtraction(BaseModel):
@@ -136,6 +149,9 @@ class LigneDevis(BaseModel):
     prix_unitaire_ht: Decimal
     total_ht: Decimal
     a_valider: bool = False
+    # La ligne du tarif de l'artisan dont vient le prix, quand le chiffrage l'a reconnue
+    # et que Python l'a vérifiée. Sert à l'écran (« votre prix »), jamais au PDF.
+    ref_grille: str | None = None
 
 
 class Devis(BaseModel):
@@ -251,6 +267,43 @@ class Profil(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Le tarif de l'artisan
+# ---------------------------------------------------------------------------
+
+
+class PrixArtisan(BaseModel):
+    """Une ligne du tarif de l'artisan : une prestation, son unité, son prix HT.
+
+    `id` est court (« P12 ») parce que le modèle de langage doit le recopier : un
+    identifiant long se recopie mal, et une référence mal recopiée ferait perdre le prix.
+    """
+
+    id: str
+    prestation: str  # « Pose de carrelage de sol, fourniture client »
+    unite: Unite
+    prix_unitaire_ht: Decimal
+    precision: str | None = None  # « hors dépose », « gamme courante »
+
+
+class GrillePrix(BaseModel):
+    """Le tarif de l'artisan, rangé dans son compte. Sert au chiffrage avant les fourchettes.
+
+    Ajout hors périmètre d'origine, comme le template et la fiche, sur décision explicite
+    (voir CLAUDE.md, « Exception assumée : tarif de l'artisan »). Deux règles le tiennent :
+
+    - **Rien n'y entre sans l'artisan.** Un import ne fait que proposer des lignes ; elles
+      ne sont enregistrées que quand il les a relues et validées à l'écran.
+    - **Python vérifie, il n'impose pas.** Au chiffrage, une ligne n'est « votre prix »
+      que si le modèle a recopié l'identifiant, la même unité et exactement le même prix.
+      Sinon elle redevient une ligne ordinaire, dictée ou estimée.
+    """
+
+    proprietaire: str  # l'uid Firebase, ou « local » quand l'auth est inactive
+    lignes: list[PrixArtisan]
+    modifie_le: datetime
+
+
+# ---------------------------------------------------------------------------
 # La couture entre les deux
 # ---------------------------------------------------------------------------
 
@@ -320,6 +373,7 @@ def to_devis(
                 prix_unitaire_ht=prix_unitaire,
                 total_ht=arrondi(quantite * prix_unitaire),
                 a_valider=source.a_valider,
+                ref_grille=source.ref_grille,
             )
         )
 

@@ -71,10 +71,12 @@ MODEL_STRUCTURATION_AUTRE=mistral-large-latest
 ```
 
 Pour les fournisseurs que le projet connaît déjà, **la clé suffit** : `STRUCTURATION_PROVIDER`
-se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` et rien d'autre chiffre chez
-Anthropic. On ne le précise que pour trancher quand plusieurs clés cohabitent — une clé
-OpenAI présente gagne toujours, puisque c'est le défaut. Le moteur retenu est annoncé sur
-`/health` et affiché dans le bandeau : déduit ne veut pas dire invisible.
+se déduit de ce qui est renseigné. Poser `ANTHROPIC_API_KEY` chiffre chez Anthropic, même
+à côté d'une clé OpenAI : celle-ci garde la transcription, qu'Anthropic ne fait pas. Sans
+clé Anthropic, OpenAI chiffre, puisque c'est le défaut. On ne précise
+`STRUCTURATION_PROVIDER` que pour forcer un autre choix, par exemple `openai` alors
+qu'une clé Anthropic est posée. Le moteur retenu est annoncé sur `/health` et affiché
+dans le bandeau : déduit ne veut pas dire invisible.
 
 Même chose pour l'audio avec `TRANSCRIPTION_PROVIDER` : OpenAI si sa clé est là, sinon
 Groq, dont le Whisper est gratuit. `TRANSCRIPTION_BASE_URL` et `TRANSCRIPTION_API_KEY`
@@ -155,7 +157,7 @@ Le découpage du code suit ce pipeline :
 |---|---|
 | `app/models.py` | **Le contrat.** `DevisExtraction`, `Devis`, et `to_devis()` entre les deux |
 | `app/transcription.py` | `transcribe(audio, filename) -> str` — OpenAI derrière l'interface |
-| `app/structuration.py` | `structure(transcript) -> DevisExtraction` — OpenAI en sortie JSON contrainte |
+| `app/structuration.py` | `structure(transcript, grille=None) -> DevisExtraction` — sortie JSON contrainte, tarif de l'artisan vérifié |
 | `app/prompts/structuration.md` | Le prompt de chiffrage, hors du code. C'est le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` — Chromium headless via Playwright, et la pagination du document |
 | `templates/devis.html` | Le devis A4, en pages : prestations, récapitulatif, mentions |
@@ -373,7 +375,7 @@ navigateur. Le détail des écrans de la console Firebase y est.
 Deux règles tiennent la fonctionnalité, et elles sont plus importantes qu'elle :
 
 - **Le compte ne conditionne jamais la dictée.** Un artisan non connecté dicte et sort
-  son devis comme avant. Le compte ne sert qu'à retrouver son template — un jeton qui
+  son devis comme avant. Le compte ne sert qu'à retrouver son template et son tarif — un jeton qui
   expire pendant les quarante secondes de structuration ne fait donc rien perdre.
 - **Un template téléversé ne garantit plus les mentions obligatoires.** C'est le coût
   réel de la fonctionnalité. Il n'est pas tu : à l'enregistrement, le template est rendu
@@ -424,6 +426,12 @@ navigateur a besoin pour afficher l'écran de connexion.
 garde-fou du portefeuille : il couvre ce que le code d'accès ne couvre pas — un code qui
 a circulé, un script laissé en boucle, une fausse manœuvre. Deux échelles parce qu'une
 seule ne suffit pas : 80 par jour laisse passer 2 400 devis dans le mois.
+
+En dessous, chaque personne a sa part : `DEVIS_PAR_PERSONNE_JOUR` (10) et
+`DEVIS_PAR_PERSONNE_MOIS` (60), comptés sur le compte de l'artisan s'il est connecté,
+sur son adresse sinon. Sans eux, un seul artisan épuise la journée de tous les autres.
+Pour un visiteur sans compte, ça suppose que l'adresse soit la vraie : `/health` dit
+`"proxy": "à déclarer"` tant que `FORWARDED_ALLOW_IPS` manque (voir « Sur Coolify »).
 
 Les compteurs sont écrits dans `var/compteurs.json` et survivent à un redémarrage — un
 plafond qu'on annule en relançant l'application ne protège de rien. **En conteneur, ce
@@ -572,7 +580,9 @@ sur l'hôte** (« Ports Exposes » à 8000, « Ports Mappings » vide), et jamai
 
 Pour vérifier : tant que la valeur est fausse, le journal de l'application affiche une
 fois « Requête relayée par …, qui n'est pas dans FORWARDED_ALLOW_IPS », avec l'adresse
-du proxy. Plus de message après redéploiement : c'est réglé.
+du proxy. Plus de message après redéploiement : c'est réglé. Sans accès au journal,
+`/health` le dit aussi, après un premier appel à `/api/` : `"proxy": "à déclarer"`
+tant que c'est faux, `"ok"` une fois réglé.
 
 Deux autres variables à ne pas recopier telles quelles d'un `.env` de développement :
 `LOG_CONTENU` reste à `false` — sinon les noms, adresses et téléphones des clients

@@ -11,6 +11,8 @@ venv/
 
 # Sorties générées
 *.pdf
+# Sauf le devis d'exemple qui sert aux tests de l'import d'un tarif (aucune donnée réelle).
+!tests/fixtures/grilles/*.pdf
 !docs/*.pdf
 
 # Journal de démonstration : des vocaux d'artisans réels. Ne quitte jamais la machine

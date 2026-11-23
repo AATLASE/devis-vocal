@@ -19,7 +19,7 @@ Dans le scope :
 
 **Hors scope — ne pas construire :**
 
-bibliothèque de prix par artisan · apprentissage des devis passés · intégration WhatsApp
+apprentissage des devis passés · intégration WhatsApp
 Business API · envoi par email · signature électronique · facturation · paiement · CRM ·
 file d'attente · cache · gestion d'erreurs exhaustive · design poussé du front
 
@@ -33,7 +33,8 @@ signalé. Ce qui existe désormais : Firebase Auth (Google et e-mail/mot de pass
 un template HTML de devis par compte, rangé dans Firestore.
 
 Cette exception ne s'étend pas d'elle-même. Elle couvre l'authentification et le
-template, rien d'autre : ni bibliothèque de prix, ni historique des devis, ni stockage
+template — et la fiche de l'artisan. Le tarif de l'artisan a sa propre exception, plus
+bas. Rien d'autre : ni historique des devis, ni stockage
 du devis lui-même. Le pipeline reste sans état — le devis fait toujours l'aller-retour
 en JSON, et le serveur n'en garde rien.
 
@@ -43,7 +44,7 @@ Deux garde-fous la tiennent, et ils ne sont pas négociables :
   template, comportement d'avant à l'identique. C'est ce qui fait passer `uv run pytest`
   sans le moindre secret et ce qui garde la démonstration hors-ligne possible.
 - **Le compte ne conditionne jamais la dictée.** Un artisan non connecté dicte et sort
-  son devis exactement comme avant. Le compte ne sert qu'à retrouver son template.
+  son devis exactement comme avant. Le compte ne sert qu'à retrouver son template et son tarif.
 
 Le coût est réel et documenté : un template téléversé ne garantit plus les mentions
 obligatoires. `app/templates.py` le mesure à l'enregistrement — quatorze contrôles sur
@@ -71,9 +72,40 @@ Nationale (`app/adresse.py`, via la Géoplateforme), et un client professionnel 
 retrouve dans l'annuaire des entreprises déjà branché. Il n'existe pas d'annuaire des
 particuliers, et il ne faut pas en chercher un.
 
-Cette exception ne couvre pas la **bibliothèque de prix par artisan**, toujours hors
-scope : à la place, `app/prompts/structuration.md` porte une grille de fourchettes de
-référence pour les prix estimés, commune à tous. C'est du prompt, donc dans le périmètre.
+Les prix estimés s'appuient sur les **fourchettes de référence** de
+`app/prompts/structuration.md`, communes à tous — c'est du prompt, donc dans le
+périmètre. Le tarif propre à un artisan est l'objet de l'exception suivante.
+
+### Exception assumée : tarif de l'artisan
+
+« bibliothèque de prix par artisan » figurait dans la liste ci-dessus. Elle en a été
+retirée sur décision explicite, après que le conflit a été signalé : les fourchettes de
+référence du prompt, même recalées sur le marché, ne donneront jamais les prix d'un
+artisan donné. Ce qui existe désormais : un artisan connecté enregistre **son tarif** —
+prestation, unité, prix HT, précision —, rangé dans Firestore, et le chiffrage s'en sert
+avant les fourchettes. Une ligne chiffrée sur son tarif est un prix confirmé : pas de
+« estimé † » sur le PDF, une mention « votre prix » à la relecture.
+
+Elle couvre la saisie à la main et quatre imports : la dictée, un fichier Excel ou CSV, le
+PDF d'anciens devis, la photo d'un devis papier. Chaque import est une **extraction
+ponctuelle que l'artisan relit et valide** à l'écran. Ce n'est pas de l'« apprentissage
+des devis passés », qui reste hors scope : rien n'apprend des devis générés ni des
+corrections, et il n'y a pas d'historique.
+
+Elle tient par les règles du reste du projet, plus deux à elle :
+
+- **Rien n'est enregistré sans l'artisan.** Un import propose des lignes ; seul
+  « Enregistrer mon tarif » écrit.
+- **Python vérifie, il n'impose pas.** Une ligne n'est « votre prix » que si le modèle a
+  recopié l'identifiant de la ligne du tarif, la même unité et exactement le même prix
+  (`structuration._verifier_les_refs`). Sinon elle redevient une ligne ordinaire, dictée
+  ou estimée.
+- **Le LLM ne calcule pas, même à l'import** : un prix TTC est signalé, jamais converti.
+- **Les garde-fous des comptes s'appliquent** : sans Firebase, rien n'existe ; un
+  visiteur non connecté chiffre exactement comme avant ; la démonstration sur fixtures
+  ignore le tarif.
+
+Voir `app/grilles.py` et la section « Le tarif de l'artisan » du prompt.
 
 Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être impeccable.
 
@@ -81,7 +113,7 @@ Le PDF est la seule exception à la sobriété : c'est la vitrine, il doit être
 
 - **Backend** : Python 3.12, FastAPI
 - **Transcription** : API OpenAI (gpt-4o-transcribe), derrière `transcribe(audio, filename) -> str`
-- **Structuration** : API OpenAI, sortie JSON contrainte, derrière `structure(transcript) -> DevisExtraction`
+- **Structuration** : API OpenAI, sortie JSON contrainte, derrière `structure(transcript, grille=None) -> DevisExtraction`
 - **PDF** : Playwright (Chromium headless) rendant `templates/devis.html`
 - **Front** : une page HTML servie par FastAPI, JS vanilla, pas de framework
 - **Comptes** : Firebase Auth, jetons vérifiés par `firebase-admin`, derrière les deux
@@ -104,8 +136,8 @@ des prix unitaires. Toute l'arithmétique (totaux, TVA, acompte, arrondis) est f
 développeurs. Toute modification passe par une PR relue à deux.
 
 **Pas de sur-ingénierie.** Pas de queue, pas de cache. Le devis fait l'aller-retour en
-JSON entre le navigateur et l'API ; le serveur ne garde rien. Firestore ne stocke que
-les templates — jamais un devis, jamais une transcription.
+JSON entre le navigateur et l'API ; le serveur ne garde rien. Firestore ne stocke que les
+templates, les fiches et les tarifs des artisans — jamais un devis, jamais une transcription.
 
 **L'authentification s'isole derrière deux dépendances.** `utilisateur_requis` et
 `utilisateur_optionnel`, dans `app/authentification.py`. Aucun autre module n'importe

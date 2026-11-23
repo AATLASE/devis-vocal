@@ -160,6 +160,14 @@ class Config(BaseSettings):
     def max_upload_octets(self) -> int:
         return self.max_upload_mo * 1024 * 1024
 
+    # Un fichier de prix importé dans le tarif de l'artisan (Excel, CSV, puis PDF et
+    # photo). Plus petit que l'audio : une liste de prix tient en quelques centaines de Ko.
+    max_import_mo: int = 10
+
+    @property
+    def max_import_octets(self) -> int:
+        return self.max_import_mo * 1024 * 1024
+
     # Le code d'accès. Vide, tout est ouvert — c'est ce qu'on veut en développement et
     # pendant les tests. Le renseigner arme la porte, et c'est le geste de la mise en
     # ligne. Ce n'est pas une authentification : c'est un mot de passe unique qu'on
@@ -202,12 +210,23 @@ class Config(BaseSettings):
     devis_par_jour: int = 80
     devis_par_mois: int = 400
 
+    # Les mêmes, par personne — le compte s'il est connecté, l'adresse sinon. Sous les
+    # plafonds globaux, pas à leur place : sans eux, un seul artisan qui dicte en boucle
+    # épuise la journée de tous les autres ; sans les globaux, des comptes créés en série
+    # n'auraient plus de limite. Dix par jour laissent un rendez-vous chargé et quelques
+    # imports de tarif. Valent aussi pour les transcriptions. Zéro les désactive.
+    devis_par_personne_jour: int = 10
+    devis_par_personne_mois: int = 60
+
     # Délai maximal d'un appel au fournisseur, en secondes, avec une seule nouvelle
     # tentative. Sans eux, le SDK attend jusqu'à 600 s et réessaie deux fois : une
     # demi-heure devant une barre de progression. À relever pour un modèle local lent
     # (Ollama, Whisper sur processeur).
     delai_chiffrage_s: float = 90
     delai_transcription_s: float = 60
+    # La lecture d'un tarif importé : un tableau de deux cents lignes ou un PDF de
+    # plusieurs pages produit une longue réponse, plus lente qu'un devis.
+    delai_lecture_s: float = 180
 
     # Où les compteurs survivent à un redémarrage. Sans ce fichier, un redéploiement
     # remet le plafond du jour à zéro — et un plafond qu'on peut remettre à zéro en
@@ -301,19 +320,21 @@ class Config(BaseSettings):
         pour forcer un fournisseur dont la clé est absente et obtenir le message
         d'erreur qui va avec.
 
-        OpenAI passe en premier : c'est le fournisseur par défaut, et sa seule clé fait
-        tourner tout le pipeline. Groq passe en dernier pour le chiffrage bien qu'il
-        soit souvent présent, parce qu'une GROQ_API_KEY est d'abord là pour la
-        transcription — la trouver ne veut pas dire qu'on a choisi Groq pour chiffrer.
+        Pour le chiffrage, Anthropic passe en premier. Sa clé ne sert qu'à ça —
+        Anthropic ne transcrit pas —, donc la trouver veut dire qu'on a choisi Claude
+        pour chiffrer. Une clé OpenAI, elle, est presque toujours là pour la
+        transcription : sa présence ne dit rien du chiffrage. Groq passe en dernier
+        pour la même raison. Sans clé Anthropic, OpenAI reste le défaut, et sa seule
+        clé fait tourner tout le pipeline.
 
         Le moteur retenu reste annoncé par `/health` et affiché à l'écran : déduit ne
         veut pas dire invisible.
         """
         if self.structuration_provider is None:
-            if self.openai_api_key:
-                deduit = "openai"
-            elif self.anthropic_api_key:
+            if self.anthropic_api_key:
                 deduit = "anthropic"
+            elif self.openai_api_key:
+                deduit = "openai"
             elif self.structuration_base_url:
                 deduit = "autre"
             elif self.groq_api_key:

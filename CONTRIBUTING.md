@@ -67,7 +67,7 @@ note vocale ──▶ POST /api/transcribe ──▶ transcription
 |---|---|
 | `app/models.py` | **Le contrat.** `DevisExtraction`, `Devis`, `to_devis()` |
 | `app/transcription.py` | `transcribe(audio, filename) -> str` |
-| `app/structuration.py` | `structure(transcript) -> DevisExtraction` |
+| `app/structuration.py` | `structure(transcript, grille=None) -> DevisExtraction` |
 | `app/prompts/structuration.md` | Le prompt de chiffrage. Le cœur de la valeur |
 | `app/pdf.py` | `render(devis) -> bytes` |
 | `templates/devis.html` | Le devis A4, en pages |
@@ -113,13 +113,14 @@ d'aucune clé.
 L'objectif n'est pas un produit, c'est une preuve à montrer à des artisans en rendez-vous.
 Time-box : un week-end.
 
-**Ne pas construire :** bibliothèque de prix par artisan · apprentissage des devis passés ·
+**Ne pas construire :** apprentissage des devis passés ·
 WhatsApp Business API · envoi par email · signature électronique · facturation ·
 paiement · CRM · file d'attente · cache · gestion d'erreurs exhaustive · design poussé
 du front.
 
-Trois éléments de cette liste en ont été retirés sur décision explicite — les comptes,
-la base de données (pour les gabarits seulement) et la correction du devis à l'écran.
+Quatre éléments de cette liste en ont été retirés sur décision explicite — les comptes,
+la base de données (pour les gabarits, les fiches et les tarifs seulement), la
+correction du devis à l'écran et le tarif de l'artisan.
 Leurs limites sont écrites dans `CLAUDE.md` § Périmètre : elles ne s'étendent pas
 d'elles-mêmes.
 

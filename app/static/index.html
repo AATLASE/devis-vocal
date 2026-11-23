@@ -172,6 +172,10 @@
   <div class="menu__espace"></div>
 
   <nav class="menu__liens" aria-label="Compte">
+    <button class="menu__lien" id="btn-prix" type="button">
+      <svg aria-hidden="true"><use href="#i-crayon"/></svg>
+      <span>Mes prix</span>
+    </button>
     <button class="menu__lien" id="btn-template" type="button">
       <svg aria-hidden="true"><use href="#i-document"/></svg>
       <span>Mon template</span>
@@ -880,6 +884,103 @@
   </div>
 </section>
 
+<!-- Mes prix : le tarif de l'artisan (CLAUDE.md, « Exception assumée : tarif de
+     l'artisan »). Rien n'y entre sans lui : le tableau ne part au serveur que sur
+     « Enregistrer mon tarif ». Voir prix.js. -->
+<section class="screen template prix" id="ecran-prix" aria-label="Mes prix">
+  <div class="template__inner">
+    <div class="template__head">
+      <button class="btn btn--ghost" id="btn-prix-retour">
+        <svg aria-hidden="true"><use href="#i-retour"/></svg>
+        <span>Retour</span>
+      </button>
+      <div>
+        <div class="label label--accent">Chiffrage</div>
+        <h2>Vos prix</h2>
+      </div>
+    </div>
+
+    <p class="template__lede">
+      Enregistrez vos prix une fois. Quand une prestation que vous dictez correspond à une
+      ligne de votre tarif, le devis prend votre prix, sans la mention « estimé ». Le reste
+      est estimé sur des prix de marché, et reste à vérifier.
+    </p>
+
+    <div class="template__etat">
+      <div class="label">Votre tarif</div>
+      <div class="template__nom" id="prix-etat">Aucun prix enregistré</div>
+      <div class="template__meta" id="prix-meta"></div>
+    </div>
+
+    <!-- Dicter ou importer : deux façons de remplir le tableau plus vite. Rien n'est
+         enregistré ici : les prix lus s'ajoutent au tableau, à relire. -->
+    <div class="section-head">
+      <div class="label">Ajouter des prix</div>
+      <div class="rule"></div>
+    </div>
+    <p class="prix__import-aide">
+      Dictez vos prix, importez votre liste (Excel ou CSV) <span id="prix-aide-documents">ou
+      le PDF d'un ancien devis, ou photographiez un devis papier</span>. Les prix lus
+      s'ajoutent au tableau ci-dessous : rien n'est enregistré avant que vous les ayez
+      relus. Ce que vous envoyez est lu par notre fournisseur d'intelligence
+      artificielle, le temps de la lecture — y compris le nom du client d'un ancien
+      devis, qui n'est ni relevé ni gardé.
+    </p>
+    <div class="prix__import">
+      <button type="button" class="btn btn--ghost" id="btn-prix-dicter">
+        <svg aria-hidden="true"><use href="#i-micro"/></svg>
+        <span id="prix-dicter-libelle">Dicter mes prix</span>
+      </button>
+      <button type="button" class="btn btn--ghost" id="btn-prix-fichier">
+        <svg aria-hidden="true"><use href="#i-document"/></svg>
+        <span>Importer un fichier</span>
+      </button>
+      <button type="button" class="btn btn--ghost" id="btn-prix-photo" hidden>
+        <svg aria-hidden="true"><use href="#i-document"/></svg>
+        <span>Photographier un devis</span>
+      </button>
+      <!-- `accept` est complété par prix.js quand le moteur lit les PDF et les photos. -->
+      <input type="file" id="prix-fichier" hidden multiple
+             accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <input type="file" id="prix-photo" hidden accept="image/*" capture="environment">
+    </div>
+    <div class="prix__dictee" id="prix-dictee" hidden>
+      <div class="champ">
+        <label for="prix-dictee-texte">Ce que vous avez dicté — corrigez un prix mal compris</label>
+        <textarea id="prix-dictee-texte" rows="4"></textarea>
+      </div>
+      <div class="template__actions">
+        <button type="button" class="btn" id="btn-prix-lire">Lire mes prix</button>
+        <button type="button" class="btn btn--texte" id="btn-prix-dictee-annuler">Annuler</button>
+      </div>
+    </div>
+    <p class="template__message" id="prix-import-message" role="status" hidden></p>
+
+    <div class="section-head">
+      <div class="label">Vos prestations · prix unitaires HT</div>
+      <div class="rule"></div>
+      <div class="count" id="prix-compte"></div>
+    </div>
+    <div class="edition__lignes" id="prix-lignes"></div>
+    <button type="button" class="btn btn--ghost edition__ajout" id="btn-prix-ajouter">
+      <svg aria-hidden="true"><use href="#i-plus"/></svg>
+      <span>Ajouter une ligne</span>
+    </button>
+
+    <p class="template__message" id="prix-message" role="status" hidden></p>
+
+    <div class="template__actions">
+      <button class="btn btn--large" id="btn-prix-enregistrer">Enregistrer mon tarif</button>
+    </div>
+
+    <div class="template__pied">
+      <span class="prix__aide">Une ligne par prestation, au prix que vous facturez.
+        Précisez ce qui la distingue : « pose seule », « hors dépose ».</span>
+      <button class="compte__lien" id="btn-prix-vider" hidden>Supprimer tout mon tarif</button>
+    </div>
+  </div>
+</section>
+
 </main>
 
 
@@ -1063,6 +1164,9 @@
 </section>
 
 <script src="/static/app.js"></script>
+<!-- Le tarif de l'artisan : un script classique, qui emprunte les outils d'`app.js`.
+     Sans Firebase, rien ne l'ouvre. -->
+<script src="/static/prix.js"></script>
 <!-- Module à part, et chargé après : le SDK Firebase n'existe qu'en ESM, alors que
      `app.js` est un script classique dont les fonctions sont des globales. Le compte
      s'appuie dessus (`montrer`, `$`) ; l'inverse n'est jamais vrai — sans Firebase,

@@ -2,6 +2,10 @@
 
     uv run python scripts/comparer.py anthropic openai groq
     uv run python scripts/comparer.py groq --fixtures sdb elec
+    uv run python scripts/comparer.py anthropic --grille tests/fixtures/grilles/demo.json
+
+`--grille` chiffre avec le tarif d'un artisan, comme pour un artisan connecté. La colonne
+« tarif » compte alors les lignes reconnues et vérifiées (« votre prix »).
 
 Chaque fournisseur reçoit exactement le même prompt et les mêmes transcriptions ; le
 résultat est confronté aux extractions de référence de `tests/fixtures/*.json`.
@@ -31,7 +35,7 @@ sys.path.insert(0, str(RACINE))
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 from app.config import get_config  # noqa: E402
-from app.models import DevisExtraction  # noqa: E402
+from app.models import DevisExtraction, GrillePrix  # noqa: E402
 from app.structuration import StructurationError, structure  # noqa: E402
 
 FIXTURES = RACINE / "tests" / "fixtures"
@@ -78,6 +82,12 @@ def main() -> int:
         print("Aucune fixture à comparer.")
         return 1
 
+    grille = None
+    if "--grille" in sys.argv:
+        chemin = Path(sys.argv[sys.argv.index("--grille") + 1])
+        grille = GrillePrix.model_validate_json(chemin.read_text(encoding="utf-8"))
+        print(f"Tarif de l'artisan : {len(grille.lignes)} lignes ({chemin.name}).")
+
     print(f"{len(noms)} fixtures × {len(demandes)} fournisseurs = "
           f"{len(noms) * len(demandes)} appels.\n")
 
@@ -94,7 +104,7 @@ def main() -> int:
         for fournisseur in demandes:
             basculer(fournisseur)
             try:
-                got = structure(transcript)
+                got = structure(transcript, grille)
             except StructurationError as err:
                 print(f"   {fournisseur:<12} — {str(err)[:70]}")
                 continue
@@ -102,7 +112,8 @@ def main() -> int:
             print(f"   {fournisseur:<12} {len(got.lignes):>6} "
                   f"{total(got):>10} {ecart(total(got), total(ref)):>7} "
                   f"{total(got, estimees=False):>10} {ecart(total(got, estimees=False), dictees_ref):>7} "
-                  f"{total(got, estimees=True):>10} {ecart(total(got, estimees=True), estimees_ref):>7}")
+                  f"{total(got, estimees=True):>10} {ecart(total(got, estimees=True), estimees_ref):>7}"
+                  + (f"   tarif {sum(1 for l in got.lignes if l.ref_grille)}" if grille else ""))
         print()
 
     print("Lecture : la colonne « dicté » devrait être à 0 % partout — c'est de la")

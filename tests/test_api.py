@@ -17,6 +17,7 @@ import pytest
 
 from pathlib import Path
 
+from app.authentification import UTILISATEUR_LOCAL
 from app.config import get_config
 from app.entreprise import EntrepriseSaisie
 from app.main import DemandeDevis, api_devis, health
@@ -81,7 +82,7 @@ async def test_health_repond_pendant_un_chiffrage(monkeypatch):
     )
     commence, libere = threading.Event(), threading.Event()
 
-    def chiffrage_lent(transcription):
+    def chiffrage_lent(transcription, grille=None):
         commence.set()
         libere.wait(timeout=3)
         return extraction
@@ -150,13 +151,37 @@ def mode_fixtures(monkeypatch):
     return (FIXTURES / "plomberie.txt").read_text(encoding="utf-8")
 
 
+async def test_le_plafond_par_personne_s_applique_au_chiffrage(mode_fixtures, monkeypatch):
+    """Branché sur la route : au bout de sa part, une personne est refusée et une autre
+    passe. Connecté, c'est le compte qui compte, d'où qu'il appelle."""
+    from fastapi import HTTPException
+
+    from app.authentification import Utilisateur
+
+    monkeypatch.setenv("DEVIS_PAR_PERSONNE_JOUR", "1")
+    get_config.cache_clear()
+    demande = DemandeDevis(transcription=mode_fixtures)
+    artisan = Utilisateur(uid="artisan-1")
+
+    await api_devis(request=requete(ip="198.51.100.1"), utilisateur=UTILISATEUR_LOCAL, demande=demande)
+    with pytest.raises(HTTPException) as echec:
+        await api_devis(request=requete(ip="198.51.100.1"), utilisateur=UTILISATEUR_LOCAL,
+                        demande=demande)
+    assert echec.value.status_code == 429
+    await api_devis(request=requete(ip="198.51.100.2"), utilisateur=UTILISATEUR_LOCAL, demande=demande)
+
+    await api_devis(request=requete(ip="198.51.100.3"), utilisateur=artisan, demande=demande)
+    with pytest.raises(HTTPException):
+        await api_devis(request=requete(ip="198.51.100.4"), utilisateur=artisan, demande=demande)
+
+
 async def test_sans_identite_le_devis_prend_celle_du_serveur(mode_fixtures):
-    devis = await api_devis(DemandeDevis(transcription=mode_fixtures))
+    devis = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(transcription=mode_fixtures))
     assert devis.entreprise.nom == get_config().entreprise.nom
 
 
 async def test_l_identite_du_navigateur_prime(mode_fixtures):
-    devis = await api_devis(DemandeDevis(
+    devis = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(
         transcription=mode_fixtures,
         entreprise=EntrepriseSaisie(
             nom="SARL DUPONT PLOMBERIE",
@@ -176,7 +201,7 @@ async def test_un_champ_vide_ne_reprend_pas_la_configuration(mode_fixtures):
     remplit sept champs, et n'a pas encore tapé son IBAN. Celui du `.env` est celui
     d'une autre entreprise : l'acompte partirait sur son compte.
     """
-    devis = await api_devis(DemandeDevis(
+    devis = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(
         transcription=mode_fixtures,
         entreprise=EntrepriseSaisie(nom="SARL DUPONT PLOMBERIE", iban="   "),
     ))
@@ -191,7 +216,7 @@ async def test_une_identite_incomplete_ne_fait_pas_echouer_la_requete(mode_fixtu
     navigateurs doivent continuer de passer. Un 422 en rendez-vous parce qu'un artisan
     a gardé une ancienne version en mémoire serait une panne absurde.
     """
-    devis = await api_devis(DemandeDevis(
+    devis = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(
         transcription=mode_fixtures,
         entreprise=EntrepriseSaisie(nom="EURL Martin"),
     ))
@@ -201,8 +226,8 @@ async def test_une_identite_incomplete_ne_fait_pas_echouer_la_requete(mode_fixtu
 
 async def test_les_totaux_ne_dependent_pas_de_l_identite(mode_fixtures):
     """L'en-tête change, l'arithmétique non. La garantie la plus importante du lot."""
-    nu = await api_devis(DemandeDevis(transcription=mode_fixtures))
-    habille = await api_devis(DemandeDevis(
+    nu = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(transcription=mode_fixtures))
+    habille = await api_devis(request=requete(), utilisateur=UTILISATEUR_LOCAL, demande=DemandeDevis(
         transcription=mode_fixtures,
         entreprise=EntrepriseSaisie(nom="SARL DUPONT PLOMBERIE"),
     ))
@@ -244,6 +269,10 @@ def _fichier(html: str) -> dict:
     ("DELETE", "/api/template", {}),
     ("POST", "/api/template/apercu", {"files": _fichier(f"<p>{PIRATE}</p>")}),
     ("GET", "/api/template/modele", {}),
+    ("GET", "/api/grille", {}),
+    ("PUT", "/api/grille", {"json": {"lignes": [{"prestation": "A", "unite": "u",
+                                                 "prix_unitaire_ht": "1"}]}}),
+    ("DELETE", "/api/grille", {}),
 ])
 async def test_sans_firebase_les_routes_du_compte_n_existent_pas(client, methode, chemin, corps):
     """« Sans identifiants Firebase, tout est inactif. » Ces routes rangeaient tout sous
